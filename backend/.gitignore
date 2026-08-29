@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+*.log
+.DS_Store
+uploads/ebooks/*
+uploads/covers/*
+!uploads/ebooks/.gitkeep
+!uploads/covers/.gitkeep
+

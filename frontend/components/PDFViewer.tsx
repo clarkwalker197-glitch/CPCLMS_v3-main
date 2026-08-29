@@ -5,10 +5,8 @@ import { Document, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 
-pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-  "pdfjs-dist/build/pdf.worker.min.mjs",
-  import.meta.url
-).toString();
+const PDF_WORKER_SRC = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
+pdfjs.GlobalWorkerOptions.workerSrc = PDF_WORKER_SRC;
 
 interface BookmarkData {
   pageNumber: number;
@@ -57,8 +55,6 @@ export function PDFViewer({ url, title, bookId, onClose }: PDFViewerProps) {
     if (bm && bm.pageNumber > 1) {
       setResumePrompt(bm);
       setPageNumber(bm.pageNumber);
-    } else if (bm && bm.pageNumber === 1) {
-      // Already at start, just restore scale if saved
     }
   }, [bookId]);
 
@@ -83,7 +79,6 @@ export function PDFViewer({ url, title, bookId, onClose }: PDFViewerProps) {
   function onDocumentLoadSuccess({ numPages: pages }: { numPages: number }) {
     setNumPages(pages);
     setLoading(false);
-    // Save initial bookmark
     debouncedSaveBookmark(pageNumber, pages);
   }
 
@@ -102,9 +97,9 @@ export function PDFViewer({ url, title, bookId, onClose }: PDFViewerProps) {
   }
 
   function goToPage(page: number) {
-    const p = Math.max(1, Math.min(page, numPages));
+    const p = Math.max(1, Math.min(page, numPages || 1));
     setPageNumber(p);
-    debouncedSaveBookmark(p, numPages);
+    debouncedSaveBookmark(p, numPages || p);
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -141,6 +136,17 @@ export function PDFViewer({ url, title, bookId, onClose }: PDFViewerProps) {
   function dismissResume() {
     setResumePrompt(null);
     setPageNumber(1);
+  }
+
+  function handleDownload() {
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${(title || "document").replace(/\s+/g, "-").toLowerCase()}.pdf`;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
   }
 
   return (
@@ -268,12 +274,12 @@ export function PDFViewer({ url, title, bookId, onClose }: PDFViewerProps) {
               <input
                 type="number"
                 min={1}
-                max={numPages}
+                max={numPages || 1}
                 value={pageNumber}
                 onChange={(e) => goToPage(parseInt(e.target.value) || 1)}
                 className="w-10 text-center text-sm border border-zinc-300 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-purple-500"
               />
-              {" / "}{numPages}
+              {" / "}{numPages || 1}
             </span>
             <button
               onClick={() => changePage(1)}
@@ -321,6 +327,15 @@ export function PDFViewer({ url, title, bookId, onClose }: PDFViewerProps) {
 
           {/* Utility buttons */}
           <div className="flex items-center gap-1.5">
+            <button
+              onClick={handleDownload}
+              className="px-2.5 py-1.5 text-xs rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors flex items-center gap-1"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v12m0 0l-4-4m4 4l4-4M5 19.5h14" />
+              </svg>
+              Download
+            </button>
             <button
               onClick={() => window.open(url, "_blank")}
               className="px-2.5 py-1.5 text-xs rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-600 transition-colors flex items-center gap-1"

@@ -93,6 +93,7 @@ export const updateEBookSchema = z.object({
     fileUrl: z.string().url().optional(),
     fileSize: z.coerce.number().int().positive().optional(),
     format: z.enum(['PDF', 'EPUB', 'MOBI']).optional(),
+    status: z.enum(['AVAILABLE', 'BORROWED', 'RESERVED', 'MAINTENANCE', 'LOST']).optional(),
   }),
 });
 

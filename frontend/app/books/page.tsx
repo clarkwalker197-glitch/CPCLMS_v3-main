@@ -7,6 +7,7 @@ import api from "@/lib/api";
 import { useDebounce } from "@/lib/useDebounce";
 import { BookBorrowModal } from "@/components/BookBorrowModal";
 import { AddBookModal } from "@/components/AddBookModal";
+import { EditBookModal } from "@/components/EditBookModal";
 import Sidebar from "@/components/Sidebar";
 import {
   Plus,
@@ -23,6 +24,7 @@ import {
   X,
   Check,
   Send,
+  AlertCircle,
 } from "lucide-react";
 
 const PAGE_SIZE = 8;
@@ -43,8 +45,10 @@ export default function BooksPage() {
   const [cart, setCart] = useState<any[]>([]);
   const [showBorrowModal, setShowBorrowModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [selectedBook, setSelectedBook] = useState<any | null>(null);
   const [successMsg, setSuccessMsg] = useState("");
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [togglingStatusId, setTogglingStatusId] = useState<string | null>(null);
 
   const isLibrarian = user?.role === "LIBRARIAN";
 
@@ -129,8 +133,8 @@ export default function BooksPage() {
 
   const handleDelete = async (book: any) => {
     if (!window.confirm(`Delete "${book.title}"? This action cannot be undone.`)) return;
-    if (deletingId) return; // prevent double-click spam
-    setDeletingId(book.id);
+    if (togglingStatusId) return; // prevent double-click spam
+    setTogglingStatusId(book.id);
     try {
       const res = await api.delete(`/books/${book.id}`);
       if (res.success) {
@@ -145,8 +149,48 @@ export default function BooksPage() {
     } catch {
       setError("Failed to delete book");
     } finally {
-      setDeletingId(null);
+      setTogglingStatusId(null);
     }
+  };
+
+  const handleEdit = (book: any) => {
+    setSelectedBook(book);
+    setShowEditModal(true);
+  };
+
+  const handleToggleAvailability = async (book: any) => {
+    const newStatus = book.status === 'AVAILABLE' ? 'MAINTENANCE' : 'AVAILABLE';
+    const action = newStatus === 'AVAILABLE' ? 'available' : 'not available';
+    const message = newStatus === 'AVAILABLE' 
+      ? `Mark "${book.title}" as available? Students will be able to borrow this book.`
+      : `Mark "${book.title}" as not available? Students will no longer be able to borrow this book.`;
+    
+    if (!window.confirm(message)) return;
+    if (togglingStatusId) return; // prevent double-click spam
+    setTogglingStatusId(book.id);
+    try {
+      const res = await api.updateBook(book.id, { status: newStatus });
+      if (res.success) {
+        setSuccessMsg(`Book marked as ${action}`);
+        loadData();
+        setTimeout(() => setSuccessMsg(""), 4000);
+      } else if (res.rateLimited) {
+        setError("You're moving too fast. Please wait a moment and try again.");
+      } else {
+        setError(res.error || "Failed to update book");
+      }
+    } catch {
+      setError("Failed to update book");
+    } finally {
+      setTogglingStatusId(null);
+    }
+  };
+
+  const handleEditSuccess = () => {
+    setSuccessMsg("Book updated successfully");
+    setSelectedBook(null);
+    loadData();
+    setTimeout(() => setSuccessMsg(""), 4000);
   };
 
   const totalPages = Math.max(1, Math.ceil(books.length / PAGE_SIZE));
@@ -292,7 +336,7 @@ export default function BooksPage() {
                   <div className="p-4">
                     <h3 className="font-semibold text-white line-clamp-2 leading-snug">{book.title}</h3>
                     <p className="text-sm text-zinc-400 mt-1">{book.author}</p>
-                    <div className="flex items-center gap-2 mt-3">
+                    <div className="flex items-center gap-2 mt-3 flex-wrap">
                       {book.category ? (
                         <span className="text-xs bg-blue-500/15 text-blue-300 px-2 py-0.5 rounded-full">{book.category.name}</span>
                       ) : (
@@ -300,6 +344,15 @@ export default function BooksPage() {
                       )}
                       {book.publishYear && (
                         <span className="text-xs text-zinc-500">{book.publishYear}</span>
+                      )}
+                      {isLibrarian && (
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          book.status === 'AVAILABLE'
+                            ? 'bg-emerald-500/15 text-emerald-400'
+                            : 'bg-orange-500/15 text-orange-400'
+                        }`}>
+                          {book.status === 'AVAILABLE' ? 'Available' : 'Not Available'}
+                        </span>
                       )}
                     </div>
                     <div className="mt-3 text-xs text-zinc-400">
@@ -309,15 +362,23 @@ export default function BooksPage() {
                     <div className="flex gap-2 mt-4">
                       {isLibrarian ? (
                         <>
-                          <button className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm font-medium rounded-lg transition-colors">
+                          <button
+                            onClick={() => handleEdit(book)}
+                            className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm font-medium rounded-lg transition-colors"
+                          >
                             <Pencil className="w-4 h-4" /> Edit
                           </button>
                           <button
-                            onClick={() => handleDelete(book)}
-                            disabled={deletingId !== null}
-                            className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 text-sm font-medium rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                            onClick={() => handleToggleAvailability(book)}
+                            disabled={togglingStatusId !== null}
+                            className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                              book.status === 'AVAILABLE'
+                                ? 'bg-orange-500/10 hover:bg-orange-500/20 text-orange-400'
+                                : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400'
+                            }`}
                           >
-                            <Trash2 className={`w-4 h-4 ${deletingId === book.id ? "animate-spin" : ""}`} /> Delete
+                            <AlertCircle className={`w-4 h-4 ${togglingStatusId === book.id ? "animate-spin" : ""}`} />
+                            {book.status === 'AVAILABLE' ? 'Mark Unavailable' : 'Mark Available'}
                           </button>
                         </>
                       ) : (
@@ -387,27 +448,46 @@ export default function BooksPage() {
                         {book.publishYear || "—"}
                       </td>
                       <td className="px-6 py-4">
-                        <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${
-                          (book.availableCopies ?? 0) > 0
-                            ? "bg-emerald-500/15 text-emerald-400 ring-emerald-500/30"
-                            : "bg-red-500/15 text-red-400 ring-red-500/30"
-                        }`}>
-                          {(book.availableCopies ?? 0)}/{book.copies ?? 0} available
-                        </span>
+                        <div className="flex flex-col gap-2">
+                          <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 w-fit ${
+                            (book.availableCopies ?? 0) > 0
+                              ? "bg-emerald-500/15 text-emerald-400 ring-emerald-500/30"
+                              : "bg-red-500/15 text-red-400 ring-red-500/30"
+                          }`}>
+                            {(book.availableCopies ?? 0)}/{book.copies ?? 0} available
+                          </span>
+                          {isLibrarian && (
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium w-fit ${
+                              book.status === 'AVAILABLE'
+                                ? 'bg-emerald-500/15 text-emerald-400'
+                                : 'bg-orange-500/15 text-orange-400'
+                            }`}>
+                              {book.status === 'AVAILABLE' ? 'Available' : 'Not Available'}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4 text-right">
                         {isLibrarian ? (
                           <div className="inline-flex items-center gap-1">
-                            <button className="p-2 rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors" aria-label="Edit">
+                            <button
+                              onClick={() => handleEdit(book)}
+                              className="p-2 rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors"
+                              aria-label="Edit"
+                            >
                               <Pencil className="w-4 h-4" />
                             </button>
                             <button
-                              onClick={() => handleDelete(book)}
-                              disabled={deletingId !== null}
-                              className="p-2 rounded-lg text-zinc-400 hover:bg-red-500/10 hover:text-red-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                              aria-label="Delete"
+                              onClick={() => handleToggleAvailability(book)}
+                              disabled={togglingStatusId !== null}
+                              className={`p-2 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                                book.status === 'AVAILABLE'
+                                  ? 'text-zinc-400 hover:bg-orange-500/10 hover:text-orange-400'
+                                  : 'text-zinc-400 hover:bg-emerald-500/10 hover:text-emerald-400'
+                              }`}
+                              aria-label={book.status === 'AVAILABLE' ? 'Mark not available' : 'Mark available'}
                             >
-                              <Trash2 className={`w-4 h-4 ${deletingId === book.id ? "animate-spin" : ""}`} />
+                              <AlertCircle className={`w-4 h-4 ${togglingStatusId === book.id ? "animate-spin" : ""}`} />
                             </button>
                           </div>
                         ) : (
@@ -547,6 +627,14 @@ export default function BooksPage() {
             setSuccessMsg("Book added successfully.");
             loadData();
           }}
+        />
+
+        <EditBookModal
+          open={showEditModal}
+          onOpenChange={setShowEditModal}
+          book={selectedBook}
+          categories={categories}
+          onSuccess={handleEditSuccess}
         />
       </div>
       </div>

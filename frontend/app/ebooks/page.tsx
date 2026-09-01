@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/auth-context';
 import api from '@/lib/api';
 import Sidebar from '@/components/Sidebar';
 import { AddEBookModal } from '@/components/AddEBookModal';
+import { EditEBookModal } from '@/components/EditEBookModal';
 import {
   Plus,
   Search,
@@ -17,6 +18,8 @@ import {
   Download,
   FileText,
   ImageIcon,
+  Pencil,
+  AlertCircle,
 } from 'lucide-react';
 
 const PAGE_SIZE = 8;
@@ -40,6 +43,9 @@ export default function EBooksPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [successMsg, setSuccessMsg] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [selectedEBook, setSelectedEBook] = useState<any | null>(null);
+  const [togglingStatusId, setTogglingStatusId] = useState<string | null>(null);
 
   const isLibrarian = user?.role === 'LIBRARIAN';
 
@@ -82,6 +88,46 @@ export default function EBooksPage() {
     const pages: number[] = [];
     for (let i = 1; i <= totalPages; i++) pages.push(i);
     return pages;
+  };
+
+  const handleEdit = (ebook: any) => {
+    setSelectedEBook(ebook);
+    setShowEditModal(true);
+  };
+
+  const handleToggleAvailability = async (ebook: any) => {
+    const newStatus = ebook.status === 'AVAILABLE' ? 'MAINTENANCE' : 'AVAILABLE';
+    const action = newStatus === 'AVAILABLE' ? 'available' : 'not available';
+    const message = newStatus === 'AVAILABLE' 
+      ? `Mark "${ebook.title}" as available? Students will be able to access this e-book.`
+      : `Mark "${ebook.title}" as not available? Students will no longer be able to access this e-book.`;
+    
+    if (!window.confirm(message)) return;
+    if (togglingStatusId) return;
+    setTogglingStatusId(ebook.id);
+    try {
+      const res = await api.updateEBook(ebook.id, { status: newStatus });
+      if (res.success) {
+        setSuccessMsg(`E-book marked as ${action}`);
+        loadData();
+        setTimeout(() => setSuccessMsg(""), 4000);
+      } else if (res.rateLimited) {
+        setError("You're moving too fast. Please wait a moment and try again.");
+      } else {
+        setError(res.error || "Failed to update e-book");
+      }
+    } catch {
+      setError("Failed to update e-book");
+    } finally {
+      setTogglingStatusId(null);
+    }
+  };
+
+  const handleEditSuccess = () => {
+    setSuccessMsg("E-book updated successfully");
+    setSelectedEBook(null);
+    loadData();
+    setTimeout(() => setSuccessMsg(""), 4000);
   };
 
   const fallbackCover = (
@@ -219,7 +265,7 @@ export default function EBooksPage() {
                   <div className="p-4">
                     <h3 className="font-semibold text-white line-clamp-2 leading-snug">{ebook.title}</h3>
                     <p className="text-sm text-zinc-400 mt-1">{ebook.author}</p>
-                    <div className="flex items-center gap-2 mt-3">
+                    <div className="flex items-center gap-2 mt-3 flex-wrap">
                       {ebook.category ? (
                         <span className="text-xs bg-blue-500/15 text-blue-300 px-2 py-0.5 rounded-full">{ebook.category.name}</span>
                       ) : (
@@ -228,20 +274,54 @@ export default function EBooksPage() {
                       {ebook.fileSize && (
                         <span className="text-xs text-zinc-500">{formatFileSize(ebook.fileSize)}</span>
                       )}
+                      {isLibrarian && (
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          ebook.status === 'AVAILABLE'
+                            ? 'bg-emerald-500/15 text-emerald-400'
+                            : 'bg-orange-500/15 text-orange-400'
+                        }`}>
+                          {ebook.status === 'AVAILABLE' ? 'Available' : 'Not Available'}
+                        </span>
+                      )}
                     </div>
                     <div className="flex gap-2 mt-4">
-                      <button
-                        onClick={() => router.push(`/ebooks/reader/${ebook.id}`)}
-                        className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors shadow-lg shadow-blue-600/20"
-                      >
-                        <BookOpen className="w-4 h-4" /> Read
-                      </button>
-                      <button
-                        onClick={() => window.open(ebook.fileUrl, '_blank')}
-                        className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm font-medium rounded-lg transition-colors"
-                      >
-                        <Download className="w-4 h-4" /> Download
-                      </button>
+                      {isLibrarian ? (
+                        <>
+                          <button
+                            onClick={() => handleEdit(ebook)}
+                            className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm font-medium rounded-lg transition-colors"
+                          >
+                            <Pencil className="w-4 h-4" /> Edit
+                          </button>
+                          <button
+                            onClick={() => handleToggleAvailability(ebook)}
+                            disabled={togglingStatusId !== null}
+                            className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                              ebook.status === 'AVAILABLE'
+                                ? 'bg-orange-500/10 hover:bg-orange-500/20 text-orange-400'
+                                : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400'
+                            }`}
+                          >
+                            <AlertCircle className={`w-4 h-4 ${togglingStatusId === ebook.id ? "animate-spin" : ""}`} />
+                            {ebook.status === 'AVAILABLE' ? 'Mark Unavailable' : 'Mark Available'}
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => router.push(`/ebooks/reader/${ebook.id}`)}
+                            className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors shadow-lg shadow-blue-600/20"
+                          >
+                            <BookOpen className="w-4 h-4" /> Read
+                          </button>
+                          <button
+                            onClick={() => window.open(ebook.fileUrl, '_blank')}
+                            className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm font-medium rounded-lg transition-colors"
+                          >
+                            <Download className="w-4 h-4" /> Download
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -261,6 +341,7 @@ export default function EBooksPage() {
                       <th className="px-6 py-3 font-medium hidden sm:table-cell">Author</th>
                       <th className="px-6 py-3 font-medium hidden md:table-cell">Category</th>
                       <th className="px-6 py-3 font-medium">Format</th>
+                      {isLibrarian && <th className="px-6 py-3 font-medium">Status</th>}
                       <th className="px-6 py-3 font-medium text-right">Actions</th>
                     </tr>
                   </thead>
@@ -296,21 +377,56 @@ export default function EBooksPage() {
                             {ebook.format}
                           </span>
                         </td>
+                        {isLibrarian && (
+                          <td className="px-6 py-4">
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                              ebook.status === 'AVAILABLE'
+                                ? 'bg-emerald-500/15 text-emerald-400'
+                                : 'bg-orange-500/15 text-orange-400'
+                            }`}>
+                              {ebook.status === 'AVAILABLE' ? 'Available' : 'Not Available'}
+                            </span>
+                          </td>
+                        )}
                         <td className="px-6 py-4 text-right">
-                          <div className="inline-flex items-center gap-1.5">
-                            <button
-                              onClick={() => router.push(`/ebooks/reader/${ebook.id}`)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors"
-                            >
-                              <BookOpen className="w-3.5 h-3.5" /> Read
-                            </button>
-                            <button
-                              onClick={() => window.open(ebook.fileUrl, '_blank')}
-                              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium rounded-lg transition-colors"
-                            >
-                              <Download className="w-3.5 h-3.5" /> Download
-                            </button>
-                          </div>
+                          {isLibrarian ? (
+                            <div className="inline-flex items-center gap-1">
+                              <button
+                                onClick={() => handleEdit(ebook)}
+                                className="p-2 rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors"
+                                aria-label="Edit"
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleToggleAvailability(ebook)}
+                                disabled={togglingStatusId !== null}
+                                className={`p-2 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                                  ebook.status === 'AVAILABLE'
+                                    ? 'text-zinc-400 hover:bg-orange-500/10 hover:text-orange-400'
+                                    : 'text-zinc-400 hover:bg-emerald-500/10 hover:text-emerald-400'
+                                }`}
+                                aria-label={ebook.status === 'AVAILABLE' ? 'Mark not available' : 'Mark available'}
+                              >
+                                <AlertCircle className={`w-4 h-4 ${togglingStatusId === ebook.id ? "animate-spin" : ""}`} />
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="inline-flex items-center gap-1.5">
+                              <button
+                                onClick={() => router.push(`/ebooks/reader/${ebook.id}`)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors"
+                              >
+                                <BookOpen className="w-3.5 h-3.5" /> Read
+                              </button>
+                              <button
+                                onClick={() => window.open(ebook.fileUrl, '_blank')}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium rounded-lg transition-colors"
+                              >
+                                <Download className="w-3.5 h-3.5" /> Download
+                              </button>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -375,6 +491,14 @@ export default function EBooksPage() {
           setSuccessMsg('E-book added successfully.');
           loadData();
         }}
+      />
+
+      <EditEBookModal
+        open={showEditModal}
+        onOpenChange={setShowEditModal}
+        ebook={selectedEBook}
+        categories={categories}
+        onSuccess={handleEditSuccess}
       />
     </div>
   );

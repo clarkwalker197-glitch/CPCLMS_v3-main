@@ -143,6 +143,7 @@ export class EBookService {
       fileUrl: string;
       fileSize: number;
       format: string;
+      status: 'AVAILABLE' | 'BORROWED' | 'RESERVED' | 'MAINTENANCE' | 'LOST';
     }>
   ) {
     const ebook = await prisma.eBook.findUnique({ where: { id } });

@@ -418,9 +418,9 @@ async createBorrowRequest(data: {
     return this.get(`/transactions/requests/${id}/qr`);
   }
 
-  // Confirm approval after the borrower scans the QR on their phone.
-  async approveByQRCode(requestId: string, token: string): Promise<ApiResponse<any>> {
-    return this.post('/transactions/requests/approve-qr', { requestId, token });
+  // Confirm approval after the borrower scans the QR on their phone or enters code manually.
+  async approveByQRCode(requestId: string, token: string, approvalCode?: string): Promise<ApiResponse<any>> {
+    return this.post('/transactions/requests/approve-qr', { requestId, token, approvalCode });
   }
 
   async rejectRequest(id: string, reason: string): Promise<ApiResponse<any>> {

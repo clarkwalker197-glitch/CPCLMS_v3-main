@@ -131,7 +131,7 @@ export function QRApprovalModal({ request, onClose, onApproved }: QRApprovalModa
           </div>
         ) : qrData ? (
           <div className="flex flex-col items-center">
-            <div className="bg-white rounded-xl p-4 mb-3">
+            <div className="bg-white rounded-xl p-4 mb-4">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={qrData.qrCode}
@@ -140,9 +140,21 @@ export function QRApprovalModal({ request, onClose, onApproved }: QRApprovalModa
                 style={{ imageRendering: "pixelated" }}
               />
             </div>
+
+            {/* Transaction ID Display */}
+            {qrData?.approvalCode && (
+              <div className="w-full mb-4 p-3 bg-blue-500/10 border border-blue-500/30 rounded-xl">
+                <p className="text-xs text-zinc-400 mb-1">Transaction ID</p>
+                <p className="text-lg font-mono font-bold text-blue-400 text-center">{qrData.approvalCode}</p>
+                <p className="text-xs text-zinc-500 text-center mt-2">
+                  Borrower can enter this ID manually if QR scan fails
+                </p>
+              </div>
+            )}
+
             <p className="text-xs text-zinc-500 text-center mb-3 max-w-xs">
               Have the borrower scan this QR code with their phone to confirm and approve the request.
-              The request will auto-approve once scanned.
+              The request will auto-approve once scanned or when they enter the transaction ID.
             </p>
             <button
               onClick={loadQR}

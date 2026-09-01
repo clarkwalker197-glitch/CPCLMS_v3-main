@@ -85,16 +85,20 @@ export const generateRequestQR = asyncHandler(
   }
 );
 
-// Confirm approval after the borrower scans the QR on their phone.
-// Public deep-link endpoint — authorized by the embedded token, not a role.
+// Confirm approval after the borrower scans the QR on their phone or enters code manually.
+// Public deep-link endpoint — authorized by the embedded token or approval code, not a role.
 export const approveByQRCode = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
-    const { requestId, token } = req.body;
-    if (!requestId || !token) {
-      res.status(400).json({ success: false, error: 'requestId and token are required' });
+    const { requestId, token, approvalCode } = req.body;
+    if (!requestId) {
+      res.status(400).json({ success: false, error: 'requestId is required' });
       return;
     }
-    const result = await transactionService.approveByQRCode(requestId, token);
+    if (!token && !approvalCode) {
+      res.status(400).json({ success: false, error: 'Either token or approvalCode is required' });
+      return;
+    }
+    const result = await transactionService.approveByQRCode(requestId, token, approvalCode);
     sendSuccess(res, result, 'Borrow request approved');
   }
 );

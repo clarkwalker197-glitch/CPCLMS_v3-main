@@ -232,9 +232,27 @@ export class TransactionService {
       dueDate.setDate(dueDate.getDate() + maxDays);
     }
 
-    // Generate QR code payload
+    // Generate unique approval code (Transaction ID) in format BRW-XXXX-XXX
+    const generateApprovalCode = (): string => {
+      const num = Math.floor(Math.random() * 1000000000); // 0-999999999
+      const code = String(num).padStart(9, '0'); // Pad to 9 digits
+      return `BRW-${code.slice(0, 4)}-${code.slice(4)}`; // BRW-XXXX-XXXXX
+    };
+    
+    let approvalCode = generateApprovalCode();
+    let attempts = 0;
+    while (attempts < 5) {
+      const existing = await prisma.borrowRequest.findUnique({
+        where: { approvalCode },
+      });
+      if (!existing) break;
+      approvalCode = generateApprovalCode();
+      attempts++;
+    }
+
+    // Generate QR code payload with transaction ID
     const qrPayload = {
-      txnId: `TXN-${Date.now()}`,
+      txnId: approvalCode,
       accessionNo: request.book.accessionNo,
       userId: request.userId,
       issuedAt: new Date().toISOString(),
@@ -259,7 +277,7 @@ export class TransactionService {
       }),
       prisma.borrowRequest.update({
         where: { id: requestId },
-        data: { status: 'APPROVED', processedById: librarianId, processedAt: new Date() },
+        data: { status: 'APPROVED', approvalCode, processedById: librarianId, processedAt: new Date() },
       }),
       prisma.book.update({
         where: { id: request.bookId },
@@ -311,7 +329,7 @@ export class TransactionService {
       });
     }
 
-    return { ...transaction, qrCode: qrCodeDataUrl };
+    return { ...transaction, qrCode: qrCodeDataUrl, approvalCode };
   }
 
   /**
@@ -745,16 +763,38 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
       throw new BadRequestError('Request has already been processed');
     }
 
+    // Generate unique Transaction ID: BRW-XXXX-XXX
+    let approvalCode = '';
+    let isUnique = false;
+    while (!isUnique) {
+      const part1 = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+      const part2 = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+      approvalCode = `BRW-${part1}-${part2}`;
+      
+      const existing = await prisma.borrowRequest.findUnique({
+        where: { approvalCode },
+      });
+      isUnique = !existing;
+    }
+
+    // Store the approval code
+    await prisma.borrowRequest.update({
+      where: { id: requestId },
+      data: { approvalCode },
+    });
+
     // Unique, single-use token for this approve request (time + random).
     const token = `${request.id}.${Date.now().toString(36)}.${Math.random().toString(36).slice(2, 10)}`;
     const frontendUrl = (env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
 
     // The deep link the borrower opens on their phone to confirm approval.
-    const approveUrl = `${frontendUrl}/scan-approve?request=${request.id}&token=${token}`;
+    // Include approval code as parameter for manual entry fallback
+    const approveUrl = `${frontendUrl}/scan-approve?request=${request.id}&token=${token}&code=${approvalCode}`;
     const qrCodeDataUrl = await generateQRFromText(approveUrl);
 
     return {
       requestId: request.id,
+      approvalCode,
       bookTitle: request.book.title,
       accessionNo: request.book.accessionNo,
       memberName: `${request.user.firstName} ${request.user.lastName}`,
@@ -766,22 +806,40 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
   }
 
   /**
-   * Confirm approval of a borrow request via a scanned QR token.
-   * This is called when the borrower opens the deep link from their phone.
+   * Confirm approval of a borrow request via a scanned QR token or approval code.
+   * This is called when the borrower opens the deep link from their phone OR
+   * manually enters the transaction ID (approval code).
    * Applies the same logic as approveRequest but is authorized purely by the
-   * matching (single-use style) token for the request.
+   * matching (single-use style) token or approval code.
    */
-  async approveByQRCode(requestId: string, token: string) {
-    const request = await prisma.borrowRequest.findUnique({
+  async approveByQRCode(requestId: string, token: string, approvalCode?: string) {
+    // Try to find request by ID first
+    let request = await prisma.borrowRequest.findUnique({
       where: { id: requestId },
       include: { book: true, user: true },
     });
+    
+    // If not found by ID and approvalCode provided, search by approval code
+    if (!request && approvalCode) {
+      request = await prisma.borrowRequest.findUnique({
+        where: { approvalCode },
+        include: { book: true, user: true },
+      });
+    }
+    
     if (!request) throw new NotFoundError('Borrow request');
 
-    // Validate the token format: <requestId>.<timestamp>.<random>
-    const expectedPrefix = `${request.id}.`;
-    if (!token || !token.startsWith(expectedPrefix)) {
-      throw new BadRequestError('Invalid QR code');
+    // If token provided, validate the token format: <requestId>.<timestamp>.<random>
+    if (token && !approvalCode) {
+      const expectedPrefix = `${request.id}.`;
+      if (!token.startsWith(expectedPrefix)) {
+        throw new BadRequestError('Invalid QR code');
+      }
+    }
+    
+    // If approval code provided, validate it matches
+    if (approvalCode && request.approvalCode !== approvalCode) {
+      throw new BadRequestError('Invalid transaction ID');
     }
 
     // Ensure the request is still pending (not already approved by a librarian
@@ -790,7 +848,7 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
       throw new BadRequestError('Request has already been processed');
     }
 
-    // Token-verified approval. There is no librarian session on the borrower's
+    // Token/Code-verified approval. There is no librarian session on the borrower's
     // phone, so we attribute the action to the requester themselves.
     return this.approveRequest(requestId, request.userId);
   }

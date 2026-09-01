@@ -270,20 +270,23 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
         {/* Manual entry */}
         <form onSubmit={handleManualSubmit} className="mb-3">
           <label className="block text-sm font-medium text-zinc-700 mb-1">
-            Or enter code manually
+            Or enter Transaction ID manually
           </label>
+          <p className="text-xs text-zinc-500 mb-2">
+            If QR scan fails, you can enter the Transaction ID (BRW-XXXX-XXX format)
+          </p>
           <div className="flex gap-2">
             <input
               type="text"
               value={manualInput}
-              onChange={(e) => setManualInput(e.target.value)}
-              placeholder="Paste QR data here..."
-              className="flex-1 px-3 py-2 border border-zinc-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              onChange={(e) => setManualInput(e.target.value.toUpperCase())}
+              placeholder="Enter Transaction ID (e.g. BRW-1234-567)"
+              className="flex-1 px-3 py-2 border border-zinc-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono uppercase"
             />
             <button
               type="submit"
               disabled={!manualInput.trim()}
-              className="px-4 py-2 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+              className="px-4 py-2 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors font-medium"
             >
               Submit
             </button>

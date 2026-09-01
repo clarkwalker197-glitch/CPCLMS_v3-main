@@ -196,6 +196,7 @@ model BorrowRequest {
   requestDate   DateTime      @default(now()) @map("request_date")
   status        RequestStatus @default(PENDING)
   notes         String?
+  approvalCode  String?       @unique @map("approval_code") /// Transaction ID (e.g. BRW-1234-567) for QR approval
   processedById String?       @map("processed_by_id")
   processedBy   User?         @relation("ProcessedBy", fields: [processedById], references: [id])
   processedAt   DateTime?     @map("processed_at")
@@ -206,6 +207,7 @@ model BorrowRequest {
   @@index([bookId])
   @@index([status])
   @@index([requestDate])
+  @@index([approvalCode])
   @@map("borrow_requests")
 }
 

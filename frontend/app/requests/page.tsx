@@ -6,6 +6,7 @@ import api from "@/lib/api";
 import { useDebounce } from "@/lib/useDebounce";
 import Sidebar from "@/components/Sidebar";
 import { QRApprovalModal } from "@/components/QRApprovalModal";
+import { QRScanner } from "@/components/QRScanner";
 import {
   Search,
   BookOpen,
@@ -17,6 +18,8 @@ import {
   Coins,
   AlertTriangle,
   QrCode,
+  X,
+  Loader2,
 } from "lucide-react";
 
 const PAGE_SIZE = 10;
@@ -91,6 +94,11 @@ export default function RequestsPage() {
 
   // QR Approval modal state (librarian only)
   const [qrApprovalTarget, setQrApprovalTarget] = useState<any>(null);
+
+  // QR Scanner modal state (student/faculty - to scan librarian's QR code)
+  const [qrScannerRequest, setQrScannerRequest] = useState<any>(null);
+  const [qrScannerLoading, setQrScannerLoading] = useState(false);
+  const [qrScannerError, setQrScannerError] = useState("");
 
   // ── Load borrowed books (transactions) ──
   const loadTransactions = useCallback(async () => {
@@ -251,6 +259,66 @@ export default function RequestsPage() {
     setQrApprovalTarget(null);
     loadRequests();
     setTimeout(() => setSuccessMsg(""), 4000);
+  };
+
+  // Handle QR code scan for student/faculty (scan librarian's approval QR)
+  const openQRScanner = (request: any) => {
+    setQrScannerRequest(request);
+    setQrScannerError("");
+  };
+
+  const handleQRScan = async (qrData: string) => {
+    if (!qrScannerRequest) return;
+    setQrScannerLoading(true);
+    setQrScannerError("");
+    try {
+      let approvalCode = "";
+      let token = "";
+
+      // Check if QR data is a URL (contains ://) or just the transaction ID
+      if (qrData.includes("://")) {
+        // Parse URL to extract parameters
+        try {
+          const url = new URL(qrData);
+          approvalCode = url.searchParams.get("code") || "";
+          token = url.searchParams.get("token") || "";
+        } catch {
+          setQrScannerError("Invalid QR code format");
+          setQrScannerLoading(false);
+          return;
+        }
+      } else {
+        // Assume it's the transaction ID (BRW-XXXX-XXX format)
+        approvalCode = qrData.toUpperCase().trim();
+      }
+
+      if (!approvalCode) {
+        setQrScannerError("Could not extract transaction ID from QR code");
+        setQrScannerLoading(false);
+        return;
+      }
+
+      // Validate transaction ID format (BRW-XXXX-XXX)
+      if (!/^BRW-\d{4}-\d{3}$/.test(approvalCode)) {
+        setQrScannerError("Invalid transaction ID format. Expected BRW-XXXX-XXX");
+        setQrScannerLoading(false);
+        return;
+      }
+
+      const res = await api.approveByQRCode(qrScannerRequest.id, token, approvalCode);
+      if (res.success) {
+        setSuccessMsg(`Borrow request for "${qrScannerRequest.book?.title || "this book"}" approved`);
+        setQrScannerRequest(null);
+        loadRequests();
+        setTimeout(() => setSuccessMsg(""), 4000);
+      } else {
+        setQrScannerError(res.error || "Failed to process QR code");
+      }
+    } catch (err: any) {
+      setQrScannerError(err?.message || "Failed to process QR code");
+    } finally {
+      setQrScannerLoading(false);
+    }
   };
 
   const openRejectModal = (request: any) => {
@@ -633,9 +701,12 @@ export default function RequestsPage() {
                                 </>
                               )}
                               {!isLibrarian && req.status === "PENDING" && (
-                                <span className="inline-flex items-center gap-1 text-xs text-amber-400">
-                                  <Clock className="w-3.5 h-3.5" /> Awaiting approval
-                                </span>
+                                <button
+                                  onClick={() => openQRScanner(req)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors"
+                                >
+                                  <QrCode className="w-3.5 h-3.5" /> Scan QR
+                                </button>
                               )}
                               {!isLibrarian && req.status !== "PENDING" && (
                                 <span className="text-xs text-zinc-500">—</span>
@@ -811,6 +882,66 @@ export default function RequestsPage() {
           request={qrApprovalTarget}
           onClose={() => setQrApprovalTarget(null)}
           onApproved={() => handleQRApproved(qrApprovalTarget)}
+        />
+      )}
+
+      {/* QR Scanner modal (student/faculty - to scan librarian's approval QR code) */}
+      {qrScannerRequest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={() => !qrScannerLoading && setQrScannerRequest(null)} />
+          <div className="relative z-50 w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl shadow-black/50">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-white">Scan Approval QR Code</h3>
+                <p className="text-sm text-zinc-400 mt-1">
+                  Position your camera to scan the librarian's approval QR code for "{qrScannerRequest.book?.title || "this book"}"
+                </p>
+              </div>
+              <button
+                onClick={() => setQrScannerRequest(null)}
+                disabled={qrScannerLoading}
+                className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 disabled:opacity-50 transition-colors shrink-0"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {qrScannerLoading && (
+              <div className="flex flex-col items-center justify-center py-12">
+                <Loader2 className="w-8 h-8 text-blue-400 animate-spin mb-3" />
+                <p className="text-sm text-zinc-400">Processing QR code...</p>
+              </div>
+            )}
+
+            {!qrScannerLoading && (
+              <>
+                <div className="mb-4 rounded-xl border border-zinc-700 bg-zinc-950/50 overflow-hidden" id="qr-scanner-element" />
+
+                {qrScannerError && (
+                  <div className="p-3 mb-4 bg-red-500/10 border border-red-500/30 rounded-xl text-sm text-red-400">
+                    {qrScannerError}
+                  </div>
+                )}
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setQrScannerRequest(null)}
+                    className="flex-1 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm font-medium rounded-xl border border-zinc-700 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Initialize QR Scanner when modal opens */}
+      {qrScannerRequest && !qrScannerLoading && (
+        <QRScanner
+          onScan={handleQRScan}
+          onClose={() => setQrScannerRequest(null)}
         />
       )}
     </div>

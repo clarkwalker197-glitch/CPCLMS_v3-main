@@ -30,9 +30,7 @@ export const createBorrowRequestSchema = z.object({
  * Approve a borrow request (librarian)
  */
 export const approveRequestSchema = z.object({
-  body: z.object({
-    dueDate: z.string().datetime().optional(), /// Optional override for due date
-  }),
+  body: z.object({}),
 });
 
 /**

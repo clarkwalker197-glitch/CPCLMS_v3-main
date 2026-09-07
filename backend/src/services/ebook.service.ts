@@ -13,7 +13,7 @@ export class EBookService {
   async listEBooks(query: Record<string, unknown>) {
     const { page, limit, skip, take } = getPaginationParams(query);
 
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = { deletedAt: null };
 
     // Search by title, author, ISBN
     if (query.search) {
@@ -177,7 +177,17 @@ export class EBookService {
     const ebook = await prisma.eBook.findUnique({ where: { id } });
     if (!ebook) throw new NotFoundError('E-Book');
 
-    await prisma.eBook.delete({ where: { id } });
+    await prisma.eBook.update({ where: { id }, data: { deletedAt: new Date() } });
+  }
+
+  async listArchivedEBooks() {
+    return prisma.eBook.findMany({ where: { deletedAt: { not: null } }, include: { category: true }, orderBy: { deletedAt: 'desc' } });
+  }
+
+  async restoreEBook(id: string) {
+    const ebook = await prisma.eBook.findUnique({ where: { id } });
+    if (!ebook) throw new NotFoundError('E-Book');
+    return prisma.eBook.update({ where: { id }, data: { deletedAt: null } });
   }
 }
 

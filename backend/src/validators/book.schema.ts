@@ -40,6 +40,7 @@ export const updateBookSchema = z.object({
     shelf: z.string().optional(),
     row: z.string().optional(),
     copies: z.coerce.number().int().positive().optional(),
+    availableCopies: z.coerce.number().int().nonnegative().optional(),
     status: z.enum(['AVAILABLE', 'BORROWED', 'RESERVED', 'MAINTENANCE', 'LOST']).optional(),
   }),
 });

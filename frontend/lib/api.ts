@@ -290,6 +290,14 @@ async put<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
     return this.get(`/books/${id}`);
   }
 
+  async getArchive(): Promise<ApiResponse<{ books: any[]; ebooks: any[]; users: any[] }>> {
+    return this.get('/archive');
+  }
+
+  async restoreArchiveItem(type: 'books' | 'ebooks' | 'users', id: string): Promise<ApiResponse<any>> {
+    return this.patch(`/archive/${type}/${id}/restore`);
+  }
+
   async createBook(data: {
     isbn: string;
     accessionNo: string;

@@ -132,13 +132,13 @@ export default function BooksPage() {
   };
 
   const handleDelete = async (book: any) => {
-    if (!window.confirm(`Delete "${book.title}"? This action cannot be undone.`)) return;
+    if (!window.confirm(`Archive "${book.title}"? It can be restored later from the Archive.`)) return;
     if (togglingStatusId) return; // prevent double-click spam
     setTogglingStatusId(book.id);
     try {
       const res = await api.delete(`/books/${book.id}`);
       if (res.success) {
-        setSuccessMsg("Book deleted successfully");
+        setSuccessMsg("Book archived successfully");
         loadData();
         setTimeout(() => setSuccessMsg(""), 4000);
       } else if (res.rateLimited) {

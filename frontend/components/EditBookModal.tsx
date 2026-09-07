@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { Dialog, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import api from "@/lib/api";
-import { BookOpen, Upload, X } from "lucide-react";
+import { BookOpen, Upload, X, Trash2 } from "lucide-react";
 
 interface Category {
   id: string;
@@ -229,6 +229,26 @@ export function EditBookModal(props: {
     }
   };
 
+  const handleDelete = async () => {
+    if (!props.book || loading) return;
+    if (!window.confirm("Are you sure you want to delete this book? It can be restored later from the Archive.")) return;
+    setLoading(true);
+    setError("");
+    try {
+      const res = await api.delete(`/books/${props.book.id}`);
+      if (res.success) {
+        props.onSuccess();
+        handleClose();
+      } else {
+        setError(res.error || "Failed to archive book.");
+      }
+    } catch (err: any) {
+      setError(err?.message || "Network error. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <Dialog open={props.open} onOpenChange={handleClose}>
       <DialogHeader>
@@ -413,6 +433,19 @@ export function EditBookModal(props: {
             placeholder="Book description..."
             rows={3}
           />
+        </div>
+
+        <div className="border-t border-zinc-800 pt-4">
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={loading}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40"
+          >
+            <Trash2 className="w-4 h-4" />
+            Delete Book
+          </button>
+          <p className="text-xs text-zinc-500 mt-2">This archives the book. It can be restored from Archive.</p>
         </div>
       </form>
 

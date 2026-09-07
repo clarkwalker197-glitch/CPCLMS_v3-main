@@ -306,6 +306,7 @@ const user = await prisma.user.create({
     const where: Record<string, unknown> = {};
     if (query.role) where.role = query.role;
     if (query.isActive !== undefined) where.isActive = query.isActive === 'true';
+    else where.isActive = true;
     if (query.search) {
       where.OR = [
         { firstName: { contains: query.search as string, mode: 'insensitive' } },
@@ -360,20 +361,28 @@ const user = await prisma.user.create({
     const user = await prisma.user.findUnique({ where: { id: targetUserId } });
     if (!user) throw new NotFoundError('User');
 
-    // Delete related records in a single transaction
+    // Revoke sessions while preserving the user's history for archive/restore.
     await prisma.$transaction([
       prisma.refreshToken.deleteMany({ where: { userId: targetUserId } }),
-      prisma.activityLog.deleteMany({ where: { userId: targetUserId } }),
-      prisma.notification.deleteMany({ where: { userId: targetUserId } }),
-      prisma.borrowRequest.deleteMany({ where: { userId: targetUserId } }),
-      prisma.borrowRequest.deleteMany({ where: { processedById: targetUserId } }),
-      prisma.borrowTransaction.deleteMany({ where: { userId: targetUserId } }),
-      prisma.reservation.deleteMany({ where: { userId: targetUserId } }),
-      prisma.user.delete({ where: { id: targetUserId } }),
+      prisma.user.update({ where: { id: targetUserId }, data: { isActive: false } }),
     ]);
 
     await this.logActivity(adminId, 'DELETE_USER', 'User', targetUserId);
     return { id: targetUserId };
+  }
+
+  async listArchivedUsers() {
+    return prisma.user.findMany({
+      where: { isActive: false },
+      select: { id: true, libraryId: true, firstName: true, lastName: true, email: true, role: true, createdAt: true, updatedAt: true, isActive: true },
+      orderBy: { updatedAt: 'desc' },
+    });
+  }
+
+  async restoreUser(targetUserId: string) {
+    const user = await prisma.user.findUnique({ where: { id: targetUserId } });
+    if (!user) throw new NotFoundError('User');
+    return prisma.user.update({ where: { id: targetUserId }, data: { isActive: true } });
   }
 
   async toggleUserStatus(targetUserId: string, adminId: string) {

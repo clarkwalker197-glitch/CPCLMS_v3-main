@@ -29,6 +29,20 @@ export class TransactionService {
   static readonly MAX_BOOKS_PER_TRANSACTION = 3;
 
   /**
+   * Calculate the due date from the borrower's role and the actual borrow date.
+   * Policy values are configurable by librarians; fallbacks keep existing
+   * installations working until the new policy rows are seeded.
+   */
+  private async calculateBorrowDueDate(user: { role: Role; maxBorrowDays: number | null }, borrowDate: Date) {
+    const policyKey = user.role === Role.FACULTY ? 'FACULTY_BORROW_DAYS' : 'STUDENT_BORROW_DAYS';
+    const fallbackDays = user.role === Role.FACULTY ? 120 : 3;
+    const borrowDays = user.maxBorrowDays ?? (await policyService.getNumber(policyKey, fallbackDays));
+    const dueDate = new Date(borrowDate);
+    dueDate.setDate(dueDate.getDate() + borrowDays);
+    return dueDate;
+  }
+
+  /**
    * Create borrow request(s)
    * - Enforces a maximum of 3 books per transaction.
    * - STUDENT: max 3 active books
@@ -197,10 +211,11 @@ export class TransactionService {
   /**
    * Approve a borrow request (librarian only)
    * - Generates QR code for the transaction
-   * - FACULTY can select borrow period (7, 14, 30 days)
+  * - STUDENT due dates use STUDENT_BORROW_DAYS (default 3)
+  * - FACULTY due dates use FACULTY_BORROW_DAYS (default 120)
    * - Handles reservation queue fulfillment
    */
-  async approveRequest(requestId: string, librarianId: string, dueDateOverride?: Date) {
+  async approveRequest(requestId: string, librarianId: string) {
     const request = await prisma.borrowRequest.findUnique({
       where: { id: requestId },
       include: {
@@ -216,21 +231,9 @@ export class TransactionService {
       throw new BadRequestError('No copies available for this book');
     }
 
-    // Calculate due date
-    let dueDate: Date;
-    if (dueDateOverride) {
-      dueDate = dueDateOverride;
-    } else if (request.user.role === Role.FACULTY) {
-      // Faculty: use FACULTY_MAX_BORROW_DAYS policy
-      const facultyDays = request.user.maxBorrowDays ?? (await policyService.getNumber('FACULTY_MAX_BORROW_DAYS', 30));
-      dueDate = new Date();
-      dueDate.setDate(dueDate.getDate() + facultyDays);
-    } else {
-      // Student: use MAX_BORROW_DAYS policy
-      const maxDays = request.user.maxBorrowDays ?? (await policyService.getNumber('MAX_BORROW_DAYS', 14));
-      dueDate = new Date();
-      dueDate.setDate(dueDate.getDate() + maxDays);
-    }
+    // Calculate from the exact borrow date that will be stored.
+    const borrowDate = new Date();
+    const dueDate = await this.calculateBorrowDueDate(request.user, borrowDate);
 
     // Generate unique approval code (Transaction ID) in format BRW-XXXX-XXX
     const generateApprovalCode = (): string => {
@@ -265,6 +268,7 @@ export class TransactionService {
         data: {
           userId: request.userId,
           bookId: request.bookId,
+          borrowDate,
           dueDate,
           status: 'ACTIVE',
           notes: request.notes || undefined,

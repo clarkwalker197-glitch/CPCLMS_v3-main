@@ -456,6 +456,16 @@ async function main() {
   // ============================================================
   const policies = [
     {
+      key: 'STUDENT_BORROW_DAYS',
+      value: '3',
+      description: 'Number of days students may borrow a book',
+    },
+    {
+      key: 'FACULTY_BORROW_DAYS',
+      value: '120',
+      description: 'Number of days faculty may borrow a book (default: one four-month semester)',
+    },
+    {
       key: 'MAX_BORROW_DAYS',
       value: '14',
       description: 'Maximum number of days a book can be borrowed',

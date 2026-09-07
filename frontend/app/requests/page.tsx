@@ -14,7 +14,6 @@ import {
   ChevronRight,
   CheckCircle2,
   XCircle,
-  Clock,
   Coins,
   AlertTriangle,
   QrCode,
@@ -24,7 +23,6 @@ import {
 
 const PAGE_SIZE = 10;
 
-// ── Transaction (Borrowed Books) status styling ──
 const txnStatusBadge: Record<string, string> = {
   ACTIVE: "bg-blue-500/15 text-blue-400 ring-blue-500/30",
   RETURNED: "bg-emerald-500/15 text-emerald-400 ring-emerald-500/30",
@@ -52,13 +50,24 @@ export default function RequestsPage() {
   const { user } = useAuth();
   const isLibrarian = user?.role === "LIBRARIAN";
 
-  // Borrowed books (transactions)
+  // Borrowed books remain available to students and faculty only.
   const [txns, setTxns] = useState<any[]>([]);
   const [txnTotal, setTxnTotal] = useState(0);
   const [txnLoading, setTxnLoading] = useState(true);
   const [txnSearch, setTxnSearch] = useState("");
   const [txnStatusFilter, setTxnStatusFilter] = useState("");
   const [txnPage, setTxnPage] = useState(1);
+
+  // Librarian-only active borrowed books
+  const [activeTxns, setActiveTxns] = useState<any[]>([]);
+  const [activeTxnTotal, setActiveTxnTotal] = useState(0);
+  const [activeTxnLoading, setActiveTxnLoading] = useState(true);
+  const [activeTxnSearch, setActiveTxnSearch] = useState("");
+  const [activeTxnPage, setActiveTxnPage] = useState(1);
+  const [missingTarget, setMissingTarget] = useState<any>(null);
+  const [missingReason, setMissingReason] = useState("");
+  const [missingLoading, setMissingLoading] = useState(false);
+  const [missingError, setMissingError] = useState("");
 
   // Borrow requests
   const [records, setRecords] = useState<any[]>([]);
@@ -72,19 +81,14 @@ export default function RequestsPage() {
   const [error, setError] = useState("");
 
   // Debounced search/filter values (300ms) to avoid per-keystroke API spam
-  const debouncedTxnSearch = useDebounce(txnSearch, 300);
-  const debouncedTxnStatus = useDebounce(txnStatusFilter, 300);
   const debouncedReqSearch = useDebounce(reqSearch, 300);
   const debouncedReqStatus = useDebounce(reqStatusFilter, 300);
 
-  // Per-action in-flight guards (disable buttons while a request is running)
-  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+  const debouncedTxnSearch = useDebounce(txnSearch, 300);
+  const debouncedTxnStatus = useDebounce(txnStatusFilter, 300);
+  const debouncedActiveTxnSearch = useDebounce(activeTxnSearch, 300);
 
-// Declare Missing modal state (librarian only)
-  const [missingTarget, setMissingTarget] = useState<any>(null);
-  const [missingReason, setMissingReason] = useState("");
-  const [missingLoading, setMissingLoading] = useState(false);
-  const [missingError, setMissingError] = useState("");
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
   // Reject Borrow Request modal state (librarian only)
   const [rejectTarget, setRejectTarget] = useState<any>(null);
@@ -100,8 +104,8 @@ export default function RequestsPage() {
   const [qrScannerLoading, setQrScannerLoading] = useState(false);
   const [qrScannerError, setQrScannerError] = useState("");
 
-  // ── Load borrowed books (transactions) ──
   const loadTransactions = useCallback(async () => {
+    if (isLibrarian) return;
     setTxnLoading(true);
     try {
       const params: Record<string, string> = {
@@ -115,8 +119,6 @@ export default function RequestsPage() {
       if (res.success) {
         setTxns((res.data as any[]) || []);
         setTxnTotal(res.meta?.total ?? ((res.data as any[]) || []).length);
-      } else if (res.rateLimited) {
-        setError("You're moving too fast. Please wait a moment and try again.");
       } else {
         setError(res.error || "Failed to load borrowed books");
       }
@@ -125,15 +127,47 @@ export default function RequestsPage() {
     } finally {
       setTxnLoading(false);
     }
-  }, [debouncedTxnSearch, debouncedTxnStatus, txnPage]);
+  }, [debouncedTxnSearch, debouncedTxnStatus, isLibrarian, txnPage]);
+
+  const loadActiveTransactions = useCallback(async () => {
+    if (!isLibrarian) return;
+    setActiveTxnLoading(true);
+    try {
+      const params: Record<string, string> = {
+        page: String(activeTxnPage),
+        limit: String(PAGE_SIZE),
+        status: "ACTIVE",
+      };
+      if (debouncedActiveTxnSearch) params.search = debouncedActiveTxnSearch;
+      const res = await api.get<any>(`/transactions?${new URLSearchParams(params).toString()}`);
+      if (res.success) {
+        setActiveTxns((res.data as any[]) || []);
+        setActiveTxnTotal(res.meta?.total ?? ((res.data as any[]) || []).length);
+      } else {
+        setError(res.error || "Failed to load active borrowed books");
+      }
+    } catch {
+      setError("Failed to load active borrowed books");
+    } finally {
+      setActiveTxnLoading(false);
+    }
+  }, [activeTxnPage, debouncedActiveTxnSearch, isLibrarian]);
 
   useEffect(() => {
-    loadTransactions();
-  }, [loadTransactions]);
+    if (!isLibrarian) loadTransactions();
+  }, [isLibrarian, loadTransactions]);
+
+  useEffect(() => {
+    if (isLibrarian) loadActiveTransactions();
+  }, [isLibrarian, loadActiveTransactions]);
 
   useEffect(() => {
     setTxnPage(1);
   }, [debouncedTxnSearch, debouncedTxnStatus]);
+
+  useEffect(() => {
+    setActiveTxnPage(1);
+  }, [debouncedActiveTxnSearch]);
 
   // ── Load borrow requests ──
   const loadRequests = useCallback(async () => {
@@ -170,47 +204,22 @@ export default function RequestsPage() {
     setReqPage(1);
   }, [debouncedReqSearch, debouncedReqStatus]);
 
-// ── Borrowed books actions ──
   const handleReturn = async (record: any) => {
-    if (!window.confirm(`Return "${record.book?.title || 'this book'}"?`)) return;
-    if (actionLoadingId) return; // prevent double-click spam
+    if (!window.confirm(`Return "${record.book?.title || "this book"}"?`)) return;
+    if (actionLoadingId) return;
     setActionLoadingId(record.id);
     try {
       const res = await api.returnBook(record.id);
       if (res.success) {
         setSuccessMsg("Book returned successfully");
-        loadTransactions();
+        if (isLibrarian) loadActiveTransactions();
+        else loadTransactions();
         setTimeout(() => setSuccessMsg(""), 4000);
-      } else if (res.rateLimited) {
-        setError("You're moving too fast. Please wait a moment and try again.");
       } else {
         setError(res.error || "Failed to return book");
       }
     } catch {
       setError("Failed to return book");
-    } finally {
-      setActionLoadingId(null);
-    }
-  };
-
-  const handlePayFine = async (record: any) => {
-    const amount = record.fineAmount ?? 0;
-    if (!window.confirm(`Pay fine of ₱${amount.toFixed(2)}?`)) return;
-    if (actionLoadingId) return; // prevent double-click spam
-    setActionLoadingId(record.id);
-    try {
-      const res = await api.payFine(record.id, amount);
-      if (res.success) {
-        setSuccessMsg("Fine paid successfully");
-        loadTransactions();
-        setTimeout(() => setSuccessMsg(""), 4000);
-      } else if (res.rateLimited) {
-        setError("You're moving too fast. Please wait a moment and try again.");
-      } else {
-        setError(res.error || "Failed to pay fine");
-      }
-    } catch {
-      setError("Failed to pay fine");
     } finally {
       setActionLoadingId(null);
     }
@@ -230,9 +239,8 @@ export default function RequestsPage() {
       const res = await api.declareMissing(missingTarget.id, missingReason || undefined);
       if (res.success) {
         setMissingTarget(null);
-        setMissingReason("");
         setSuccessMsg("Book declared missing");
-        loadTransactions();
+        loadActiveTransactions();
         setTimeout(() => setSuccessMsg(""), 4000);
       } else {
         setMissingError(res.error || "Failed to declare book missing");
@@ -357,18 +365,7 @@ export default function RequestsPage() {
   const formatDate = (d?: string) =>
     d ? new Date(d).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" }) : "—";
 
-  const txnTotalPages = Math.max(1, Math.ceil(txnTotal / PAGE_SIZE));
   const reqTotalPages = Math.max(1, Math.ceil(reqTotal / PAGE_SIZE));
-
-  const getTxnPageNumbers = () => {
-    const pages: number[] = [];
-    const maxVisible = 5;
-    let start = Math.max(1, txnPage - Math.floor(maxVisible / 2));
-    const end = Math.min(txnTotalPages, start + maxVisible - 1);
-    start = Math.max(1, end - maxVisible + 1);
-    for (let i = start; i <= end; i++) pages.push(i);
-    return pages;
-  };
 
   const getReqPageNumbers = () => {
     const pages: number[] = [];
@@ -396,201 +393,73 @@ export default function RequestsPage() {
             </div>
           )}
 
-{/* ===================================================== */}
-          {/* SECTION 1 — My Borrowed Books (borrowers only) */}
-          {/* ===================================================== */}
-          {!isLibrarian && (
-          <div className="mb-8">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-              <div>
-                <h1 className="text-2xl font-bold text-white">My Borrowed Books</h1>
-                <p className="text-sm text-zinc-400 mt-1">
-                  {isLibrarian ? "All borrowing activity" : "Your currently borrowed and recently returned books"}
-                  {" · "}{txnTotal} record{txnTotal !== 1 ? "s" : ""}
-                </p>
-              </div>
-            </div>
+                    {!isLibrarian && (
+                      <div className="mb-8">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                          <div>
+                            <h1 className="text-2xl font-bold text-white">My Borrowed Books</h1>
+                            <p className="text-sm text-zinc-400 mt-1">Your currently borrowed and recently returned books · {txnTotal} record{txnTotal !== 1 ? "s" : ""}</p>
+                          </div>
+                        </div>
 
-            {/* Toolbar */}
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 mb-4">
-              <div className="flex flex-col sm:flex-row gap-3">
-                <div className="flex-1 relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Search className="w-5 h-5 text-zinc-500" />
-                  </div>
-                  <input
-                    type="text"
-                    value={txnSearch}
-                    onChange={(e) => setTxnSearch(e.target.value)}
-                    placeholder="Search by book title..."
-                    className="w-full pl-10 pr-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                  />
-                </div>
-                <select
-                  value={txnStatusFilter}
-                  onChange={(e) => setTxnStatusFilter(e.target.value)}
-                  className="px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition appearance-none"
-                >
-                  <option value="" className="bg-zinc-900 text-white">All Status</option>
-                  <option value="ACTIVE" className="bg-zinc-900 text-white">Borrowed</option>
-                  <option value="OVERDUE" className="bg-zinc-900 text-white">Overdue</option>
-                  <option value="RETURNED" className="bg-zinc-900 text-white">Returned</option>
-                </select>
-              </div>
-            </div>
-
-            {txnLoading && (
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className="h-16 bg-zinc-900 animate-pulse border-b border-zinc-800/40" />
-                ))}
-              </div>
-            )}
-
-            {!txnLoading && txns.length === 0 && (
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 flex flex-col items-center justify-center py-16 text-center">
-                <BookOpen className="w-12 h-12 text-zinc-600 mb-4" />
-                <p className="text-zinc-300 font-medium">No borrowed books found</p>
-                <p className="text-sm text-zinc-500 mt-1">
-                  {txnSearch || txnStatusFilter ? "Try adjusting your search or filters" : "Borrowed books will appear here"}
-                </p>
-              </div>
-            )}
-
-            {!txnLoading && txns.length > 0 && (
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="bg-zinc-900 text-left text-xs uppercase tracking-wide text-zinc-500">
-                        <th className="px-6 py-3 font-medium">Book</th>
-                        <th className="px-6 py-3 font-medium hidden sm:table-cell">Accession</th>
-                        <th className="px-6 py-3 font-medium hidden sm:table-cell">Borrow Date</th>
-                        <th className="px-6 py-3 font-medium hidden md:table-cell">Due Date</th>
-                        <th className="px-6 py-3 font-medium hidden md:table-cell">Return Date</th>
-                        <th className="px-6 py-3 font-medium">Status</th>
-                        <th className="px-6 py-3 font-medium">Fine</th>
-                        <th className="px-6 py-3 font-medium text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {txns.map((txn: any) => (
-                        <tr key={txn.id} className="border-t border-zinc-800/60 hover:bg-zinc-800/40 transition-colors">
-                          <td className="px-6 py-4">
-                            <p className="text-zinc-100 font-medium">{txn.book?.title || "Unknown"}</p>
-                            <p className="text-xs text-zinc-500">{txn.book?.author || ""}</p>
-                          </td>
-                          <td className="px-6 py-4 text-zinc-400 hidden sm:table-cell">{txn.book?.accessionNo || "—"}</td>
-                          <td className="px-6 py-4 text-zinc-400 hidden sm:table-cell">{formatDate(txn.borrowDate)}</td>
-                          <td className="px-6 py-4 text-zinc-400 hidden md:table-cell">{formatDate(txn.dueDate)}</td>
-                          <td className="px-6 py-4 text-zinc-400 hidden md:table-cell">{formatDate(txn.returnDate)}</td>
-                          <td className="px-6 py-4">
-                            <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${txnStatusBadge[txn.status] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>
-                              {txnStatusLabel[txn.status] || txn.status}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className={`font-medium ${txn.fineAmount > 0 ? "text-amber-400" : "text-zinc-500"}`}>
-                              {txn.fineAmount ? `₱${txn.fineAmount.toFixed(2)}` : "—"}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            <div className="inline-flex items-center gap-1.5">
-                              {!isLibrarian && txn.status === "ACTIVE" && (
-                                <button
-                                  onClick={() => handleReturn(txn)}
-                                  disabled={actionLoadingId !== null}
-                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                                >
-                                  <CheckCircle2 className="w-3.5 h-3.5" /> {actionLoadingId === txn.id ? "Returning..." : "Return"}
-                                </button>
-                              )}
-                              {!isLibrarian && txn.status === "OVERDUE" && !txn.finePaid && txn.fineAmount > 0 && (
-                                <button
-                                  onClick={() => handlePayFine(txn)}
-                                  disabled={actionLoadingId !== null}
-                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-red-500/15 hover:bg-red-500/25 text-red-400 text-xs font-medium rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                                >
-                                  <Coins className="w-3.5 h-3.5" /> {actionLoadingId === txn.id ? "Paying..." : "Pay Fine"}
-                                </button>
-                              )}
-                              {isLibrarian && txn.status === "ACTIVE" && (
-                                <>
-                                  <button
-                                    onClick={() => handleReturn(txn)}
-                                    disabled={actionLoadingId !== null}
-                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                                  >
-                                    <CheckCircle2 className="w-3.5 h-3.5" /> {actionLoadingId === txn.id ? "Returning..." : "Return"}
-                                  </button>
-                                  <button
-                                    onClick={() => openMissingModal(txn)}
-                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 text-xs font-medium rounded-lg transition-colors"
-                                  >
-                                    <AlertTriangle className="w-3.5 h-3.5" /> Declare Missing
-                                  </button>
-                                </>
-                              )}
+                        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 mb-4">
+                          <div className="flex flex-col sm:flex-row gap-3">
+                            <div className="flex-1 relative">
+                              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Search className="w-5 h-5 text-zinc-500" /></div>
+                              <input
+                                type="text"
+                                value={txnSearch}
+                                onChange={(e) => setTxnSearch(e.target.value)}
+                                placeholder="Search by book title..."
+                                className="w-full pl-10 pr-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                              />
                             </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
+                            <select
+                              value={txnStatusFilter}
+                              onChange={(e) => setTxnStatusFilter(e.target.value)}
+                              className="px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition appearance-none"
+                            >
+                              <option value="" className="bg-zinc-900 text-white">All Status</option>
+                              <option value="ACTIVE" className="bg-zinc-900 text-white">Borrowed</option>
+                              <option value="OVERDUE" className="bg-zinc-900 text-white">Overdue</option>
+                              <option value="RETURNED" className="bg-zinc-900 text-white">Returned</option>
+                            </select>
+                          </div>
+                        </div>
 
-            {!txnLoading && txns.length > 0 && (
-              <div className="flex items-center justify-between mt-4">
-                <p className="text-sm text-zinc-500">
-                  Showing{" "}
-                  <span className="text-zinc-300">
-                    {(txnPage - 1) * PAGE_SIZE + 1}–{Math.min(txnPage * PAGE_SIZE, txnTotal)}
-                  </span>{" "}
-                  of <span className="text-zinc-300">{txnTotal}</span> records
-                </p>
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => setTxnPage((p) => Math.max(1, p - 1))}
-                    disabled={txnPage === 1}
-                    className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                    aria-label="Previous page"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  {getTxnPageNumbers().map((page) => (
-                    <button
-                      key={page}
-                      onClick={() => setTxnPage(page)}
-                      className={`w-9 h-9 rounded-lg text-sm font-medium transition-colors ${
-                        page === txnPage
-                          ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30"
-                          : "bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700"
-                      }`}
-                    >
-                      {page}
-                    </button>
-                  ))}
-                  <button
-                    onClick={() => setTxnPage((p) => Math.min(txnTotalPages, p + 1))}
-                    disabled={txnPage === txnTotalPages}
-                    className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                    aria-label="Next page"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-)}
-          </div>
-          )}
+                        {txnLoading && <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-16 bg-zinc-900 animate-pulse border-b border-zinc-800/40" />)}</div>}
+                        {!txnLoading && txns.length === 0 && (
+                          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 flex flex-col items-center justify-center py-16 text-center">
+                            <BookOpen className="w-12 h-12 text-zinc-600 mb-4" />
+                            <p className="text-zinc-300 font-medium">No borrowed books found</p>
+                            <p className="text-sm text-zinc-500 mt-1">{txnSearch || txnStatusFilter ? "Try adjusting your search or filters" : "Borrowed books will appear here"}</p>
+                          </div>
+                        )}
+                        {!txnLoading && txns.length > 0 && (
+                          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-sm">
+                                <thead><tr className="bg-zinc-900 text-left text-xs uppercase tracking-wide text-zinc-500">
+                                  <th className="px-6 py-3 font-medium">Book</th><th className="px-6 py-3 font-medium hidden sm:table-cell">Accession</th><th className="px-6 py-3 font-medium hidden sm:table-cell">Borrow Date</th><th className="px-6 py-3 font-medium hidden md:table-cell">Due Date</th><th className="px-6 py-3 font-medium hidden md:table-cell">Return Date</th><th className="px-6 py-3 font-medium">Status</th><th className="px-6 py-3 font-medium">Fine</th>
+                                </tr></thead>
+                                <tbody>{txns.map((txn: any) => <tr key={txn.id} className="border-t border-zinc-800/60 hover:bg-zinc-800/40 transition-colors">
+                                  <td className="px-6 py-4"><p className="text-zinc-100 font-medium">{txn.book?.title || "Unknown"}</p><p className="text-xs text-zinc-500">{txn.book?.author || ""}</p></td>
+                                  <td className="px-6 py-4 text-zinc-400 hidden sm:table-cell">{txn.book?.accessionNo || "—"}</td><td className="px-6 py-4 text-zinc-400 hidden sm:table-cell">{formatDate(txn.borrowDate)}</td><td className="px-6 py-4 text-zinc-400 hidden md:table-cell">{formatDate(txn.dueDate)}</td><td className="px-6 py-4 text-zinc-400 hidden md:table-cell">{formatDate(txn.returnDate)}</td>
+                                  <td className="px-6 py-4"><span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${txnStatusBadge[txn.status] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>{txnStatusLabel[txn.status] || txn.status}</span></td>
+                                  <td className="px-6 py-4"><span className={`font-medium ${txn.fineAmount > 0 ? "text-amber-400" : "text-zinc-500"}`}>{txn.fineAmount ? `₱${txn.fineAmount.toFixed(2)}` : "—"}</span></td>
+                                </tr>)}</tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+                        {!txnLoading && txns.length > 0 && (
+                          <div className="flex items-center justify-between mt-4"><p className="text-sm text-zinc-500">Showing <span className="text-zinc-300">{(txnPage - 1) * PAGE_SIZE + 1}–{Math.min(txnPage * PAGE_SIZE, txnTotal)}</span> of <span className="text-zinc-300">{txnTotal}</span> records</p><div className="flex items-center gap-1"><button onClick={() => setTxnPage((p) => Math.max(1, p - 1))} disabled={txnPage === 1} className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 disabled:opacity-40" aria-label="Previous page"><ChevronLeft className="w-4 h-4" /></button><button onClick={() => setTxnPage((p) => Math.min(Math.max(1, Math.ceil(txnTotal / PAGE_SIZE)), p + 1))} disabled={txnPage >= Math.max(1, Math.ceil(txnTotal / PAGE_SIZE))} className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 disabled:opacity-40" aria-label="Next page"><ChevronRight className="w-4 h-4" /></button></div></div>
+                        )}
+                      </div>
+                    )}
 
-          {/* Divider (only when borrowers see the borrowed books section) */}
-          {!isLibrarian && <div className="border-t border-zinc-800 mb-8" />}
-
-          {/* ===================================================== */}
-          {/* SECTION 2 — Borrow Requests */}
+                    {/* ===================================================== */}
+                    {/* Borrow Requests */}
           {/* ===================================================== */}
           <div>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
@@ -764,8 +633,131 @@ export default function RequestsPage() {
               </div>
             )}
           </div>
+
+          {isLibrarian && (
+            <div className="mt-8">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                <div>
+                  <h2 className="text-2xl font-bold text-white">Active Borrowed Books</h2>
+                  <p className="text-sm text-zinc-400 mt-1">Currently borrowed books awaiting return · {activeTxnTotal} active</p>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 mb-4">
+                <div className="relative max-w-xl">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Search className="w-5 h-5 text-zinc-500" />
+                  </div>
+                  <input
+                    type="text"
+                    value={activeTxnSearch}
+                    onChange={(e) => setActiveTxnSearch(e.target.value)}
+                    placeholder="Search by book title or member name..."
+                    className="w-full pl-10 pr-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                  />
+                </div>
+              </div>
+
+              {activeTxnLoading && (
+                <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
+                  {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-16 bg-zinc-900 animate-pulse border-b border-zinc-800/40" />)}
+                </div>
+              )}
+
+              {!activeTxnLoading && activeTxns.length === 0 && (
+                <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 flex flex-col items-center justify-center py-12 text-center">
+                  <BookOpen className="w-12 h-12 text-zinc-600 mb-4" />
+                  <p className="text-zinc-300 font-medium">No active borrowed books found</p>
+                  <p className="text-sm text-zinc-500 mt-1">Returned and missing books leave this list automatically.</p>
+                </div>
+              )}
+
+              {!activeTxnLoading && activeTxns.length > 0 && (
+                <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-zinc-900 text-left text-xs uppercase tracking-wide text-zinc-500">
+                          <th className="px-6 py-3 font-medium">Book</th>
+                          <th className="px-6 py-3 font-medium">Member</th>
+                          <th className="px-6 py-3 font-medium hidden sm:table-cell">Due Date</th>
+                          <th className="px-6 py-3 font-medium text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {activeTxns.map((txn: any) => (
+                          <tr key={txn.id} className="border-t border-zinc-800/60 hover:bg-zinc-800/40 transition-colors">
+                            <td className="px-6 py-4">
+                              <p className="text-zinc-100 font-medium">{txn.book?.title || "Unknown"}</p>
+                              <p className="text-xs text-zinc-500">{txn.book?.author || ""}</p>
+                            </td>
+                            <td className="px-6 py-4 text-zinc-300">
+                              {txn.user?.firstName} {txn.user?.lastName}
+                              <p className="text-xs text-zinc-500">{txn.user?.libraryId || ""}</p>
+                            </td>
+                            <td className="px-6 py-4 text-zinc-400 hidden sm:table-cell">{formatDate(txn.dueDate)}</td>
+                            <td className="px-6 py-4 text-right">
+                              <div className="inline-flex items-center justify-end gap-1.5">
+                                <button
+                                  onClick={() => handleReturn(txn)}
+                                  disabled={actionLoadingId !== null}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5" /> {actionLoadingId === txn.id ? "Returning..." : "Return"}
+                                </button>
+                                <button
+                                  onClick={() => openMissingModal(txn)}
+                                  disabled={actionLoadingId !== null}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 text-xs font-medium rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                >
+                                  <AlertTriangle className="w-3.5 h-3.5" /> Missing
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {!activeTxnLoading && activeTxns.length > 0 && (
+                <div className="flex items-center justify-between mt-4">
+                  <p className="text-sm text-zinc-500">Showing <span className="text-zinc-300">{(activeTxnPage - 1) * PAGE_SIZE + 1}–{Math.min(activeTxnPage * PAGE_SIZE, activeTxnTotal)}</span> of <span className="text-zinc-300">{activeTxnTotal}</span> records</p>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => setActiveTxnPage((p) => Math.max(1, p - 1))} disabled={activeTxnPage === 1} className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed" aria-label="Previous page"><ChevronLeft className="w-4 h-4" /></button>
+                    <span className="px-3 py-2 text-xs text-zinc-500">Page {activeTxnPage} of {Math.max(1, Math.ceil(activeTxnTotal / PAGE_SIZE))}</span>
+                    <button onClick={() => setActiveTxnPage((p) => Math.min(Math.max(1, Math.ceil(activeTxnTotal / PAGE_SIZE)), p + 1))} disabled={activeTxnPage >= Math.max(1, Math.ceil(activeTxnTotal / PAGE_SIZE))} className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed" aria-label="Next page"><ChevronRight className="w-4 h-4" /></button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
+
+      {missingTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={() => !missingLoading && setMissingTarget(null)} />
+          <div className="relative z-50 w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl shadow-black/50">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center shrink-0"><AlertTriangle className="w-5 h-5" /></div>
+              <div>
+                <h3 className="text-lg font-semibold text-white">Declare Book Missing</h3>
+                <p className="text-sm text-zinc-400 mt-1">Mark &quot;{missingTarget.book?.title || "this book"}&quot; as missing? This will close the active borrow record.</p>
+              </div>
+            </div>
+            {missingError && <div className="p-3 mb-4 bg-red-500/10 border border-red-500/30 rounded-xl text-sm text-red-400">{missingError}</div>}
+            <label className="block text-sm font-medium text-zinc-300 mb-1.5">Reason <span className="text-zinc-500">(optional)</span></label>
+            <textarea value={missingReason} onChange={(e) => setMissingReason(e.target.value)} placeholder="e.g., Not returned by borrower, lost in transit" rows={3} className="flex w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition" />
+            <div className="flex gap-3 mt-4">
+              <button onClick={() => setMissingTarget(null)} disabled={missingLoading} className="flex-1 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm font-medium rounded-xl border border-zinc-700 disabled:opacity-40">Cancel</button>
+              <button onClick={handleDeclareMissing} disabled={missingLoading} className="flex-1 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold rounded-xl disabled:opacity-40">{missingLoading ? "Declaring..." : "Declare Missing"}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Reject Borrow Request modal (librarian only) */}
       {rejectTarget && (
@@ -815,60 +807,6 @@ export default function RequestsPage() {
                 disabled={rejectLoading}
               >
                 {rejectLoading ? "Rejecting..." : "Confirm Reject"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-{/* Declare Missing confirmation modal (librarian only) */}
-      {missingTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setMissingTarget(null)} />
-          <div className="relative z-50 w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl shadow-black/50">
-            <div className="flex items-start gap-3 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center shrink-0">
-                <AlertTriangle className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold text-white">Declare Book Missing</h3>
-                <p className="text-sm text-zinc-400 mt-1">
-                  Mark "{missingTarget.book?.title || "this book"}" as missing? This will set the book status to lost and close the transaction.
-                </p>
-              </div>
-            </div>
-
-            {missingError && (
-              <div className="p-3 mb-4 bg-red-500/10 border border-red-500/30 rounded-xl text-sm text-red-400">{missingError}</div>
-            )}
-
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-zinc-300 mb-1.5">
-                Reason <span className="text-zinc-500">(optional)</span>
-              </label>
-              <textarea
-                value={missingReason}
-                onChange={(e) => setMissingReason(e.target.value)}
-                placeholder="e.g., Not returned by borrower, lost in transit"
-                rows={3}
-                className="flex w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition"
-              />
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => setMissingTarget(null)}
-                className="flex-1 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm font-medium rounded-xl border border-zinc-700 transition-colors"
-                disabled={missingLoading}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDeclareMissing}
-                className="flex-1 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold rounded-xl shadow-lg shadow-amber-600/30 transition-colors"
-                disabled={missingLoading}
-              >
-                {missingLoading ? "Declaring..." : "Declare Missing"}
               </button>
             </div>
           </div>

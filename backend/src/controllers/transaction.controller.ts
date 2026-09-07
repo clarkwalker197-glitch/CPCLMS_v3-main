@@ -44,11 +44,9 @@ export const listBorrowRequests = asyncHandler(
 
 export const approveRequest = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
-    const dueDateOverride = req.body.dueDate ? new Date(req.body.dueDate) : undefined;
     const result = await transactionService.approveRequest(
       req.params.id,
-      req.user!.userId,
-      dueDateOverride
+      req.user!.userId
     );
     sendSuccess(res, result, 'Borrow request approved');
   }

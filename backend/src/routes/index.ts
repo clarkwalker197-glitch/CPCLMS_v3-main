@@ -14,6 +14,7 @@ import analyticsRoutes from './analytics.routes';
 import reportRoutes from './report.routes';
 import activityRoutes from './activity.routes';
 import notificationRoutes from './notification.routes';
+import archiveRoutes from './archive.routes';
 
 const router = Router();
 
@@ -34,6 +35,7 @@ router.use('/analytics', analyticsRoutes);
 router.use('/reports', reportRoutes);
 router.use('/activities', activityRoutes);
 router.use('/notifications', notificationRoutes);
+router.use('/archive', archiveRoutes);
 
 export default router;
 

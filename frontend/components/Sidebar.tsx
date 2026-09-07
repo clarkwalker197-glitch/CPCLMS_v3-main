@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { useAuth } from "@/lib/auth-context";
 import {
   LayoutDashboard,
   BookOpen,
@@ -11,6 +12,7 @@ import {
   ClipboardList,
   ScrollText,
   Shield,
+  Archive,
   ChevronDown,
 } from "lucide-react";
 
@@ -28,10 +30,12 @@ const navItems = [
   { href: "/requests", label: "Borrow Requests", icon: ClipboardList },
   { href: "/activities", label: "Activity Logs", icon: ScrollText },
   { href: "/policies", label: "Policies", icon: Shield },
+  { href: "/archive", label: "Archive", icon: Archive },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { user } = useAuth();
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>(() => {
     // Auto-open parent if a child route is active on first render
     const booksActive =
@@ -60,7 +64,7 @@ export default function Sidebar() {
 
       {/* Nav */}
       <nav className="flex-1 px-4 py-6 space-y-1.5 overflow-y-auto">
-        {navItems.map((item) => {
+        {navItems.filter((item) => item.label !== "Archive" || user?.role === "LIBRARIAN").map((item) => {
           const Icon = item.icon;
           const hasChildren = !!item.children;
 

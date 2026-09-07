@@ -19,7 +19,7 @@ export class BookService {
   async listBooks(query: Record<string, unknown>) {
     const { page, limit, skip, take } = getPaginationParams(query);
 
-    const where: Prisma.BookWhereInput = {};
+    const where: Prisma.BookWhereInput = { deletedAt: null };
 
     // Search by title, author, ISBN
     if (query.search) {
@@ -125,6 +125,7 @@ export class BookService {
         ...(input.copies !== undefined && {
           availableCopies: input.copies - (book.copies - book.availableCopies),
         }),
+        ...(input.availableCopies !== undefined && { availableCopies: input.availableCopies }),
       },
       include: {
         category: { select: { id: true, name: true, slug: true } },
@@ -149,7 +150,17 @@ export class BookService {
       throw new ConflictError('Cannot delete book with active borrow transactions');
     }
 
-    await prisma.book.delete({ where: { id } });
+    await prisma.book.update({ where: { id }, data: { deletedAt: new Date() } });
+  }
+
+  async listArchivedBooks() {
+    return prisma.book.findMany({ where: { deletedAt: { not: null } }, include: { category: true }, orderBy: { deletedAt: 'desc' } });
+  }
+
+  async restoreBook(id: string) {
+    const book = await prisma.book.findUnique({ where: { id } });
+    if (!book) throw new NotFoundError('Book');
+    return prisma.book.update({ where: { id }, data: { deletedAt: null } });
   }
 
   // ============================================================

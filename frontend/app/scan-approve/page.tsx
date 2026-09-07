@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { Suspense, useEffect, useState, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import api from "@/lib/api";
 import {
@@ -11,7 +11,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 
-export default function ScanApprovePage() {
+function ScanApproveContent() {
   const params = useSearchParams();
   const requestId = params.get("request");
   const token = params.get("token");
@@ -55,7 +55,6 @@ export default function ScanApprovePage() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        {/* Branding */}
         <div className="flex items-center justify-center gap-2 mb-8">
           <div className="w-10 h-10 rounded-xl bg-emerald-600/15 text-emerald-400 flex items-center justify-center">
             <QrCode className="w-5 h-5" />
@@ -119,5 +118,17 @@ export default function ScanApprovePage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ScanApprovePage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white">
+        Loading...
+      </div>
+    }>
+      <ScanApproveContent />
+    </Suspense>
   );
 }

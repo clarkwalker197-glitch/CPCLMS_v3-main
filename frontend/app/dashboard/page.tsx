@@ -13,11 +13,11 @@ import {
   Users,
   ClipboardList,
   ScrollText,
-Shield,
+  Shield,
   Search,
   TrendingUp,
   TrendingDown,
-Library,
+  Library,
   BookMarked,
   Clock,
   AlertTriangle,
@@ -70,9 +70,8 @@ function StatCard({ title, value, icon: Icon, trend, trendUp, accent }: any) {
         <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${accent}`}>
           <Icon className="w-5 h-5" />
         </div>
-        <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full ${
-          trendUp ? "bg-emerald-500/15 text-emerald-400" : "bg-red-500/15 text-red-400"
-        }`}>
+        <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full ${trendUp ? "bg-emerald-500/15 text-emerald-400" : "bg-red-500/15 text-red-400"
+          }`}>
           {trendUp ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
           {trend}
         </span>
@@ -161,11 +160,10 @@ export default function DashboardPage() {
                 <Link
                   key={item.label}
                   href={item.href}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
-                    item.active
+                  className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors ${item.active
                       ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30"
                       : "text-zinc-400 hover:bg-zinc-800 hover:text-white"
-                  }`}
+                    }`}
                 >
                   <Icon className="w-5 h-5" />
                   {item.label}
@@ -224,7 +222,7 @@ export default function DashboardPage() {
                             <User className="w-4 h-4" />
                             Profile
                           </Link>
-<button
+                          <button
                             onClick={() => { setProfileOpen(false); router.push("/profile/settings"); }}
                             className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-xl text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors"
                           >
@@ -255,11 +253,11 @@ export default function DashboardPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
               {loading
                 ? Array.from({ length: 4 }).map((_, i) => (
-                    <div key={i} className="h-32 rounded-2xl bg-zinc-900 animate-pulse" />
-                  ))
+                  <div key={i} className="h-32 rounded-2xl bg-zinc-900 animate-pulse" />
+                ))
                 : statsCards.map((card) => (
-                    <StatCard key={card.title} {...card} />
-                  ))}
+                  <StatCard key={card.title} {...card} />
+                ))}
             </div>
 
             {/* Charts */}
@@ -318,7 +316,7 @@ export default function DashboardPage() {
             {/* Recent Borrow Activity */}
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
               <div className="px-6 py-5 border-b border-zinc-800 flex items-center justify-between">
-<h2 className="text-base font-semibold text-white">Recent Borrow Activity</h2>
+                <h2 className="text-base font-semibold text-white">Recent Borrow Activity</h2>
                 <Link href="/requests" className="text-sm text-blue-400 hover:text-blue-300 transition-colors">
                   View all
                 </Link>

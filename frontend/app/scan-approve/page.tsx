@@ -123,11 +123,13 @@ function ScanApproveContent() {
 
 export default function ScanApprovePage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white">
-        Loading...
-      </div>
-    }>
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white">
+          Loading...
+        </div>
+      }
+    >
       <ScanApproveContent />
     </Suspense>
   );

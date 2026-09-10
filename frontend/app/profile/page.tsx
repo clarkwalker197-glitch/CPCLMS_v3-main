@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Sidebar from "@/components/Sidebar";
+import EditProfileModal from "@/components/EditProfileModal";
 import {
   Pencil,
   Lock,
@@ -58,8 +59,8 @@ function InfoRow({
 }
 
 export default function ProfilePage() {
-  const { user } = useAuth();
-const [editing, setEditing] = useState(false);
+  const { user, refreshUser } = useAuth();
+  const [editing, setEditing] = useState(false);
   const [notifications, setNotifications] = useState(true);
 
   const initials =
@@ -86,8 +87,8 @@ const [editing, setEditing] = useState(false);
             {/* Profile Header Card */}
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-6 sm:p-8 mb-6">
               <div className="flex flex-col sm:flex-row sm:items-center gap-5">
-                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-2xl font-bold text-white shadow-lg shadow-blue-600/30 shrink-0">
-                  {initials.toUpperCase()}
+                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-2xl font-bold text-white shadow-lg shadow-blue-600/30 shrink-0 overflow-hidden">
+                  {user?.avatar ? <img src={user.avatar} alt="Profile" className="h-full w-full object-cover" /> : initials.toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center flex-wrap gap-3">
@@ -110,11 +111,11 @@ const [editing, setEditing] = useState(false);
                   </p>
                 </div>
                 <button
-                  onClick={() => setEditing((e) => !e)}
+                  onClick={() => setEditing(true)}
                   className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl shadow-lg shadow-blue-600/30 transition-colors self-start sm:self-center"
                 >
                   <Pencil className="w-4 h-4" />
-                  {editing ? "Done" : "Edit"}
+                  Edit
                 </button>
               </div>
             </div>
@@ -243,6 +244,7 @@ const [editing, setEditing] = useState(false);
           </div>
         </div>
       </div>
+      {editing && <EditProfileModal onClose={() => setEditing(false)} onSaved={refreshUser} />}
     </ProtectedRoute>
   );
 }

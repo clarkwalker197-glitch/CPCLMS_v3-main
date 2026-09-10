@@ -280,6 +280,10 @@ async put<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
     return this.get('/auth/me');
   }
 
+  async updateProfile(formData: FormData): Promise<ApiResponse<any>> {
+    return this.uploadMultipart('/auth/me', formData, 'PUT');
+  }
+
   async forgotPassword(identifier: string): Promise<ApiResponse<any>> {
     return this.post('/auth/forgot-password', { identifier });
   }
@@ -351,7 +355,7 @@ async put<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
     return this.uploadMultipart('/books', fd);
   }
 
-  private async uploadMultipart(endpoint: string, formData: FormData): Promise<ApiResponse<any>> {
+  private async uploadMultipart(endpoint: string, formData: FormData, method = 'POST'): Promise<ApiResponse<any>> {
     const remainingCooldown = this.rateLimitUntil - Date.now();
     if (remainingCooldown > 0) {
       return {
@@ -368,7 +372,7 @@ async put<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
       const response = await fetch(`${this.baseUrl}${endpoint}`, {
-        method: 'POST',
+        method,
         headers,
         body: formData,
       });

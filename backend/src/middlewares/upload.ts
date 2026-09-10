@@ -10,8 +10,9 @@ import { BadRequestError } from '../utils/errors';
 const UPLOADS_ROOT = path.join(__dirname, '..', '..', 'uploads');
 const EBOOKS_DIR = path.join(UPLOADS_ROOT, 'ebooks');
 const COVERS_DIR = path.join(UPLOADS_ROOT, 'covers');
+const PROFILES_DIR = path.join(UPLOADS_ROOT, 'profiles');
 
-for (const dir of [EBOOKS_DIR, COVERS_DIR]) {
+for (const dir of [EBOOKS_DIR, COVERS_DIR, PROFILES_DIR]) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
@@ -52,6 +53,12 @@ function fileFilter(
     }
     return cb(null, true);
   }
+  if (file.fieldname === 'profilePicture') {
+    if (!COVER_EXTENSIONS.has(ext)) {
+      return cb(new BadRequestError('Profile picture must be a JPG, PNG, or WEBP file'));
+    }
+    return cb(null, true);
+  }
   if (file.fieldname === 'file') {
     if (!EBOOK_EXTENSIONS[ext]) {
       return cb(new BadRequestError('E-book file must be a PDF, EPUB, or MOBI file'));
@@ -77,6 +84,15 @@ export const uploadBookCover = multer({
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
 }).single('coverImage');
 
+export const uploadProfilePicture = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, PROFILES_DIR),
+    filename: (_req, file, cb) => cb(null, safeFilename(file.originalname)),
+  }),
+  fileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 },
+}).single('profilePicture');
+
 /**
  * If a cover image file was uploaded (multipart), turn it into the same
  * `coverImage` URL field the JSON/validation path expects, so one route
@@ -98,4 +114,4 @@ export function formatFromExtension(originalName: string): 'PDF' | 'EPUB' | 'MOB
   return EBOOK_EXTENSIONS[ext] || 'PDF';
 }
 
-export { EBOOKS_DIR, COVERS_DIR, UPLOADS_ROOT };
+export { EBOOKS_DIR, COVERS_DIR, PROFILES_DIR, UPLOADS_ROOT };

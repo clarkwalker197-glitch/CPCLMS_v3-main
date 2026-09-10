@@ -7,6 +7,7 @@ import * as authController from '../controllers/auth.controller';
 import { authenticate, authorize } from '../middlewares/auth';
 import { authLimiter } from '../middlewares/rateLimiter';
 import { validate } from '../middlewares/validate';
+import { uploadProfilePicture } from '../middlewares/upload';
 import {
   loginSchema,
   registerSchema,
@@ -18,6 +19,7 @@ import {
   resetPasswordSchema,
   verifyPasswordResetSchema,
   googleLoginSchema,
+  updateProfileSchema,
 } from '../validators/auth.schema';
 
 const router = Router();
@@ -33,6 +35,7 @@ router.post('/refresh', authLimiter, validate(refreshTokenSchema), authControlle
 
 // ─── Authenticated Routes ────────────────────────────────
 router.get('/me', authenticate, authController.getProfile);
+router.put('/me', authenticate, uploadProfilePicture, validate(updateProfileSchema), authController.updateProfile);
 router.put(
   '/change-password',
   authenticate,

@@ -107,6 +107,18 @@ export const changePasswordSchema = z.object({
   }),
 });
 
+export const updateProfileSchema = z.object({
+  body: z.object({
+    firstName: z.string().min(1, 'First name is required').max(50).transform((s) => s.trim()),
+    lastName: z.string().min(1, 'Last name is required').max(50).transform((s) => s.trim()),
+    email: z.string().email('Invalid email address').transform((email) => email.toLowerCase().trim()),
+    phone: z.string().regex(/^\+?[\d\s-]{7,15}$/, 'Invalid phone number format').optional().or(z.literal('')),
+    department: z.string().max(100).optional(),
+    yearSection: z.string().max(100).optional(),
+    removeProfilePicture: z.enum(['true', 'false']).optional(),
+  }),
+});
+
 export const refreshTokenSchema = z.object({
   body: z.object({
     refreshToken: z.string().min(1, 'Refresh token is required'),

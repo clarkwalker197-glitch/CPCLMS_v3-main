@@ -18,6 +18,26 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
   sendSuccess(res, result, 'Login successful');
 });
 
+export const forgotPassword = asyncHandler(async (req: Request, res: Response) => {
+  const result = await authService.requestPasswordReset(req.body.identifier);
+  sendSuccess(res, result, result.message);
+});
+
+export const verifyPasswordReset = asyncHandler(async (req: Request, res: Response) => {
+  const result = await authService.verifyPasswordReset(req.body.identifier, req.body.code);
+  sendSuccess(res, result, 'Verification code accepted');
+});
+
+export const googleLogin = asyncHandler(async (req: Request, res: Response) => {
+  const result = await authService.googleLogin(req.body.credential, req.ip);
+  sendSuccess(res, result, 'Google login successful');
+});
+
+export const resetPassword = asyncHandler(async (req: Request, res: Response) => {
+  const result = await authService.resetPassword(req.body.token, req.body.newPassword);
+  sendSuccess(res, result, result.message);
+});
+
 /**
  * POST /api/auth/register
  */

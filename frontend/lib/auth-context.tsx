@@ -9,6 +9,7 @@ interface AuthContextType {
   loading: boolean;
   isAuthenticated: boolean;
 login: (identifier: string, password: string) => Promise<{ success: boolean; error?: string; user?: User }>;
+  googleLogin: (credential: string) => Promise<{ success: boolean; error?: string; user?: User }>;
   register: (data: RegisterData) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -72,6 +73,19 @@ const res = await api.login(identifier, password);
     }
   };
 
+  const googleLogin = async (credential: string) => {
+    try {
+      const res = await api.googleLogin(credential);
+      if (res.success && res.data) {
+        setUser(res.data.user);
+        return { success: true, user: res.data.user };
+      }
+      return { success: false, error: res.error || 'Google login failed' };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Google login failed' };
+    }
+  };
+
 const register = async (data: RegisterData) => {
     try {
       const res = await api.register(data);
@@ -98,6 +112,7 @@ const register = async (data: RegisterData) => {
         loading,
         isAuthenticated: !!user,
         login,
+        googleLogin,
         register,
         logout,
         refreshUser,

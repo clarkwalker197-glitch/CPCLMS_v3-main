@@ -24,6 +24,8 @@ RATE_LIMIT_WINDOW_MS: z.coerce.number().default(15 * 60 * 1000),
     .transform((v) => (v === undefined || v === '' ? true : v === 'true')),
   AUTH_RATE_LIMIT_MAX: z.coerce.number().default(20),
   COOKIE_SECRET: z.string().default('cookie-secret-change-me'),
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

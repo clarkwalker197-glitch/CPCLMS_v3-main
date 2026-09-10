@@ -49,6 +49,11 @@ const [formData, setFormData] = useState({
       return;
     }
 
+    if (formData.role === 'STUDENT' && !formData.yearSection.trim()) {
+      setError('Year & Section is required for Student accounts');
+      return;
+    }
+
     setSubmitting(true);
 
     try {
@@ -320,6 +325,7 @@ if (result.success) {
                         id="yearSection"
                         name="yearSection"
                         type="text"
+                        required={formData.role === 'STUDENT'}
                         value={formData.yearSection}
                         onChange={handleChange}
                         className={inputClass}

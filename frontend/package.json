@@ -9,17 +9,15 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@types/react-pdf": "^5.0.7",
+    "@react-oauth/google": "^0.13.5",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "html5-qrcode": "^2.3.8",
     "lucide-react": "^1.25.0",
     "next": "^16.2.12",
     "next-themes": "^0.4.6",
-    "pdfjs-dist": "^5.4.296",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "react-pdf": "^10.5.0",
     "recharts": "^3.9.2",
     "tailwind-merge": "^3.6.0"
   },

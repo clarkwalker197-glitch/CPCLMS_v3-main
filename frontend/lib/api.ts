@@ -280,6 +280,27 @@ async put<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
     return this.get('/auth/me');
   }
 
+  async forgotPassword(identifier: string): Promise<ApiResponse<any>> {
+    return this.post('/auth/forgot-password', { identifier });
+  }
+
+  async resetPassword(token: string, newPassword: string): Promise<ApiResponse<any>> {
+    return this.post('/auth/reset-password', { token, newPassword });
+  }
+
+  async verifyPasswordReset(identifier: string, code: string): Promise<ApiResponse<any>> {
+    return this.post('/auth/verify-password-reset', { identifier, code });
+  }
+
+  async googleLogin(credential: string): Promise<ApiResponse<any>> {
+    const response = await this.post<{ accessToken: string; refreshToken: string; user: any }>('/auth/google', { credential });
+    if (response.success && response.data) {
+      this.setTokens(response.data.accessToken, response.data.refreshToken);
+      localStorage.setItem('user', JSON.stringify(response.data.user));
+    }
+    return response;
+  }
+
   // Books
   async getBooks(params?: Record<string, string>): Promise<ApiResponse<any[]>> {
     const query = params ? '?' + new URLSearchParams(params).toString() : '';

@@ -4,16 +4,20 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
+import { GoogleLogin, GoogleOAuthProvider } from '@react-oauth/google';
 
 export default function LoginPage() {
-const { login, user, isAuthenticated, loading } = useAuth();
+const { login, googleLogin, user, isAuthenticated, loading } = useAuth();
   const router = useRouter();
+  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [searchParams] = useState(() => new URLSearchParams(typeof window !== 'undefined' ? window.location.search : ''));
+  const resetMessage = searchParams.get('reset') === 'success' ? 'Password reset successfully. You can now sign in.' : '';
 
   useEffect(() => {
     if (!loading && isAuthenticated) {
@@ -42,10 +46,6 @@ const { login, user, isAuthenticated, loading } = useAuth();
     }
   };
 
-  const handleGuestLogin = () => {
-    router.push('/books?guest=1');
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-zinc-950">
@@ -55,6 +55,7 @@ const { login, user, isAuthenticated, loading } = useAuth();
   }
 
   return (
+    <GoogleOAuthProvider clientId={googleClientId || 'not-configured'}>
     <div className="min-h-screen bg-zinc-950 flex flex-col">
       <div className="flex-1 flex items-center justify-center p-4 sm:p-8">
         <div className="w-full max-w-6xl grid md:grid-cols-2 gap-6">
@@ -125,6 +126,11 @@ const { login, user, isAuthenticated, loading } = useAuth();
                 {error && (
                   <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-sm text-red-400">
                     {error}
+                  </div>
+                )}
+                {resetMessage && (
+                  <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg text-sm text-emerald-400">
+                    {resetMessage}
                   </div>
                 )}
 
@@ -212,14 +218,25 @@ const { login, user, isAuthenticated, loading } = useAuth();
                   {submitting ? 'Signing in...' : 'Login'}
                 </button>
 
-                {/* Guest login */}
-                <button
-                  type="button"
-                  onClick={handleGuestLogin}
-                  className="w-full py-3 bg-zinc-800 text-zinc-200 font-medium rounded-xl hover:bg-zinc-700 transition-colors border border-zinc-700"
-                >
-                  Login as Guest
-                </button>
+                <div className="relative py-1">
+                  <div className="border-t border-zinc-800" />
+                  <span className="absolute left-1/2 -top-2.5 -translate-x-1/2 bg-zinc-900 px-3 text-xs text-zinc-500">OR</span>
+                </div>
+
+                <GoogleLogin
+                  onSuccess={async ({ credential }) => {
+                    if (!credential) return setError('Google did not return a valid credential');
+                    setError('');
+                    const result = await googleLogin(credential);
+                    if (result.success) router.push(result.user?.role === 'LIBRARIAN' ? '/dashboard' : '/student/dashboard');
+                    else setError(result.error || 'Google login failed');
+                  }}
+                  onError={() => setError('Google login failed. Please try again.')}
+                  theme="filled_black"
+                  size="large"
+                  width="100%"
+                  text="signin_with"
+                />
               </form>
 
               {/* Register link */}
@@ -251,5 +268,6 @@ const { login, user, isAuthenticated, loading } = useAuth();
         </p>
       </div>
     </div>
+    </GoogleOAuthProvider>
   );
 }

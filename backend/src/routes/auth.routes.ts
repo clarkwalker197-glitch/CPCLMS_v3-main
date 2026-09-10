@@ -14,12 +14,20 @@ import {
   changePasswordSchema,
   refreshTokenSchema,
   logoutSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
+  verifyPasswordResetSchema,
+  googleLoginSchema,
 } from '../validators/auth.schema';
 
 const router = Router();
 
 // ─── Public Routes (rate-limited) ──────────────────────────
 router.post('/login', authLimiter, validate(loginSchema), authController.login);
+router.post('/forgot-password', authLimiter, validate(forgotPasswordSchema), authController.forgotPassword);
+router.post('/reset-password', authLimiter, validate(resetPasswordSchema), authController.resetPassword);
+router.post('/verify-password-reset', authLimiter, validate(verifyPasswordResetSchema), authController.verifyPasswordReset);
+router.post('/google', authLimiter, validate(googleLoginSchema), authController.googleLogin);
 router.post('/register', authLimiter, validate(registerSchema), authController.register);
 router.post('/refresh', authLimiter, validate(refreshTokenSchema), authController.refreshToken);
 

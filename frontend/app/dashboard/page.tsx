@@ -4,16 +4,12 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import NotificationBell from "@/components/NotificationBell";
+import Sidebar from "@/components/Sidebar";
 import api from "@/lib/api";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  LayoutDashboard,
-  BookOpen,
   Users,
-  ClipboardList,
-  ScrollText,
-  Shield,
   Search,
   TrendingUp,
   TrendingDown,
@@ -24,7 +20,6 @@ import {
   User,
   Settings,
   LogOut,
-  ChevronDown,
 } from "lucide-react";
 import {
   LineChart,
@@ -43,15 +38,6 @@ import {
 } from "recharts";
 
 const PIE_COLORS = ["#3b82f6", "#8b5cf6", "#06b6d4", "#10b981", "#f59e0b", "#ef4444", "#ec4899", "#64748b"];
-
-const navItems = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, active: true },
-  { href: "/books", label: "Books", icon: BookOpen, active: false },
-  { href: "/members", label: "Members", icon: Users, active: false },
-  { href: "/requests", label: "Borrow Requests", icon: ClipboardList, active: false },
-  { href: "/activities", label: "Activity Logs", icon: ScrollText, active: false },
-  { href: "/policies", label: "Policies", icon: Shield, active: false },
-];
 
 const statusBadge: Record<string, string> = {
   ACTIVE: "bg-blue-500/15 text-blue-400 ring-blue-500/30",
@@ -140,44 +126,7 @@ export default function DashboardPage() {
   return (
     <ProtectedRoute roles={["LIBRARIAN"]}>
       <div className="min-h-screen bg-zinc-950 text-zinc-100 flex">
-        {/* ── Sidebar ─────────────────────────────── */}
-        <aside className="hidden lg:flex w-64 shrink-0 flex-col border-r border-zinc-800 bg-zinc-900/60">
-          {/* Logo */}
-          <div className="flex items-center gap-3 px-6 py-6 border-b border-zinc-800">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/CPClogo.png" alt="Cordova Public College Logo" className="w-11 h-11 object-contain" />
-            <div>
-              <p className="font-bold text-white leading-tight">Cordova Public College</p>
-              <p className="text-xs text-blue-300">Library Management System</p>
-            </div>
-          </div>
-
-          {/* Nav */}
-          <nav className="flex-1 px-4 py-6 space-y-1.5">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              return (
-                <Link
-                  key={item.label}
-                  href={item.href}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors ${item.active
-                      ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30"
-                      : "text-zinc-400 hover:bg-zinc-800 hover:text-white"
-                    }`}
-                >
-                  <Icon className="w-5 h-5" />
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
-
-          {/* Footer */}
-          <div className="px-6 py-5 border-t border-zinc-800">
-            <p className="text-xs text-zinc-500">© 2026 Cordova Public College</p>
-            <p className="text-xs text-zinc-600 mt-1">All rights reserved.</p>
-          </div>
-        </aside>
+        <Sidebar />
 
         {/* ── Main Content ────────────────────────── */}
         <div className="flex-1 min-w-0">

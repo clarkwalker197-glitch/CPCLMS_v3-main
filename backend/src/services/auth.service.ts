@@ -17,8 +17,93 @@ import {
   BadRequestError,
 } from '../utils/errors';
 import { RegisterInput, CreateUserInput } from '../validators';
+import { notificationService } from './notification.service';
+import { OAuth2Client } from 'google-auth-library';
 
 export class AuthService {
+  async googleLogin(credential: string, ipAddress?: string) {
+    if (!env.GOOGLE_CLIENT_ID) throw new BadRequestError('Google authentication is not configured.');
+    const ticket = await new OAuth2Client(env.GOOGLE_CLIENT_ID).verifyIdToken({
+      idToken: credential,
+      audience: env.GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+    if (!payload?.sub || !payload.email || !payload.email_verified) throw new BadRequestError('Google account email is not verified.');
+
+    let user = await prisma.user.findFirst({ where: { OR: [{ googleId: payload.sub }, { email: payload.email.toLowerCase() }] } });
+    if (user?.googleId && user.googleId !== payload.sub) throw new BadRequestError('This email is linked to another Google account.');
+    if (!user) {
+      const libraryId = await this.generateLibraryId();
+      user = await prisma.user.create({
+        data: {
+          googleId: payload.sub,
+          libraryId,
+          firstName: payload.given_name || payload.name?.split(' ')[0] || 'Google',
+          lastName: payload.family_name || payload.name?.split(' ').slice(1).join(' ') || 'User',
+          email: payload.email.toLowerCase(),
+          password: await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 12),
+          role: 'STUDENT',
+          isActive: true,
+        },
+      });
+    } else if (!user.isActive) throw new UnauthorizedError('Your account has been deactivated. Please contact the library.');
+    else if (!user.googleId) user = await prisma.user.update({ where: { id: user.id }, data: { googleId: payload.sub } });
+
+    const accessToken = this.generateAccessToken(user.id, user.libraryId, user.role);
+    const refreshToken = await this.generateRefreshToken(user.id);
+    await this.logActivity(user.id, 'LOGIN_GOOGLE', 'User', user.id, ipAddress);
+    return { accessToken, refreshToken: refreshToken.token, expiresIn: 15 * 60, user: this.sanitizeUser(user) };
+  }
+
+  async requestPasswordReset(identifier: string) {
+    const normalized = identifier.trim().toLowerCase();
+    const user = await prisma.user.findFirst({
+      where: { OR: [{ email: normalized }, { libraryId: normalized }], isActive: true },
+    });
+    if (!user) throw new NotFoundError('User account');
+
+    await prisma.passwordResetToken.deleteMany({ where: { userId: user.id } });
+    const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+    const tokenHash = crypto.createHash('sha256').update(code).digest('hex');
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+    await prisma.passwordResetToken.create({ data: { userId: user.id, tokenHash, expiresAt } });
+
+    const frontendUrl = (env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
+    await notificationService.sendEmail({
+      to: user.email,
+      userId: user.id,
+      subject: 'Your CPC Library password reset code',
+      body: `Hello ${user.firstName},\n\nYour password reset verification code is: ${code}\n\nThis code expires in 1 hour.`,
+    });
+
+    return { message: 'A verification code has been sent to your registered email.', email: user.email };
+  }
+
+  async verifyPasswordReset(identifier: string, code: string) {
+    const user = await prisma.user.findFirst({ where: { email: identifier.trim().toLowerCase(), isActive: true } });
+    const codeHash = crypto.createHash('sha256').update(code).digest('hex');
+    const resetToken = user ? await prisma.passwordResetToken.findFirst({ where: { userId: user.id, tokenHash: codeHash, usedAt: null } }) : null;
+    if (!resetToken || resetToken.expiresAt <= new Date()) throw new BadRequestError('Invalid or expired verification code.');
+    const resetTokenValue = crypto.randomBytes(32).toString('hex');
+    await prisma.passwordResetToken.update({ where: { id: resetToken.id }, data: { tokenHash: crypto.createHash('sha256').update(resetTokenValue).digest('hex'), expiresAt: new Date(Date.now() + 15 * 60 * 1000) } });
+    return { resetToken: resetTokenValue };
+  }
+
+  async resetPassword(rawToken: string, newPassword: string) {
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const resetToken = await prisma.passwordResetToken.findUnique({ where: { tokenHash } });
+    if (!resetToken || resetToken.usedAt || resetToken.expiresAt <= new Date()) {
+      throw new BadRequestError('This password reset link is invalid or expired.');
+    }
+
+    const password = await bcrypt.hash(newPassword, 12);
+    await prisma.$transaction([
+      prisma.user.update({ where: { id: resetToken.userId }, data: { password } }),
+      prisma.passwordResetToken.update({ where: { id: resetToken.id }, data: { usedAt: new Date() } }),
+      prisma.refreshToken.updateMany({ where: { userId: resetToken.userId, revokedAt: null }, data: { revokedAt: new Date() } }),
+    ]);
+    return { message: 'Password reset successfully.' };
+  }
   // ────────────────────────────────────────
   //  PUBLIC: LOGIN
   // ────────────────────────────────────────

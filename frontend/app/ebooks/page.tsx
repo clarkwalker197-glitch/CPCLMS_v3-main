@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import api from '@/lib/api';
 import Sidebar from '@/components/Sidebar';
@@ -15,7 +14,6 @@ import {
   BookOpen,
   ChevronLeft,
   ChevronRight,
-  Download,
   FileText,
   ImageIcon,
   Pencil,
@@ -31,7 +29,6 @@ const formatBadge: Record<string, string> = {
 };
 
 export default function EBooksPage() {
-  const router = useRouter();
   const { user } = useAuth();
   const [ebooks, setEbooks] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
@@ -309,16 +306,10 @@ export default function EBooksPage() {
                       ) : (
                         <>
                           <button
-                            onClick={() => router.push(`/ebooks/reader/${ebook.id}`)}
+                            onClick={() => window.open(ebook.fileUrl, '_blank')}
                             className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors shadow-lg shadow-blue-600/20"
                           >
-                            <BookOpen className="w-4 h-4" /> Read
-                          </button>
-                          <button
-                            onClick={() => window.open(ebook.fileUrl, '_blank')}
-                            className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm font-medium rounded-lg transition-colors"
-                          >
-                            <Download className="w-4 h-4" /> Download
+                            <BookOpen className="w-4 h-4" /> View
                           </button>
                         </>
                       )}
@@ -414,16 +405,10 @@ export default function EBooksPage() {
                           ) : (
                             <div className="inline-flex items-center gap-1.5">
                               <button
-                                onClick={() => router.push(`/ebooks/reader/${ebook.id}`)}
+                                onClick={() => window.open(ebook.fileUrl, '_blank')}
                                 className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors"
                               >
-                                <BookOpen className="w-3.5 h-3.5" /> Read
-                              </button>
-                              <button
-                                onClick={() => window.open(ebook.fileUrl, '_blank')}
-                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium rounded-lg transition-colors"
-                              >
-                                <Download className="w-3.5 h-3.5" /> Download
+                                <BookOpen className="w-3.5 h-3.5" /> View
                               </button>
                             </div>
                           )}

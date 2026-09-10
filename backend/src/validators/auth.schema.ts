@@ -52,6 +52,15 @@ email: z
     department: z.string().optional(),
     yearSection: z.string().optional(),
     phone: z.string().optional(),
+  }).superRefine((data, ctx) => {
+    const role = data.role ?? 'STUDENT';
+    if (role === 'STUDENT' && !data.yearSection?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['yearSection'],
+        message: 'Year & Section is required for Student accounts',
+      });
+    }
   }),
 });
 
@@ -101,6 +110,32 @@ export const changePasswordSchema = z.object({
 export const refreshTokenSchema = z.object({
   body: z.object({
     refreshToken: z.string().min(1, 'Refresh token is required'),
+  }),
+});
+
+export const forgotPasswordSchema = z.object({
+  body: z.object({
+    identifier: z.string().min(1, 'ID Number or email is required').trim(),
+  }),
+});
+
+export const resetPasswordSchema = z.object({
+  body: z.object({
+    token: z.string().min(1, 'Reset token is required'),
+    newPassword: z.string().min(8, 'Password must be at least 8 characters').max(128),
+  }),
+});
+
+export const verifyPasswordResetSchema = z.object({
+  body: z.object({
+    identifier: z.string().min(1, 'Email is required').trim(),
+    code: z.string().regex(/^\d{6}$/, 'Verification code must be 6 digits'),
+  }),
+});
+
+export const googleLoginSchema = z.object({
+  body: z.object({
+    credential: z.string().min(1, 'Google credential is required'),
   }),
 });
 

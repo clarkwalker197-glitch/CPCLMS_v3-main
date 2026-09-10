@@ -7,6 +7,7 @@ import NotificationBell from "@/components/NotificationBell";
 import Sidebar from "@/components/Sidebar";
 import ResponsiveTable from "@/components/ResponsiveTable";
 import { StatCard } from "@/components/StatCard";
+import BorrowHistoryCard from "@/components/BorrowHistoryCard";
 import api from "@/lib/api";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -210,11 +211,7 @@ const formatDate = (d?: string) =>
                   recentTransactions.length === 0 ? (
                     <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 px-4 py-10 text-center text-zinc-500">No recent transactions</div>
                   ) : recentTransactions.map((tx: any) => (
-                    <article key={tx.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-lg shadow-black/10">
-                      <div className="border-b border-zinc-800/80 pb-3"><p className="font-semibold text-zinc-100 break-words">{tx.book?.title || "Unknown Book"}</p><p className="mt-1 text-sm text-zinc-500 break-words">{tx.book?.author || ""}</p></div>
-                      <div className="grid grid-cols-2 gap-3 py-4 text-sm"><div><p className="text-xs text-zinc-500">Borrow Date</p><p className="mt-1 text-zinc-300">{formatDate(tx.borrowDate)}</p></div><div><p className="text-xs text-zinc-500">Due Date</p><p className="mt-1 text-zinc-300">{formatDate(tx.dueDate)}</p></div></div>
-                      <div className="border-t border-zinc-800/80 pt-3"><span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${statusBadge[tx.status] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>{tx.status}</span></div>
-                    </article>
+                    <BorrowHistoryCard key={tx.id} transaction={tx} formatDate={formatDate} statusBadge={statusBadge} statusLabel={{}} />
                   ))
                 } />
               </div>

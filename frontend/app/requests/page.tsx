@@ -6,6 +6,7 @@ import api from "@/lib/api";
 import { useDebounce } from "@/lib/useDebounce";
 import Sidebar from "@/components/Sidebar";
 import ResponsiveTable from "@/components/ResponsiveTable";
+import BorrowHistoryCard from "@/components/BorrowHistoryCard";
 import { QRApprovalModal } from "@/components/QRApprovalModal";
 import { QRScanner } from "@/components/QRScanner";
 import {
@@ -453,25 +454,11 @@ export default function RequestsPage() {
                               </table>
                             </div>
                           </div>
-                          <div className="space-y-4 sm:hidden">
+                          <div className="space-y-0 pb-24 sm:hidden">
                             {txns.map((txn: any) => (
-                              <article key={txn.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-lg shadow-black/10">
-                                <div className="border-b border-zinc-800/80 pb-3">
-                                  <p className="font-semibold text-zinc-100 break-words">{txn.book?.title || "Unknown"}</p>
-                                  <p className="mt-1 text-sm text-zinc-500 break-words">{txn.book?.author || "Unknown author"}</p>
-                                  <p className="mt-2 text-xs text-zinc-500">Accession: <span className="text-zinc-300">{txn.book?.accessionNo || "—"}</span></p>
-                                </div>
-                                <div className="grid grid-cols-2 gap-x-4 gap-y-3 py-4 text-sm">
-                                  <div><p className="text-xs text-zinc-500">Borrow Date</p><p className="mt-1 text-zinc-300">{formatDate(txn.borrowDate)}</p></div>
-                                  <div><p className="text-xs text-zinc-500">Due Date</p><p className="mt-1 text-zinc-300">{formatDate(txn.dueDate)}</p></div>
-                                  <div><p className="text-xs text-zinc-500">Return Date</p><p className="mt-1 text-zinc-300">{formatDate(txn.returnDate)}</p></div>
-                                  <div><p className="text-xs text-zinc-500">Fine</p><p className={`mt-1 font-medium ${txn.fineAmount > 0 ? "text-amber-400" : "text-zinc-500"}`}>{txn.fineAmount ? `₱${txn.fineAmount.toFixed(2)}` : "—"}</p></div>
-                                </div>
-                                <div className="flex items-center justify-between gap-3 border-t border-zinc-800/80 pt-3">
-                                  <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">Status</span>
-                                  <span className={`inline-flex max-w-full items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${txnStatusBadge[txn.status] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>{txnStatusLabel[txn.status] || txn.status}</span>
-                                </div>
-                              </article>
+                              <div key={txn.id} className="mb-4 last:mb-0">
+                                <BorrowHistoryCard transaction={txn} formatDate={formatDate} statusBadge={txnStatusBadge} statusLabel={txnStatusLabel} />
+                              </div>
                             ))}
                           </div>
                           </>

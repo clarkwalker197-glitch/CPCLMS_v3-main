@@ -74,7 +74,7 @@ const [editing, setEditing] = useState(false);
         <Sidebar />
 
         <div className="flex-1 min-w-0">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-28 lg:pb-8">
             {/* Page Header */}
             <div className="mb-6">
               <h1 className="text-2xl font-bold text-white">My Profile</h1>

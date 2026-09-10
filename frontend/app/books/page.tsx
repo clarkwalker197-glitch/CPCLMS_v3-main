@@ -41,6 +41,7 @@ export default function BooksPage() {
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
+  const [typeFilter, setTypeFilter] = useState<"" | "physical" | "ebook">("");
   const [view, setView] = useState<"grid" | "list">("grid");
   const [currentPage, setCurrentPage] = useState(1);
   const [cart, setCart] = useState<any[]>([]);
@@ -64,12 +65,15 @@ export default function BooksPage() {
       const params: Record<string, string> = {};
       if (debouncedSearch) params.search = debouncedSearch;
       if (debouncedCategory) params.categoryId = debouncedCategory;
-      const [booksRes, catsRes] = await Promise.all([
+      const [booksRes, ebooksRes, catsRes] = await Promise.all([
         api.getBooks(params),
+        api.getEBooks(params),
         api.getCategories(),
       ]);
-      if (booksRes.success) {
-        setBooks(booksRes.data || []);
+      if (booksRes.success || ebooksRes.success) {
+        const physicalBooks = (booksRes.data || []).map((book: any) => ({ ...book, bookType: "physical" }));
+        const ebooks = (ebooksRes.data || []).map((book: any) => ({ ...book, bookType: "ebook" }));
+        setBooks([...physicalBooks, ...ebooks]);
       } else if (booksRes.rateLimited) {
         setError("You're moving too fast. Please wait a moment and try again.");
       }
@@ -81,13 +85,15 @@ export default function BooksPage() {
     }
   }, [debouncedSearch, debouncedCategory]);
 
+  const visibleBooks = books.filter((book) => !typeFilter || book.bookType === typeFilter);
+
   useEffect(() => {
     loadData();
   }, [loadData]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearch, debouncedCategory, books.length]);
+  }, [debouncedSearch, debouncedCategory, typeFilter, visibleBooks.length]);
 
   const inCart = (id: string) => cart.some((b) => b.id === id);
 
@@ -194,8 +200,8 @@ export default function BooksPage() {
     setTimeout(() => setSuccessMsg(""), 4000);
   };
 
-  const totalPages = Math.max(1, Math.ceil(books.length / PAGE_SIZE));
-  const paginatedBooks = books.slice(
+  const totalPages = Math.max(1, Math.ceil(visibleBooks.length / PAGE_SIZE));
+  const paginatedBooks = visibleBooks.slice(
     (currentPage - 1) * PAGE_SIZE,
     currentPage * PAGE_SIZE
   );
@@ -211,6 +217,17 @@ export default function BooksPage() {
       <BookOpen className="w-8 h-8 text-blue-300/70" />
     </div>
   );
+
+  const hasActiveFilters = Boolean(search.trim() || categoryFilter || typeFilter);
+  const clearFilters = () => {
+    setSearch("");
+    setCategoryFilter("");
+    setTypeFilter("");
+  };
+  const typeBadge = (book: any) => book.bookType === "ebook"
+    ? "bg-violet-500/15 text-violet-300"
+    : "bg-cyan-500/15 text-cyan-300";
+  const typeLabel = (book: any) => book.bookType === "ebook" ? "eBook" : "Physical";
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex">
@@ -249,7 +266,7 @@ export default function BooksPage() {
 
         {/* Toolbar */}
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 mb-6">
-          <div className="flex flex-col sm:flex-row gap-3">
+          <div className="flex flex-col lg:flex-row gap-3">
             <div className="flex-1 relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <Search className="w-5 h-5 text-zinc-500" />
@@ -272,23 +289,35 @@ export default function BooksPage() {
                 <option key={cat.id} value={cat.id} className="bg-zinc-900 text-white">{cat.name}</option>
               ))}
             </select>
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value as "" | "physical" | "ebook")}
+              className="px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition appearance-none"
+              aria-label="Filter by book type"
+            >
+              <option value="" className="bg-zinc-900 text-white">All Types</option>
+              <option value="physical" className="bg-zinc-900 text-white">Physical Books</option>
+              <option value="ebook" className="bg-zinc-900 text-white">eBooks</option>
+            </select>
             <div className="flex gap-1 p-1 bg-zinc-950 border border-zinc-700 rounded-xl">
               <button
                 onClick={() => setView("grid")}
-                className={`p-2 rounded-lg transition-colors ${view === "grid" ? "bg-blue-600 text-white" : "text-zinc-400 hover:text-white"}`}
+                className={`p-2 rounded-lg border transition-colors ${view === "grid" ? "border-blue-400/50 bg-blue-600 text-white shadow-md shadow-blue-600/20" : "border-transparent text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}
                 aria-label="Grid view"
+                aria-pressed={view === "grid"}
               >
                 <LayoutGrid className="w-5 h-5" />
               </button>
               <button
                 onClick={() => setView("list")}
-                className={`p-2 rounded-lg transition-colors ${view === "list" ? "bg-blue-600 text-white" : "text-zinc-400 hover:text-white"}`}
+                className={`p-2 rounded-lg border transition-colors ${view === "list" ? "border-blue-400/50 bg-blue-600 text-white shadow-md shadow-blue-600/20" : "border-transparent text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}
                 aria-label="List view"
+                aria-pressed={view === "list"}
               >
                 <List className="w-5 h-5" />
               </button>
               <span className="self-center text-xs text-zinc-500 px-2 hidden sm:block">
-                {books.length} books
+                {visibleBooks.length} books
               </span>
             </div>
           </div>
@@ -296,26 +325,27 @@ export default function BooksPage() {
 
         {/* Loading */}
         {loading && (
-          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="h-72 rounded-2xl bg-zinc-900 animate-pulse" />
+          <div className={view === "grid" ? "grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" : "space-y-3"}>
+            {Array.from({ length: view === "grid" ? 8 : 5 }).map((_, i) => (
+              <div key={i} className={view === "grid" ? "h-72 rounded-2xl border border-zinc-800 bg-zinc-900/70 animate-pulse" : "h-20 rounded-xl border border-zinc-800 bg-zinc-900/70 animate-pulse"} />
             ))}
           </div>
         )}
 
         {/* Empty state */}
-        {!loading && books.length === 0 && (
+        {!loading && visibleBooks.length === 0 && (
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 flex flex-col items-center justify-center py-20 text-center">
             <BookOpen className="w-12 h-12 text-zinc-600 mb-4" />
-            <p className="text-zinc-300 font-medium">No books found</p>
+            <p className="text-zinc-300 font-medium">{hasActiveFilters ? "No books match your filters" : "No books found"}</p>
             <p className="text-sm text-zinc-500 mt-1">
-              {search || categoryFilter ? "Try adjusting your search or filters" : "Add a book to get started"}
+              {hasActiveFilters ? "Try adjusting your search, category, or type." : "Add a book to get started"}
             </p>
+            {hasActiveFilters && <button onClick={clearFilters} className="mt-5 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 transition-colors hover:bg-blue-700">Clear filters</button>}
           </div>
         )}
 
         {/* GRID VIEW */}
-        {!loading && view === "grid" && books.length > 0 && (
+        {!loading && view === "grid" && visibleBooks.length > 0 && (
           <>
             <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {paginatedBooks.map((book: any) => (
@@ -338,6 +368,7 @@ export default function BooksPage() {
                     <h3 className="font-semibold text-white line-clamp-2 leading-snug">{book.title}</h3>
                     <p className="text-sm text-zinc-400 mt-1">{book.author}</p>
                     <div className="flex items-center gap-2 mt-3 flex-wrap">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${typeBadge(book)}`}>{typeLabel(book)}</span>
                       {book.category ? (
                         <span className="text-xs bg-blue-500/15 text-blue-300 px-2 py-0.5 rounded-full">{book.category.name}</span>
                       ) : (
@@ -356,10 +387,7 @@ export default function BooksPage() {
                         </span>
                       )}
                     </div>
-                    <div className="mt-3 text-xs text-zinc-400">
-                      <span className="text-emerald-400 font-medium">{book.availableCopies ?? 0}</span>
-                      <span className="text-zinc-500"> / {book.copies ?? 0} available</span>
-                    </div>
+                    {book.bookType === "physical" ? <div className="mt-3 text-xs text-zinc-400"><span className="text-emerald-400 font-medium">{book.availableCopies ?? 0}</span><span className="text-zinc-500"> / {book.copies ?? 0} available</span></div> : <div className="mt-3 text-xs text-violet-300">Digital reader available</div>}
                     <div className="flex gap-2 mt-4">
                       {isLibrarian ? (
                         <>
@@ -408,7 +436,7 @@ export default function BooksPage() {
         )}
 
         {/* LIST VIEW */}
-        {!loading && view === "list" && books.length > 0 && (
+        {!loading && view === "list" && visibleBooks.length > 0 && (
           <>
             <div className="hidden sm:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
               <table className="w-full text-sm">
@@ -437,7 +465,7 @@ export default function BooksPage() {
                             )}
                           </div>
                           <div className="min-w-0">
-                            <p className="text-zinc-100 font-medium truncate">{book.title}</p>
+                            <div className="flex items-center gap-2"><p className="text-zinc-100 font-medium truncate">{book.title}</p><span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${typeBadge(book)}`}>{typeLabel(book)}</span></div>
                             <p className="text-xs text-zinc-500">{book.author}</p>
                           </div>
                         </div>
@@ -457,6 +485,7 @@ export default function BooksPage() {
                           }`}>
                             {(book.availableCopies ?? 0)}/{book.copies ?? 0} available
                           </span>
+                          {book.bookType === "ebook" && <span className={`rounded-full px-2.5 py-1 text-xs font-medium w-fit ${typeBadge(book)}`}>Digital reader</span>}
                           {isLibrarian && (
                             <span className={`text-xs px-2 py-0.5 rounded-full font-medium w-fit ${
                               book.status === 'AVAILABLE'
@@ -517,7 +546,7 @@ export default function BooksPage() {
                     <div className="h-14 w-11 shrink-0 overflow-hidden rounded-lg bg-zinc-800">{book.coverImage ? <img src={book.coverImage} alt={book.title} className="h-full w-full object-cover" /> : <ImageIcon className="m-3 h-5 w-5 text-zinc-600" />}</div>
                     <div className="min-w-0"><p className="font-semibold text-zinc-100 break-words">{book.title}</p><p className="mt-1 text-sm text-zinc-500 break-words">{book.author}</p></div>
                   </div>
-                  <div className="grid grid-cols-2 gap-3 py-4 text-sm"><div><p className="text-xs text-zinc-500">Genre</p><p className="mt-1 text-zinc-300">{book.category?.name || "General"}</p></div><div><p className="text-xs text-zinc-500">Year</p><p className="mt-1 text-zinc-300">{book.publishYear || "—"}</p></div><div><p className="text-xs text-zinc-500">Copies</p><p className="mt-1 text-zinc-300">{book.availableCopies ?? 0}/{book.copies ?? 0} available</p></div></div>
+                  <div className="grid grid-cols-2 gap-3 py-4 text-sm"><div><p className="text-xs text-zinc-500">Type</p><span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${typeBadge(book)}`}>{typeLabel(book)}</span></div><div><p className="text-xs text-zinc-500">Genre</p><p className="mt-1 text-zinc-300">{book.category?.name || "General"}</p></div><div><p className="text-xs text-zinc-500">Year</p><p className="mt-1 text-zinc-300">{book.publishYear || "—"}</p></div><div><p className="text-xs text-zinc-500">{book.bookType === "ebook" ? "Access" : "Copies"}</p><p className="mt-1 text-zinc-300">{book.bookType === "ebook" ? "Digital reader" : `${book.availableCopies ?? 0}/${book.copies ?? 0} available`}</p></div></div>
                   <div className="flex items-center justify-between gap-3 border-t border-zinc-800/80 pt-3"><span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${(book.availableCopies ?? 0) > 0 ? "bg-emerald-500/15 text-emerald-400 ring-emerald-500/30" : "bg-red-500/15 text-red-400 ring-red-500/30"}`}>{(book.availableCopies ?? 0) > 0 ? "Available" : "Unavailable"}</span>{isLibrarian ? <div className="flex gap-2"><button onClick={() => handleEdit(book)} className="rounded-lg bg-zinc-800 px-3 py-2 text-xs text-zinc-200">Edit</button><button onClick={() => handleToggleAvailability(book)} className="rounded-lg bg-orange-500/10 px-3 py-2 text-xs text-orange-400">Toggle</button></div> : <button onClick={() => handleAddToCart(book)} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white">{inCart(book.id) ? "Remove" : "Add to Cart"}</button>}</div>
                 </article>
               ))
@@ -526,15 +555,15 @@ export default function BooksPage() {
         )}
 
         {/* Pagination */}
-        {!loading && books.length > 0 && (
+        {!loading && visibleBooks.length > 0 && (
           <div className="flex items-center justify-between mt-6">
             <p className="text-sm text-zinc-500">
               Showing{" "}
               <span className="text-zinc-300">
                 {(currentPage - 1) * PAGE_SIZE + 1}–
-                {Math.min(currentPage * PAGE_SIZE, books.length)}
+                {Math.min(currentPage * PAGE_SIZE, visibleBooks.length)}
               </span>{" "}
-              of <span className="text-zinc-300">{books.length}</span> books
+              of <span className="text-zinc-300">{visibleBooks.length}</span> books
             </p>
             <div className="flex items-center gap-1">
               <button

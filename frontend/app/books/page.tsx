@@ -9,6 +9,7 @@ import { BookBorrowModal } from "@/components/BookBorrowModal";
 import { AddBookModal } from "@/components/AddBookModal";
 import { EditBookModal } from "@/components/EditBookModal";
 import Sidebar from "@/components/Sidebar";
+import ResponsiveTable from "@/components/ResponsiveTable";
 import {
   Plus,
   Search,
@@ -215,7 +216,7 @@ export default function BooksPage() {
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex">
       <Sidebar />
 <div className="flex-1 min-w-0">
-      <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 ${!isLibrarian && cart.length > 0 ? "pb-44" : ""}`}>
+      <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-28 lg:pb-8 ${!isLibrarian && cart.length > 0 ? "lg:pb-44" : ""}`}>
         {successMsg && (
           <div className="p-4 mb-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-sm text-emerald-400">
             {successMsg}
@@ -295,7 +296,7 @@ export default function BooksPage() {
 
         {/* Loading */}
         {loading && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="h-72 rounded-2xl bg-zinc-900 animate-pulse" />
             ))}
@@ -316,7 +317,7 @@ export default function BooksPage() {
         {/* GRID VIEW */}
         {!loading && view === "grid" && books.length > 0 && (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {paginatedBooks.map((book: any) => (
                 <div key={book.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden hover:border-zinc-700 transition-colors">
                   {/* Cover */}
@@ -409,7 +410,7 @@ export default function BooksPage() {
         {/* LIST VIEW */}
         {!loading && view === "list" && books.length > 0 && (
           <>
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
+            <div className="hidden sm:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-zinc-900 text-left text-xs uppercase tracking-wide text-zinc-500">
@@ -509,6 +510,18 @@ export default function BooksPage() {
                 </tbody>
               </table>
             </div>
+            <ResponsiveTable mobile={
+              paginatedBooks.map((book: any) => (
+                <article key={book.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-lg shadow-black/10">
+                  <div className="flex items-start gap-3 border-b border-zinc-800/80 pb-3">
+                    <div className="h-14 w-11 shrink-0 overflow-hidden rounded-lg bg-zinc-800">{book.coverImage ? <img src={book.coverImage} alt={book.title} className="h-full w-full object-cover" /> : <ImageIcon className="m-3 h-5 w-5 text-zinc-600" />}</div>
+                    <div className="min-w-0"><p className="font-semibold text-zinc-100 break-words">{book.title}</p><p className="mt-1 text-sm text-zinc-500 break-words">{book.author}</p></div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 py-4 text-sm"><div><p className="text-xs text-zinc-500">Genre</p><p className="mt-1 text-zinc-300">{book.category?.name || "General"}</p></div><div><p className="text-xs text-zinc-500">Year</p><p className="mt-1 text-zinc-300">{book.publishYear || "—"}</p></div><div><p className="text-xs text-zinc-500">Copies</p><p className="mt-1 text-zinc-300">{book.availableCopies ?? 0}/{book.copies ?? 0} available</p></div></div>
+                  <div className="flex items-center justify-between gap-3 border-t border-zinc-800/80 pt-3"><span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${(book.availableCopies ?? 0) > 0 ? "bg-emerald-500/15 text-emerald-400 ring-emerald-500/30" : "bg-red-500/15 text-red-400 ring-red-500/30"}`}>{(book.availableCopies ?? 0) > 0 ? "Available" : "Unavailable"}</span>{isLibrarian ? <div className="flex gap-2"><button onClick={() => handleEdit(book)} className="rounded-lg bg-zinc-800 px-3 py-2 text-xs text-zinc-200">Edit</button><button onClick={() => handleToggleAvailability(book)} className="rounded-lg bg-orange-500/10 px-3 py-2 text-xs text-orange-400">Toggle</button></div> : <button onClick={() => handleAddToCart(book)} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white">{inCart(book.id) ? "Remove" : "Add to Cart"}</button>}</div>
+                </article>
+              ))
+            } />
           </>
         )}
 

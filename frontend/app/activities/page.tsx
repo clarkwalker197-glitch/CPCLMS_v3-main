@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
 import api from "@/lib/api";
 import Sidebar from "@/components/Sidebar";
+import ResponsiveTable from "@/components/ResponsiveTable";
 import {
   Search,
   ScrollText,
@@ -127,7 +128,7 @@ export default function ActivitiesPage() {
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex">
       <Sidebar />
       <div className="flex-1 min-w-0">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-28 lg:pb-8">
           {error && (
             <div className="p-4 mb-4 bg-red-500/10 border border-red-500/30 rounded-xl text-sm text-red-400">
               {error}
@@ -222,7 +223,7 @@ export default function ActivitiesPage() {
 
           {/* Loading */}
           {loading && (
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
+            <div className="hidden sm:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
               {Array.from({ length: 10 }).map((_, i) => (
                 <div key={i} className="h-16 bg-zinc-900 animate-pulse border-b border-zinc-800/40" />
               ))}
@@ -244,6 +245,7 @@ export default function ActivitiesPage() {
 
           {/* Table */}
           {!loading && activities.length > 0 && (
+            <>
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -289,6 +291,26 @@ export default function ActivitiesPage() {
                 </table>
               </div>
             </div>
+            <ResponsiveTable mobile={
+              activities.map((log: any) => (
+                <article key={log.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-lg shadow-black/10">
+                  <div className="border-b border-zinc-800/80 pb-3">
+                    <p className="font-semibold text-zinc-100 break-words">{log.user?.firstName} {log.user?.lastName || "System"}</p>
+                    <p className="mt-1 text-xs text-zinc-500">{log.user?.libraryId || "—"}</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 py-4 text-sm">
+                    <div><p className="text-xs text-zinc-500">Timestamp</p><p className="mt-1 text-zinc-300">{formatTimestamp(log.createdAt)}</p></div>
+                    <div><p className="text-xs text-zinc-500">IP Address</p><p className="mt-1 break-words font-mono text-xs text-zinc-300">{log.ipAddress || "—"}</p></div>
+                    <div><p className="text-xs text-zinc-500">Details</p><p className="mt-1 break-words text-zinc-300">{formatDetails(log.details)}</p></div>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 border-t border-zinc-800/80 pt-3">
+                    <span className={`inline-flex max-w-[70%] items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${actionBadge[log.action] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>{formatAction(log.action)}</span>
+                    <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-400 ring-1 ring-emerald-500/30">Success</span>
+                  </div>
+                </article>
+              ))
+            } />
+            </>
           )}
 
           {/* Pagination */}

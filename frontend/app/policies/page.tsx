@@ -154,7 +154,7 @@ export default function PoliciesPage() {
       <Sidebar />
 
       <div className="flex-1 overflow-auto">
-        <div className="max-w-6xl mx-auto p-6 lg:p-8">
+        <div className="max-w-6xl mx-auto p-6 pb-28 lg:p-8 lg:pb-8">
           {/* Success Message */}
           {successMsg && (
             <div className="mb-6 p-4 bg-emerald-500/15 border border-emerald-500/30 rounded-lg text-emerald-400 flex items-center gap-2">

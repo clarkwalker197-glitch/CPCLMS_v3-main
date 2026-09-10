@@ -5,14 +5,14 @@ import { useAuth } from "@/lib/auth-context";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import NotificationBell from "@/components/NotificationBell";
 import Sidebar from "@/components/Sidebar";
+import ResponsiveTable from "@/components/ResponsiveTable";
+import { StatCard } from "@/components/StatCard";
 import api from "@/lib/api";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Users,
   Search,
-  TrendingUp,
-  TrendingDown,
   Library,
   BookMarked,
   Clock,
@@ -48,25 +48,6 @@ const statusBadge: Record<string, string> = {
   REJECTED: "bg-red-500/15 text-red-400 ring-red-500/30",
   CANCELLED: "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30",
 };
-
-function StatCard({ title, value, icon: Icon, trend, trendUp, accent }: any) {
-  return (
-    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 backdrop-blur">
-      <div className="flex items-start justify-between">
-        <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${accent}`}>
-          <Icon className="w-5 h-5" />
-        </div>
-        <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full ${trendUp ? "bg-emerald-500/15 text-emerald-400" : "bg-red-500/15 text-red-400"
-          }`}>
-          {trendUp ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-          {trend}
-        </span>
-      </div>
-      <p className="mt-4 text-3xl font-bold text-white">{value}</p>
-      <p className="mt-1 text-sm text-zinc-400">{title}</p>
-    </div>
-  );
-}
 
 export default function DashboardPage() {
   const { user, logout } = useAuth();
@@ -130,7 +111,7 @@ export default function DashboardPage() {
 
         {/* ── Main Content ────────────────────────── */}
         <div className="flex-1 min-w-0">
-          <div className="max-w-7xl mx-auto px-6 lg:px-8 py-8">
+          <div className="max-w-7xl mx-auto px-6 lg:px-8 py-8 pb-28 lg:pb-8">
             {/* Header */}
             <div className="flex items-center justify-between gap-4 mb-8">
               <div>
@@ -199,7 +180,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Stats */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
+            <div className="grid grid-cols-2 gap-4 mb-8 sm:grid-cols-2 xl:grid-cols-4">
               {loading
                 ? Array.from({ length: 4 }).map((_, i) => (
                   <div key={i} className="h-32 rounded-2xl bg-zinc-900 animate-pulse" />
@@ -270,7 +251,7 @@ export default function DashboardPage() {
                   View all
                 </Link>
               </div>
-              <div className="overflow-x-auto">
+              <div className="hidden sm:block overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-zinc-900 text-left text-xs uppercase tracking-wide text-zinc-500">
@@ -311,6 +292,17 @@ export default function DashboardPage() {
                   </tbody>
                 </table>
               </div>
+              <ResponsiveTable mobile={
+                recentTransactions.length === 0 ? (
+                  <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 px-4 py-10 text-center text-zinc-500">No recent activity</div>
+                ) : recentTransactions.map((tx: any) => (
+                  <article key={tx.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-lg shadow-black/10">
+                    <div className="border-b border-zinc-800/80 pb-3"><p className="font-semibold text-zinc-100 break-words">{tx.book?.title || "Unknown Book"}</p><p className="mt-1 text-sm text-zinc-500 break-words">{tx.book?.author || ""}</p></div>
+                    <div className="grid grid-cols-2 gap-3 py-4 text-sm"><div><p className="text-xs text-zinc-500">Member</p><p className="mt-1 break-words text-zinc-300">{tx.user?.firstName} {tx.user?.lastName}</p></div><div><p className="text-xs text-zinc-500">Borrow Date</p><p className="mt-1 text-zinc-300">{formatDate(tx.borrowDate)}</p></div><div><p className="text-xs text-zinc-500">Due Date</p><p className="mt-1 text-zinc-300">{formatDate(tx.dueDate)}</p></div></div>
+                    <div className="border-t border-zinc-800/80 pt-3"><span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${statusBadge[tx.status] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>{tx.status}</span></div>
+                  </article>
+                ))
+              } />
             </div>
           </div>
         </div>

@@ -5,6 +5,8 @@ import { useAuth } from "@/lib/auth-context";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import NotificationBell from "@/components/NotificationBell";
 import Sidebar from "@/components/Sidebar";
+import ResponsiveTable from "@/components/ResponsiveTable";
+import { StatCard } from "@/components/StatCard";
 import api from "@/lib/api";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -26,20 +28,6 @@ const statusBadge: Record<string, string> = {
   REJECTED: "bg-red-500/15 text-red-400 ring-red-500/30",
   CANCELLED: "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30",
 };
-
-function StatCard({ title, value, icon: Icon, accent }: any) {
-  return (
-    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 backdrop-blur">
-      <div className="flex items-start justify-between">
-        <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${accent}`}>
-          <Icon className="w-5 h-5" />
-        </div>
-      </div>
-      <p className="mt-4 text-3xl font-bold text-white">{value}</p>
-      <p className="mt-1 text-sm text-zinc-400">{title}</p>
-    </div>
-  );
-}
 
 export default function StudentDashboardPage() {
   const { user, logout } = useAuth();
@@ -85,7 +73,7 @@ const formatDate = (d?: string) =>
         <Sidebar />
 
         <div className="flex-1 min-w-0">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-28 lg:pb-8">
             {/* Header */}
             <div className="flex items-center justify-between gap-4 mb-8">
               <div>
@@ -158,7 +146,7 @@ const formatDate = (d?: string) =>
             </div>
 
             {/* Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <div className="grid grid-cols-2 gap-4 mb-8 md:grid-cols-3">
               {loading
                 ? Array.from({ length: 3 }).map((_, i) => (
                     <div key={i} className="h-32 rounded-2xl bg-zinc-900 animate-pulse" />
@@ -181,7 +169,7 @@ const formatDate = (d?: string) =>
                     View all
                   </Link>
                 </div>
-                <div className="overflow-x-auto">
+                <div className="hidden sm:block overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="bg-zinc-900 text-left text-xs uppercase tracking-wide text-zinc-500">
@@ -218,6 +206,17 @@ const formatDate = (d?: string) =>
                     </tbody>
                   </table>
                 </div>
+                <ResponsiveTable mobile={
+                  recentTransactions.length === 0 ? (
+                    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 px-4 py-10 text-center text-zinc-500">No recent transactions</div>
+                  ) : recentTransactions.map((tx: any) => (
+                    <article key={tx.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-lg shadow-black/10">
+                      <div className="border-b border-zinc-800/80 pb-3"><p className="font-semibold text-zinc-100 break-words">{tx.book?.title || "Unknown Book"}</p><p className="mt-1 text-sm text-zinc-500 break-words">{tx.book?.author || ""}</p></div>
+                      <div className="grid grid-cols-2 gap-3 py-4 text-sm"><div><p className="text-xs text-zinc-500">Borrow Date</p><p className="mt-1 text-zinc-300">{formatDate(tx.borrowDate)}</p></div><div><p className="text-xs text-zinc-500">Due Date</p><p className="mt-1 text-zinc-300">{formatDate(tx.dueDate)}</p></div></div>
+                      <div className="border-t border-zinc-800/80 pt-3"><span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${statusBadge[tx.status] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>{tx.status}</span></div>
+                    </article>
+                  ))
+                } />
               </div>
             </div>
           </div>

@@ -14,8 +14,7 @@ import {
   Shield,
   Archive,
   ChevronDown,
-  Menu,
-  X,
+  UserRound,
 } from "lucide-react";
 
 const navItems = [
@@ -38,7 +37,6 @@ const navItems = [
 export default function Sidebar() {
   const pathname = usePathname();
   const { user } = useAuth();
-  const [mobileOpen, setMobileOpen] = useState(false);
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>(() => {
     // Auto-open parent if a child route is active on first render
     const booksActive =
@@ -58,9 +56,7 @@ export default function Sidebar() {
     return !["Members", "Activity Logs", "Archive"].includes(item.label);
   });
 
-  const closeMobile = () => setMobileOpen(false);
-
-  const renderNav = (mobile = false) => (
+  const renderNav = () => (
     <nav className="flex-1 px-4 py-6 space-y-1.5 overflow-y-auto">
       {visibleNavItems.map((item) => {
         const Icon = item.icon;
@@ -88,7 +84,7 @@ export default function Sidebar() {
                     const ChildIcon = child.icon;
                     const isChildActive = pathname === child.href || pathname.startsWith(child.href + "/");
                     return (
-                      <Link key={child.label} href={child.href} onClick={mobile ? closeMobile : undefined} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${isChildActive ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}>
+                      <Link key={child.label} href={child.href} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${isChildActive ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}>
                         <ChildIcon className="w-4 h-4" />
                         {child.label}
                       </Link>
@@ -102,7 +98,7 @@ export default function Sidebar() {
 
         const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
         return (
-          <Link key={item.label} href={item.href} onClick={mobile ? closeMobile : undefined} className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors ${isActive ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}>
+          <Link key={item.label} href={item.href} className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors ${isActive ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}>
             <Icon className="w-5 h-5" />
             {item.label}
           </Link>
@@ -113,36 +109,6 @@ export default function Sidebar() {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setMobileOpen(true)}
-        className="fixed left-4 top-4 z-40 inline-flex h-11 w-11 items-center justify-center rounded-xl border border-zinc-700 bg-zinc-900/95 text-zinc-200 shadow-lg shadow-black/30 hover:bg-zinc-800 lg:hidden"
-        aria-label="Open navigation menu"
-      >
-        <Menu className="h-5 w-5" />
-      </button>
-
-      {mobileOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          <button type="button" className="absolute inset-0 bg-black/70" onClick={closeMobile} aria-label="Close navigation menu" />
-          <aside className="relative flex h-full w-72 max-w-[85vw] flex-col border-r border-zinc-800 bg-zinc-900 shadow-2xl shadow-black/50">
-            <div className="flex items-center justify-between gap-3 px-5 py-5 border-b border-zinc-800">
-              <div className="flex items-center gap-3">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/CPClogo.png" alt="Cordova Public College Logo" className="w-10 h-10 object-contain" />
-                <div>
-                  <p className="font-bold text-sm text-white leading-tight">Cordova Public College</p>
-                  <p className="text-xs text-blue-300">Library Management System</p>
-                </div>
-              </div>
-              <button type="button" onClick={closeMobile} className="p-2 rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-white" aria-label="Close navigation menu"><X className="w-5 h-5" /></button>
-            </div>
-            {renderNav(true)}
-            <div className="px-6 py-5 border-t border-zinc-800"><p className="text-xs text-zinc-500">© 2026 Cordova Public College</p><p className="text-xs text-zinc-600 mt-1">All rights reserved.</p></div>
-          </aside>
-        </div>
-      )}
-
       <aside className="hidden lg:flex w-64 shrink-0 flex-col border-r border-zinc-800 bg-zinc-900/60 sticky top-0 h-screen">
       {/* Logo */}
       <div className="flex items-center gap-3 px-6 py-6 border-b border-zinc-800">
@@ -162,6 +128,25 @@ export default function Sidebar() {
         <p className="text-xs text-zinc-600 mt-1">All rights reserved.</p>
       </div>
       </aside>
+
+      <nav className="fixed inset-x-3 bottom-3 z-40 grid grid-cols-5 rounded-2xl border border-zinc-800 bg-zinc-900/95 p-2 shadow-2xl shadow-black/50 backdrop-blur lg:hidden" aria-label="Mobile navigation">
+        {[
+          { href: user?.role === "LIBRARIAN" ? "/dashboard" : "/student/dashboard", label: "Dashboard", icon: LayoutDashboard },
+          { href: "/books", label: "Books", icon: BookOpen },
+          { href: "/requests", label: "Borrow Requests", icon: ClipboardList },
+          { href: "/policies", label: "Policies", icon: Shield },
+          { href: "/profile", label: "Profile", icon: UserRound },
+        ].map((item) => {
+          const Icon = item.icon;
+          const isActive = pathname === item.href || pathname.startsWith(item.href + "/") || (item.label === "Books" && pathname.startsWith("/ebooks"));
+          return (
+            <Link key={item.label} href={item.href} className={`flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-2 text-[10px] font-medium transition-colors ${isActive ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}>
+              <Icon className="h-5 w-5" />
+              <span className="w-full truncate text-center">{item.label}</span>
+            </Link>
+          );
+        })}
+      </nav>
     </>
   );
 }

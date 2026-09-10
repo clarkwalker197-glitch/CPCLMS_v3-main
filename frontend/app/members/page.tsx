@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth-context";
 import api from "@/lib/api";
 import { useDebounce } from "@/lib/useDebounce";
 import Sidebar from "@/components/Sidebar";
+import ResponsiveTable from "@/components/ResponsiveTable";
 import {
   Plus,
   Search,
@@ -125,7 +126,7 @@ const handleDelete = async (member: any) => {
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex">
       <Sidebar />
       <div className="flex-1 min-w-0">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-28 lg:pb-8">
           {successMsg && (
             <div className="p-4 mb-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-sm text-emerald-400">
               {successMsg}
@@ -182,7 +183,7 @@ const handleDelete = async (member: any) => {
 
           {/* Loading */}
           {loading && (
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
+            <div className="hidden sm:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
               {Array.from({ length: 8 }).map((_, i) => (
                 <div key={i} className="h-16 bg-zinc-900 animate-pulse border-b border-zinc-800/40" />
               ))}
@@ -202,6 +203,7 @@ const handleDelete = async (member: any) => {
 
           {/* Table */}
           {!loading && members.length > 0 && (
+            <>
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -273,6 +275,30 @@ const handleDelete = async (member: any) => {
                 </table>
               </div>
             </div>
+            <ResponsiveTable mobile={
+              members.map((m: any) => (
+                <article key={m.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-lg shadow-black/10">
+                  <div className="flex items-center gap-3 border-b border-zinc-800/80 pb-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-500/15 text-xs font-semibold text-blue-300">{m.firstName?.charAt(0)}{m.lastName?.charAt(0)}</div>
+                    <div className="min-w-0"><p className="truncate font-semibold text-zinc-100">{getFullName(m)}</p><p className="text-xs text-zinc-500">{m.libraryId || "—"}</p></div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 py-4 text-sm">
+                    <div><p className="text-xs text-zinc-500">Email</p><p className="mt-1 break-words text-zinc-300">{m.email || "—"}</p></div>
+                    <div><p className="text-xs text-zinc-500">Phone</p><p className="mt-1 break-words text-zinc-300">{formatPhone(m.phone)}</p></div>
+                    <div><p className="text-xs text-zinc-500">Join Date</p><p className="mt-1 text-zinc-300">{formatDate(m.createdAt)}</p></div>
+                    <div><p className="text-xs text-zinc-500">Fines</p><p className={`mt-1 font-medium ${finesMap[m.id] > 0 ? "text-amber-400" : "text-zinc-400"}`}>₱ {(finesMap[m.id] ?? 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</p></div>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 border-t border-zinc-800/80 pt-3">
+                    <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${m.isActive ? "bg-emerald-500/15 text-emerald-400 ring-emerald-500/30" : "bg-red-500/15 text-red-400 ring-red-500/30"}`}>{m.isActive ? "Active" : "Inactive"}</span>
+                    <div className="flex items-center gap-2">
+                      <button className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-800 hover:text-white" aria-label="Edit"><Pencil className="h-4 w-4" /></button>
+                      <button onClick={() => handleDelete(m)} disabled={deletingId !== null} className="rounded-lg p-2 text-zinc-400 hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40" aria-label="Delete"><Trash2 className={`h-4 w-4 ${deletingId === m.id ? "animate-spin" : ""}`} /></button>
+                    </div>
+                  </div>
+                </article>
+              ))
+            } />
+            </>
           )}
 
           {/* Pagination */}

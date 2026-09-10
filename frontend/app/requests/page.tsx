@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth-context";
 import api from "@/lib/api";
 import { useDebounce } from "@/lib/useDebounce";
 import Sidebar from "@/components/Sidebar";
+import ResponsiveTable from "@/components/ResponsiveTable";
 import { QRApprovalModal } from "@/components/QRApprovalModal";
 import { QRScanner } from "@/components/QRScanner";
 import {
@@ -381,7 +382,7 @@ export default function RequestsPage() {
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex">
       <Sidebar />
       <div className="flex-1 min-w-0">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-28 lg:pb-8">
           {successMsg && (
             <div className="p-4 mb-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-sm text-emerald-400">
               {successMsg}
@@ -436,7 +437,8 @@ export default function RequestsPage() {
                           </div>
                         )}
                         {!txnLoading && txns.length > 0 && (
-                          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
+                          <>
+                          <div className="hidden sm:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
                             <div className="overflow-x-auto">
                               <table className="w-full text-sm">
                                 <thead><tr className="bg-zinc-900 text-left text-xs uppercase tracking-wide text-zinc-500">
@@ -451,6 +453,28 @@ export default function RequestsPage() {
                               </table>
                             </div>
                           </div>
+                          <div className="space-y-4 sm:hidden">
+                            {txns.map((txn: any) => (
+                              <article key={txn.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-lg shadow-black/10">
+                                <div className="border-b border-zinc-800/80 pb-3">
+                                  <p className="font-semibold text-zinc-100 break-words">{txn.book?.title || "Unknown"}</p>
+                                  <p className="mt-1 text-sm text-zinc-500 break-words">{txn.book?.author || "Unknown author"}</p>
+                                  <p className="mt-2 text-xs text-zinc-500">Accession: <span className="text-zinc-300">{txn.book?.accessionNo || "—"}</span></p>
+                                </div>
+                                <div className="grid grid-cols-2 gap-x-4 gap-y-3 py-4 text-sm">
+                                  <div><p className="text-xs text-zinc-500">Borrow Date</p><p className="mt-1 text-zinc-300">{formatDate(txn.borrowDate)}</p></div>
+                                  <div><p className="text-xs text-zinc-500">Due Date</p><p className="mt-1 text-zinc-300">{formatDate(txn.dueDate)}</p></div>
+                                  <div><p className="text-xs text-zinc-500">Return Date</p><p className="mt-1 text-zinc-300">{formatDate(txn.returnDate)}</p></div>
+                                  <div><p className="text-xs text-zinc-500">Fine</p><p className={`mt-1 font-medium ${txn.fineAmount > 0 ? "text-amber-400" : "text-zinc-500"}`}>{txn.fineAmount ? `₱${txn.fineAmount.toFixed(2)}` : "—"}</p></div>
+                                </div>
+                                <div className="flex items-center justify-between gap-3 border-t border-zinc-800/80 pt-3">
+                                  <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">Status</span>
+                                  <span className={`inline-flex max-w-full items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${txnStatusBadge[txn.status] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>{txnStatusLabel[txn.status] || txn.status}</span>
+                                </div>
+                              </article>
+                            ))}
+                          </div>
+                          </>
                         )}
                         {!txnLoading && txns.length > 0 && (
                           <div className="flex items-center justify-between mt-4"><p className="text-sm text-zinc-500">Showing <span className="text-zinc-300">{(txnPage - 1) * PAGE_SIZE + 1}–{Math.min(txnPage * PAGE_SIZE, txnTotal)}</span> of <span className="text-zinc-300">{txnTotal}</span> records</p><div className="flex items-center gap-1"><button onClick={() => setTxnPage((p) => Math.max(1, p - 1))} disabled={txnPage === 1} className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 disabled:opacity-40" aria-label="Previous page"><ChevronLeft className="w-4 h-4" /></button><button onClick={() => setTxnPage((p) => Math.min(Math.max(1, Math.ceil(txnTotal / PAGE_SIZE)), p + 1))} disabled={txnPage >= Math.max(1, Math.ceil(txnTotal / PAGE_SIZE))} className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 disabled:opacity-40" aria-label="Next page"><ChevronRight className="w-4 h-4" /></button></div></div>
@@ -518,7 +542,8 @@ export default function RequestsPage() {
             )}
 
             {!reqLoading && records.length > 0 && (
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
+              <>
+              <div className="hidden sm:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
@@ -588,6 +613,16 @@ export default function RequestsPage() {
                   </table>
                 </div>
               </div>
+              <ResponsiveTable mobile={
+                records.map((req: any) => (
+                  <article key={req.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-lg shadow-black/10">
+                    <div className="border-b border-zinc-800/80 pb-3"><p className="font-semibold text-zinc-100 break-words">{req.book?.title || "Unknown"}</p><p className="mt-1 text-sm text-zinc-500">{req.book?.accessionNo || ""}</p></div>
+                    <div className="grid grid-cols-2 gap-3 py-4 text-sm"><div><p className="text-xs text-zinc-500">Member</p><p className="mt-1 break-words text-zinc-300">{req.user?.firstName} {req.user?.lastName}</p></div><div><p className="text-xs text-zinc-500">Request Date</p><p className="mt-1 text-zinc-300">{formatDate(req.requestDate)}</p></div><div className="col-span-2"><p className="text-xs text-zinc-500">Notes</p><p className="mt-1 break-words text-zinc-300">{req.notes || "—"}</p></div></div>
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-800/80 pt-3"><span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${reqStatusBadge[req.status] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>{reqStatusLabel[req.status] || req.status}</span><div className="flex flex-wrap gap-2">{isLibrarian && req.status === "PENDING" && <><button onClick={() => handleApprove(req)} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-medium text-white">Approve via QR</button><button onClick={() => openRejectModal(req)} className="rounded-lg bg-red-500/15 px-3 py-2 text-xs font-medium text-red-400">Reject</button></>}{!isLibrarian && req.status === "PENDING" && <button onClick={() => openQRScanner(req)} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white">Scan QR</button>}</div></div>
+                  </article>
+                ))
+              } />
+              </>
             )}
 
             {!reqLoading && records.length > 0 && (
@@ -673,7 +708,8 @@ export default function RequestsPage() {
               )}
 
               {!activeTxnLoading && activeTxns.length > 0 && (
-                <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
+                <>
+                <div className="hidden sm:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
@@ -720,6 +756,29 @@ export default function RequestsPage() {
                     </table>
                   </div>
                 </div>
+                <div className="space-y-4 sm:hidden">
+                  {activeTxns.map((txn: any) => (
+                    <article key={txn.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-lg shadow-black/10">
+                      <div className="border-b border-zinc-800/80 pb-3">
+                        <p className="font-semibold text-zinc-100 break-words">{txn.book?.title || "Unknown"}</p>
+                        <p className="mt-1 text-sm text-zinc-500 break-words">{txn.book?.author || "Unknown author"}</p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4 py-4 text-sm">
+                        <div><p className="text-xs text-zinc-500">Member</p><p className="mt-1 text-zinc-300 break-words">{txn.user?.firstName} {txn.user?.lastName}</p><p className="text-xs text-zinc-500">{txn.user?.libraryId || ""}</p></div>
+                        <div><p className="text-xs text-zinc-500">Due Date</p><p className="mt-1 text-zinc-300">{formatDate(txn.dueDate)}</p></div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 border-t border-zinc-800/80 pt-3">
+                        <button onClick={() => handleReturn(txn)} disabled={actionLoadingId !== null} className="inline-flex min-h-10 items-center justify-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40">
+                          <CheckCircle2 className="h-3.5 w-3.5" /> {actionLoadingId === txn.id ? "Returning..." : "Return"}
+                        </button>
+                        <button onClick={() => openMissingModal(txn)} disabled={actionLoadingId !== null} className="inline-flex min-h-10 items-center justify-center gap-1 rounded-lg bg-amber-500/15 px-3 py-2 text-xs font-medium text-amber-400 transition-colors hover:bg-amber-500/25 disabled:cursor-not-allowed disabled:opacity-40">
+                          <AlertTriangle className="h-3.5 w-3.5" /> Missing
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+                </>
               )}
 
               {!activeTxnLoading && activeTxns.length > 0 && (

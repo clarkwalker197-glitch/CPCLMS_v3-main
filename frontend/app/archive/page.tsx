@@ -67,7 +67,7 @@ export default function ArchivePage() {
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex">
       <Sidebar />
       <main className="flex-1 min-w-0">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-28 lg:pb-8">
           <div className="mb-6">
             <div className="flex items-center gap-3"><ArchiveIcon className="w-7 h-7 text-blue-400" /><h1 className="text-2xl font-bold text-white">Archive</h1></div>
             <p className="text-sm text-zinc-400 mt-1">Restore books, eBooks, and user accounts removed from active lists.</p>

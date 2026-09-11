@@ -85,6 +85,7 @@ model User {
   yearSection  String?  @map("year_section") /// e.g., "3-BSIT" — relevant for students
   phone         String?
   avatar        String?
+  notificationsEnabled Boolean @default(true) @map("notifications_enabled")
   isActive      Boolean  @default(true) @map("is_active")
   maxBorrowDays Int?     @map("max_borrow_days") /// Per-user override (overrides policy)
   maxBooksAllowed Int?   @map("max_books_allowed") /// Per-user override

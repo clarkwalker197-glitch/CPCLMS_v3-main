@@ -15,6 +15,7 @@ import {
   ConflictError,
   NotFoundError,
   BadRequestError,
+  AppError,
 } from '../utils/errors';
 import { RegisterInput, CreateUserInput } from '../validators';
 import { notificationService } from './notification.service';
@@ -109,11 +110,22 @@ export class AuthService {
   // ────────────────────────────────────────
   async login(identifier: string, password: string, ipAddress?: string) {
     const normalized = (identifier || '').trim().toLowerCase();
-    const user = await prisma.user.findFirst({
-      where: {
-        OR: [{ email: normalized }, { libraryId: normalized }],
-      },
-    });
+    let user;
+    try {
+      user = await prisma.user.findFirst({
+        where: {
+          OR: [{ email: normalized }, { libraryId: normalized }],
+        },
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('notifications_enabled')) {
+        throw new AppError(
+          'The database schema is out of date. Apply the pending Prisma migrations and restart the backend.',
+          503
+        );
+      }
+      throw error;
+    }
     if (!user) {
       throw new UnauthorizedError('Invalid ID Number or password');
     }

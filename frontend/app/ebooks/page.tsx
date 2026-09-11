@@ -200,8 +200,26 @@ export default function EBooksPage() {
                   <option key={cat.id} value={cat.id} className="bg-zinc-900 text-white">{cat.name}</option>
                 ))}
               </select>
-              <MobileBookTypeSelect current="ebook" />
-              <div className="flex gap-1 p-1 bg-zinc-950 border border-zinc-700 rounded-xl">
+              <div className="flex w-full items-center gap-2 sm:hidden">
+                <MobileBookTypeSelect current="ebook" className="min-w-0 flex-1" />
+                <div className="flex shrink-0 gap-1 rounded-xl border border-zinc-700 bg-zinc-950 p-1">
+                  <button
+                    onClick={() => setView('grid')}
+                    className={`rounded-lg p-2 transition-colors ${view === 'grid' ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-white'}`}
+                    aria-label="Grid view"
+                  >
+                    <LayoutGrid className="h-5 w-5" />
+                  </button>
+                  <button
+                    onClick={() => setView('list')}
+                    className={`rounded-lg p-2 transition-colors ${view === 'list' ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-white'}`}
+                    aria-label="List view"
+                  >
+                    <List className="h-5 w-5" />
+                  </button>
+                </div>
+              </div>
+              <div className="hidden gap-1 rounded-xl border border-zinc-700 bg-zinc-950 p-1 sm:flex">
                 <button
                   onClick={() => setView('grid')}
                   className={`p-2 rounded-lg transition-colors ${view === 'grid' ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-white'}`}

@@ -285,8 +285,28 @@ export default function BooksPage() {
                 <option key={cat.id} value={cat.id} className="bg-zinc-900 text-white">{cat.name}</option>
               ))}
             </select>
-            <MobileBookTypeSelect current="physical" />
-            <div className="flex gap-1 p-1 bg-zinc-950 border border-zinc-700 rounded-xl">
+            <div className="flex w-full items-center gap-2 sm:hidden">
+              <MobileBookTypeSelect current="physical" className="min-w-0 flex-1" />
+              <div className="flex shrink-0 gap-1 rounded-xl border border-zinc-700 bg-zinc-950 p-1">
+                <button
+                  onClick={() => setView("grid")}
+                  className={`rounded-lg border p-2 transition-colors ${view === "grid" ? "border-blue-400/50 bg-blue-600 text-white shadow-md shadow-blue-600/20" : "border-transparent text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}
+                  aria-label="Grid view"
+                  aria-pressed={view === "grid"}
+                >
+                  <LayoutGrid className="h-5 w-5" />
+                </button>
+                <button
+                  onClick={() => setView("list")}
+                  className={`rounded-lg border p-2 transition-colors ${view === "list" ? "border-blue-400/50 bg-blue-600 text-white shadow-md shadow-blue-600/20" : "border-transparent text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}
+                  aria-label="List view"
+                  aria-pressed={view === "list"}
+                >
+                  <List className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+            <div className="hidden gap-1 rounded-xl border border-zinc-700 bg-zinc-950 p-1 sm:flex">
               <button
                 onClick={() => setView("grid")}
                 className={`p-2 rounded-lg border transition-colors ${view === "grid" ? "border-blue-400/50 bg-blue-600 text-white shadow-md shadow-blue-600/20" : "border-transparent text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}

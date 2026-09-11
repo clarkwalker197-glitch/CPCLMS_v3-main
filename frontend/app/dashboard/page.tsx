@@ -18,9 +18,6 @@ import {
   BookMarked,
   Clock,
   AlertTriangle,
-  User,
-  Settings,
-  LogOut,
 } from "lucide-react";
 import {
   LineChart,
@@ -33,12 +30,11 @@ import {
   PieChart,
   Pie,
   Cell,
-  Legend,
   BarChart,
   Bar,
 } from "recharts";
 
-const PIE_COLORS = ["#3b82f6", "#8b5cf6", "#06b6d4", "#10b981", "#f59e0b", "#ef4444", "#ec4899", "#64748b"];
+const PIE_COLORS = ["#3b82f6", "#8b5cf6", "#06b6d4", "#10b981", "#f59e0b", "#ef4444", "#ec4899", "#64748b", "#14b8a6", "#f97316", "#a855f7", "#84cc16", "#71717a"];
 
 const statusBadge: Record<string, string> = {
   ACTIVE: "bg-blue-500/15 text-blue-400 ring-blue-500/30",
@@ -51,7 +47,7 @@ const statusBadge: Record<string, string> = {
 };
 
 export default function DashboardPage() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const router = useRouter();
   const [stats, setStats] = useState<any>(null);
   const [trends, setTrends] = useState<any[]>([]);
@@ -59,7 +55,6 @@ export default function DashboardPage() {
   const [departments, setDepartments] = useState<any[]>([]);
   const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [profileOpen, setProfileOpen] = useState(false);
 
   useEffect(() => {
     if (user && user.role !== "LIBRARIAN") {
@@ -94,10 +89,10 @@ export default function DashboardPage() {
   const activity = stats?.recentActivity || {};
 
   const statsCards = [
-    { title: "Total Books", value: ov.totalBooks ?? 0, icon: Library, accent: "bg-blue-500/15 text-blue-400", trend: "+12.5%", trendUp: true },
-    { title: "Active Members", value: ov.totalUsers ?? 0, icon: Users, accent: "bg-violet-500/15 text-violet-400", trend: "+8.2%", trendUp: true },
-    { title: "Books Borrowed", value: ov.activeBorrows ?? 0, icon: BookMarked, accent: "bg-emerald-500/15 text-emerald-400", trend: "+5.1%", trendUp: true },
-    { title: "Overdue Books", value: ov.overdueBooks ?? 0, icon: AlertTriangle, accent: "bg-red-500/15 text-red-400", trend: "-2.3%", trendUp: false },
+    { title: "Total Books", value: ov.totalBooks ?? 0, icon: Library, accent: "bg-blue-500/15 text-blue-400" },
+    { title: "Active Members", value: ov.totalUsers ?? 0, icon: Users, accent: "bg-violet-500/15 text-violet-400" },
+    { title: "Books Borrowed", value: ov.activeBorrows ?? 0, icon: BookMarked, accent: "bg-emerald-500/15 text-emerald-400" },
+    { title: "Overdue Books", value: ov.overdueBooks ?? 0, icon: AlertTriangle, accent: "bg-red-500/15 text-red-400" },
   ];
 
   const pieData = categories.map((c: any) => ({ name: c.name, value: c.total }));
@@ -122,61 +117,13 @@ export default function DashboardPage() {
               <div className="flex items-center gap-2">
                 <NotificationBell />
 
-                {/* Profile dropdown */}
-                <div className="relative">
-                  <button
-                    onClick={() => setProfileOpen((o) => !o)}
-                    className="w-10 h-10 ml-1 rounded-xl bg-blue-600 flex items-center justify-center text-white font-semibold text-sm shadow-lg shadow-blue-600/30 hover:bg-blue-700 transition-colors"
-                  >
+                <Link
+                  href="/profile"
+                  aria-label="Open profile"
+                  className="w-10 h-10 ml-1 rounded-xl bg-blue-600 flex items-center justify-center text-white font-semibold text-sm shadow-lg shadow-blue-600/30 hover:bg-blue-700 transition-colors"
+                >
                     {user?.firstName?.charAt(0)}{user?.lastName?.charAt(0)}
-                  </button>
-
-                  {profileOpen && (
-                    <>
-                      <div
-                        className="fixed inset-0 z-30"
-                        onClick={() => setProfileOpen(false)}
-                      />
-                      <div className="absolute right-0 mt-2 w-52 z-40 rounded-2xl border border-zinc-800 bg-zinc-900 shadow-2xl shadow-black/40 overflow-hidden">
-                        <div className="px-4 py-3 border-b border-zinc-800">
-                          <p className="text-sm font-semibold text-white">
-                            {user?.firstName} {user?.lastName}
-                          </p>
-                          <p className="text-xs text-zinc-500 mt-0.5">{user?.role}</p>
-                        </div>
-                        <div className="p-1.5">
-                          <Link
-                            href="/profile"
-                            onClick={() => setProfileOpen(false)}
-                            className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-xl text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors"
-                          >
-                            <User className="w-4 h-4" />
-                            Profile
-                          </Link>
-                          <button
-                            onClick={() => { setProfileOpen(false); router.push("/profile/settings"); }}
-                            className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-xl text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors"
-                          >
-                            <Settings className="w-4 h-4" />
-                            Settings
-                          </button>
-                          <div className="my-1.5 border-t border-zinc-800" />
-                          <button
-                            onClick={async () => {
-                              setProfileOpen(false);
-                              await logout();
-                              router.push("/login");
-                            }}
-                            className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-xl text-sm font-medium text-red-400 hover:bg-red-500/10 transition-colors"
-                          >
-                            <LogOut className="w-4 h-4" />
-                            Log out
-                          </button>
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
+                </Link>
               </div>
             </div>
 
@@ -216,31 +163,38 @@ export default function DashboardPage() {
               {/* Category Distribution */}
               <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-6">
                 <h2 className="text-base font-semibold text-white mb-6">Category Distribution</h2>
-                <div className="h-72">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={pieData.length ? pieData : [{ name: "No data", value: 1 }]}
-                        dataKey="value"
-                        nameKey="name"
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={55}
-                        outerRadius={85}
-                        paddingAngle={3}
-                      >
-                        {pieData.map((_: any, idx: number) => (
-                          <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        contentStyle={{ background: "#18181b", border: "1px solid #27272a", borderRadius: "12px", color: "#fff" }}
-                        labelStyle={{ color: "#a1a1aa" }}
-                      />
-                      <Legend wrapperStyle={{ color: "#a1a1aa", fontSize: 12 }} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
+                {pieData.length === 0 ? (
+                  <div className="flex h-72 items-center justify-center text-sm text-zinc-500">No data</div>
+                ) : (
+                  <>
+                    <div className="h-56">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={55} outerRadius={85} paddingAngle={3}>
+                            {pieData.map((_: any, idx: number) => <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />)}
+                          </Pie>
+                          <Tooltip
+                            contentStyle={{ background: "#18181b", border: "1px solid #27272a", borderRadius: "12px", color: "#fff" }}
+                            labelStyle={{ color: "#a1a1aa" }}
+                            formatter={(value, name) => {
+                              const numericValue = Number(value || 0);
+                              const total = pieData.reduce((sum, item) => sum + item.value, 0);
+                              return [`${numericValue} (${Math.round((numericValue / total) * 100)}%)`, name];
+                            }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="grid grid-cols-1 gap-1.5 text-xs text-zinc-400">
+                      {pieData.map((item: any, index: number) => (
+                        <div key={item.name} className="flex items-center justify-between gap-2">
+                          <span className="flex min-w-0 items-center gap-2"><span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: PIE_COLORS[index % PIE_COLORS.length] }} /> <span className="truncate">{item.name}</span></span>
+                          <span className="shrink-0 text-zinc-500">{item.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 

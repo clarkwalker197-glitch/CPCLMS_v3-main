@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Dialog, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import api from "@/lib/api";
+import { categoryForClassification, LIBRARY_CATEGORIES, normalizeClassificationNumber } from "@/lib/categories";
 import { BookOpen, Link2, Trash2 } from "lucide-react";
 
 interface Category {
@@ -20,6 +21,7 @@ interface EBook {
   publishYear?: number;
   edition?: string;
   categoryId?: string;
+  classificationNumber?: string;
   description?: string;
   coverImage?: string;
   language?: string;
@@ -54,6 +56,7 @@ export function EditEBookModal(props: {
     publishYear: "",
     edition: "",
     categoryId: "",
+    classificationNumber: "",
     description: "",
     coverImage: "",
     language: "English",
@@ -76,6 +79,7 @@ export function EditEBookModal(props: {
         publishYear: props.ebook.publishYear ? String(props.ebook.publishYear) : "",
         edition: props.ebook.edition || "",
         categoryId: props.ebook.categoryId || "",
+        classificationNumber: props.ebook.classificationNumber || "",
         description: props.ebook.description || "",
         coverImage: props.ebook.coverImage || "",
         language: props.ebook.language || "English",
@@ -89,6 +93,18 @@ export function EditEBookModal(props: {
   const update = (field: keyof typeof form) => (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => setForm((f) => ({ ...f, [field]: e.target.value }));
+
+  const updateClassificationNumber = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.replace(/\D/g, "").slice(0, 3);
+    const detected = categoryForClassification(value);
+    const categoryId = detected ? props.categories.find((category) => category.name === detected.name)?.id || "" : undefined;
+    setForm((current) => ({ ...current, classificationNumber: value, ...(categoryId ? { categoryId } : {}) }));
+  };
+
+  const normalizeClassification = () => setForm((current) => ({
+    ...current,
+    classificationNumber: normalizeClassificationNumber(current.classificationNumber) || current.classificationNumber,
+  }));
 
   const reset = () => {
     setForm(emptyForm);
@@ -110,8 +126,9 @@ export function EditEBookModal(props: {
       return;
     }
 
-    if (!form.title.trim() || !form.author.trim() || !form.fileUrl.trim()) {
-      setError("Title, author, and file URL are required.");
+    const classificationNumber = normalizeClassificationNumber(form.classificationNumber);
+    if (!form.title.trim() || !form.author.trim() || !form.fileUrl.trim() || !form.categoryId || !classificationNumber) {
+      setError("Title, author, file URL, category, and a classification number from 001 to 999 are required.");
       return;
     }
 
@@ -125,6 +142,7 @@ export function EditEBookModal(props: {
         publishYear: form.publishYear ? Number(form.publishYear) : undefined,
         edition: form.edition.trim() || undefined,
         categoryId: form.categoryId || undefined,
+        classificationNumber,
         description: form.description.trim() || undefined,
         coverImage: form.coverImage.trim() || undefined,
         language: form.language.trim() || "English",
@@ -246,24 +264,28 @@ export function EditEBookModal(props: {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className={labelClass}>Category</label>
-            <select className={inputClass} value={form.categoryId} onChange={update("categoryId")}>
-              <option value="">General</option>
-              {props.categories.map((cat) => (
-                <option key={cat.id} value={cat.id}>
-                  {cat.name}
-                </option>
-              ))}
-            </select>
+            <label className={labelClass}>Classification Number *</label>
+            <input className={inputClass} value={form.classificationNumber} onChange={updateClassificationNumber} onBlur={normalizeClassification} inputMode="numeric" maxLength={3} placeholder="e.g., 812" required />
           </div>
           <div>
-            <label className={labelClass}>Format</label>
-            <select className={inputClass} value={form.format} onChange={update("format")}>
+            <label className={labelClass}>Category *</label>
+            <select className={inputClass} value={form.categoryId} onChange={update("categoryId")} required>
+              <option value="">Select a category</option>
+              {LIBRARY_CATEGORIES.map((category) => {
+                const record = props.categories.find((item) => item.name === category.name);
+                return record ? <option key={record.id} value={record.id}>{category.name}</option> : null;
+              })}
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label className={labelClass}>Format</label>
+          <select className={inputClass} value={form.format} onChange={update("format")}>
               <option value="PDF">PDF</option>
               <option value="EPUB">EPUB</option>
               <option value="MOBI">MOBI</option>
-            </select>
-          </div>
+          </select>
         </div>
 
         <div>

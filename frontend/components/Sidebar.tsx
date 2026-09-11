@@ -15,6 +15,8 @@ import {
   Archive,
   ChevronDown,
   UserRound,
+  MoreHorizontal,
+  X,
 } from "lucide-react";
 
 const navItems = [
@@ -37,6 +39,7 @@ const navItems = [
 export default function Sidebar() {
   const pathname = usePathname();
   const { user } = useAuth();
+  const [moreOpen, setMoreOpen] = useState(false);
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>(() => {
     // Auto-open parent if a child route is active on first render
     const booksActive =
@@ -129,24 +132,91 @@ export default function Sidebar() {
       </div>
       </aside>
 
-      <nav className="fixed inset-x-3 bottom-3 z-40 grid grid-cols-5 rounded-2xl border border-zinc-800 bg-zinc-900/95 p-2 shadow-2xl shadow-black/50 backdrop-blur lg:hidden" aria-label="Mobile navigation">
+      <nav className="fixed inset-x-3 bottom-3 z-40 flex items-stretch justify-evenly gap-1 rounded-2xl border border-zinc-800 bg-zinc-900/95 p-2 shadow-2xl shadow-black/50 backdrop-blur lg:hidden" aria-label="Mobile navigation">
         {[
           { href: user?.role === "LIBRARIAN" ? "/dashboard" : "/student/dashboard", label: "Dashboard", icon: LayoutDashboard },
           { href: "/books", label: "Books", icon: BookOpen },
           { href: "/requests", label: "Borrow Requests", icon: ClipboardList },
-          { href: "/policies", label: "Policies", icon: Shield },
-          { href: "/profile", label: "Profile", icon: UserRound },
         ].map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.href || pathname.startsWith(item.href + "/") || (item.label === "Books" && pathname.startsWith("/ebooks"));
           return (
-            <Link key={item.label} href={item.href} className={`flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-2 text-[10px] font-medium transition-colors ${isActive ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}>
-              <Icon className="h-5 w-5" />
-              <span className="w-full truncate text-center">{item.label}</span>
+            <Link key={item.label} href={item.href} className={`flex min-w-0 flex-1 flex-col items-center justify-start gap-1 rounded-xl px-0.5 py-2 text-[10px] font-medium leading-3 transition-colors ${isActive ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}>
+              <Icon className="h-5 w-5 shrink-0" />
+              <span className="flex min-h-6 w-full items-start justify-center whitespace-normal text-center">{item.label}</span>
             </Link>
           );
         })}
+        <button
+          type="button"
+          onClick={() => setMoreOpen(true)}
+          aria-expanded={moreOpen}
+          aria-controls="mobile-more-menu"
+          className={`relative flex min-w-0 flex-1 flex-col items-center justify-start gap-1 rounded-xl px-0.5 py-2 text-[10px] font-medium leading-3 transition-colors ${moreOpen || ["/members", "/archive", "/activities", "/policies", "/profile"].some((href) => pathname === href || pathname.startsWith(href + "/")) ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}
+        >
+          <MoreHorizontal className="h-5 w-5 shrink-0" />
+          <span className="flex min-h-6 w-full items-start justify-center whitespace-normal text-center">More</span>
+          {!moreOpen && ["/members", "/archive", "/activities", "/policies", "/profile"].some((href) => pathname === href || pathname.startsWith(href + "/")) && (
+            <span className="absolute right-2 top-1 h-1.5 w-1.5 rounded-full bg-white" aria-hidden="true" />
+          )}
+        </button>
       </nav>
+
+      {moreOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-labelledby="mobile-more-title">
+          <button
+            type="button"
+            aria-label="Close more menu"
+            onClick={() => setMoreOpen(false)}
+            className="absolute inset-0 bg-black/60 backdrop-blur-[2px]"
+          />
+          <div id="mobile-more-menu" className="mobile-more-sheet absolute inset-x-0 bottom-0 rounded-t-3xl border-t border-zinc-700 bg-zinc-900 p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-2xl shadow-black/60">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <p id="mobile-more-title" className="text-lg font-semibold text-white">More</p>
+                <p className="text-sm text-zinc-500">Library workspace</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMoreOpen(false)}
+                aria-label="Close more menu"
+                className="rounded-xl p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-1">
+              {(user?.role === "LIBRARIAN"
+                ? [
+                    { href: "/members", label: "Members", icon: Users },
+                    { href: "/archive", label: "Archive", icon: Archive },
+                    { href: "/activities", label: "Activity Logs", icon: ScrollText },
+                    { href: "/policies", label: "Policies", icon: Shield },
+                    { href: "/profile", label: "Profile", icon: UserRound },
+                  ]
+                : [
+                    { href: "/policies", label: "Policies", icon: Shield },
+                    { href: "/profile", label: "Profile", icon: UserRound },
+                  ]
+              ).map((item) => {
+                const Icon = item.icon;
+                const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+                return (
+                  <Link
+                    key={item.label}
+                    href={item.href}
+                    onClick={() => setMoreOpen(false)}
+                    className={`flex w-full items-center gap-3 rounded-xl px-4 py-3.5 text-sm font-medium transition-colors ${isActive ? "bg-blue-600 text-white" : "text-zinc-300 hover:bg-zinc-800 hover:text-white"}`}
+                  >
+                    <Icon className="h-5 w-5" />
+                    <span>{item.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

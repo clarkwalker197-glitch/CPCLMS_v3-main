@@ -4,6 +4,7 @@ import { useState, useRef } from "react";
 import { Dialog, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import api from "@/lib/api";
+import { categoryForClassification, LIBRARY_CATEGORIES, normalizeClassificationNumber } from "@/lib/categories";
 import { BookOpen, Upload, Link2, FileText, X } from "lucide-react";
 
 interface Category {
@@ -39,6 +40,7 @@ export function AddEBookModal(props: {
     publishYear: "",
     edition: "",
     categoryId: "",
+    classificationNumber: "",
     description: "",
     coverImage: "",
     language: "English",
@@ -58,6 +60,18 @@ export function AddEBookModal(props: {
   const update = (field: keyof typeof form) => (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => setForm((f) => ({ ...f, [field]: e.target.value }));
+
+  const updateClassificationNumber = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.replace(/\D/g, "").slice(0, 3);
+    const detected = categoryForClassification(value);
+    const categoryId = detected ? props.categories.find((category) => category.name === detected.name)?.id || "" : undefined;
+    setForm((current) => ({ ...current, classificationNumber: value, ...(categoryId ? { categoryId } : {}) }));
+  };
+
+  const normalizeClassification = () => setForm((current) => ({
+    ...current,
+    classificationNumber: normalizeClassificationNumber(current.classificationNumber) || current.classificationNumber,
+  }));
 
   const reset = () => {
     setForm(emptyForm);
@@ -111,8 +125,9 @@ export function AddEBookModal(props: {
     e.preventDefault();
     setError("");
 
-    if (!form.isbn.trim() || !form.title.trim() || !form.author.trim()) {
-      setError("ISBN, title, and author are required.");
+    const classificationNumber = normalizeClassificationNumber(form.classificationNumber);
+    if (!form.isbn.trim() || !form.title.trim() || !form.author.trim() || !form.categoryId || !classificationNumber) {
+      setError("ISBN, title, author, category, and a classification number from 001 to 999 are required.");
       return;
     }
 
@@ -136,7 +151,8 @@ export function AddEBookModal(props: {
         if (form.publisher.trim()) fd.append("publisher", form.publisher.trim());
         if (form.publishYear) fd.append("publishYear", form.publishYear);
         if (form.edition.trim()) fd.append("edition", form.edition.trim());
-        if (form.categoryId) fd.append("categoryId", form.categoryId);
+        fd.append("categoryId", form.categoryId);
+        fd.append("classificationNumber", classificationNumber);
         if (form.description.trim()) fd.append("description", form.description.trim());
         fd.append("language", form.language.trim() || "English");
         fd.append("file", ebookFile as File);
@@ -151,6 +167,7 @@ export function AddEBookModal(props: {
           publishYear: form.publishYear ? Number(form.publishYear) : undefined,
           edition: form.edition.trim() || undefined,
           categoryId: form.categoryId || undefined,
+          classificationNumber,
           description: form.description.trim() || undefined,
           coverImage: form.coverImage.trim() || undefined,
           language: form.language.trim() || "English",
@@ -269,19 +286,23 @@ export function AddEBookModal(props: {
               </select>
             </div>
           )}
-          {mode === "upload" && (
-            <div>
-              <label className={labelClass}>Category</label>
-              <select className={inputClass} value={form.categoryId} onChange={update("categoryId")}>
-                <option value="">General</option>
-                {props.categories.map((cat) => (
-                  <option key={cat.id} value={cat.id}>
-                    {cat.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className={labelClass}>Classification Number *</label>
+            <input className={inputClass} value={form.classificationNumber} onChange={updateClassificationNumber} onBlur={normalizeClassification} inputMode="numeric" maxLength={3} placeholder="e.g., 812" required />
+          </div>
+          <div>
+            <label className={labelClass}>Category *</label>
+            <select className={inputClass} value={form.categoryId} onChange={update("categoryId")} required>
+              <option value="">Select a category</option>
+              {LIBRARY_CATEGORIES.map((category) => {
+                const record = props.categories.find((item) => item.name === category.name);
+                return record ? <option key={record.id} value={record.id}>{category.name}</option> : null;
+              })}
+            </select>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -306,17 +327,6 @@ export function AddEBookModal(props: {
             <div>
               <label className={labelClass}>Edition</label>
               <input className={inputClass} value={form.edition} onChange={update("edition")} />
-            </div>
-            <div>
-              <label className={labelClass}>Category</label>
-              <select className={inputClass} value={form.categoryId} onChange={update("categoryId")}>
-                <option value="">General</option>
-                {props.categories.map((cat) => (
-                  <option key={cat.id} value={cat.id}>
-                    {cat.name}
-                  </option>
-                ))}
-              </select>
             </div>
           </div>
         )}

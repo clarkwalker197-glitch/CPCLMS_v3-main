@@ -20,6 +20,7 @@ import {
 import { RegisterInput, CreateUserInput } from '../validators';
 import { notificationService } from './notification.service';
 import { OAuth2Client } from 'google-auth-library';
+import { isDepartmentCode } from '../constants/departments';
 
 export class AuthService {
   async googleLogin(credential: string, ipAddress?: string) {
@@ -173,6 +174,9 @@ async register(input: RegisterInput, ipAddress?: string) {
     }
 
     const libraryId = input.libraryId;
+    if ((input.role === 'STUDENT' || input.role === 'FACULTY') && input.department && !isDepartmentCode(input.department)) {
+      throw new BadRequestError('Department must be one of the official programs');
+    }
     const hashedPassword = await bcrypt.hash(input.password, 12);
 
 const user = await prisma.user.create({
@@ -214,6 +218,9 @@ const user = await prisma.user.create({
     }
 
     const libraryId = await this.generateLibraryId();
+    if ((input.role === 'STUDENT' || input.role === 'FACULTY') && input.department && !isDepartmentCode(input.department)) {
+      throw new BadRequestError('Department must be one of the official programs');
+    }
     const hashedPassword = await bcrypt.hash(input.password, 12);
 
     const user = await prisma.user.create({
@@ -353,6 +360,14 @@ const user = await prisma.user.create({
     });
   }
 
+  async updateNotificationPreferences(userId: string, notificationsEnabled: boolean) {
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: { notificationsEnabled },
+    });
+    return this.sanitizeUser(user);
+  }
+
   // ────────────────────────────────────────
   //  GET PROFILE (with active borrows, reservations, notifications)
   // ────────────────────────────────────────
@@ -405,6 +420,12 @@ const user = await prisma.user.create({
     if (!user) throw new NotFoundError('User');
     if (user.role === 'STUDENT' && !data.yearSection?.trim()) {
       throw new BadRequestError('Year & Section is required for Student accounts');
+    }
+    if ((user.role === 'STUDENT' || user.role === 'FACULTY') && !data.department?.trim()) {
+      throw new BadRequestError('Department is required for Student and Faculty accounts');
+    }
+    if (data.department?.trim() && !isDepartmentCode(data.department.trim())) {
+      throw new BadRequestError('Department must be one of the official programs');
     }
 
     const updated = await prisma.user.update({

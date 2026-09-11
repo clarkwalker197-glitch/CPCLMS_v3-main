@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
+import api from '@/lib/api';
 
 export default function RegisterPage() {
   const { register, isAuthenticated, loading } = useAuth();
@@ -24,12 +25,19 @@ const [formData, setFormData] = useState({
   const [showConfirm, setShowConfirm] = useState(false);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [departments, setDepartments] = useState<Array<{ code: string; name: string }>>([]);
 
   useEffect(() => {
     if (!loading && isAuthenticated) {
       router.replace('/student/dashboard');
     }
   }, [loading, isAuthenticated, router]);
+
+  useEffect(() => {
+    api.getDepartments().then((response) => {
+      if (response.success && response.data) setDepartments(response.data);
+    });
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
@@ -296,10 +304,11 @@ if (result.success) {
                       className="w-full pl-10 pr-3 py-3 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition appearance-none"
                     >
                       <option value="" className="bg-zinc-900 text-white">Select Department</option>
-                      <option value="BSIT" className="bg-zinc-900 text-white">Bachelor of Science in Information Technology (BSIT)</option>
-                      <option value="BSHM" className="bg-zinc-900 text-white">Bachelor of Science in Hospitality Management (BSHM)</option>
-                      <option value="BEED" className="bg-zinc-900 text-white">Bachelor of Elementary Education (BEED)</option>
-                      <option value="BSED" className="bg-zinc-900 text-white">Bachelor of Secondary Education (BSED)</option>
+                      {departments.map((department) => (
+                        <option key={department.code} value={department.code} className="bg-zinc-900 text-white">
+                          {department.name} ({department.code})
+                        </option>
+                      ))}
                     </select>
                     <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
                       <svg className="w-4 h-4 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">

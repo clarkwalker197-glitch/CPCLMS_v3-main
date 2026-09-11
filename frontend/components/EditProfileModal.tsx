@@ -16,6 +16,7 @@ export default function EditProfileModal({ onClose, onSaved }: EditProfileModalP
   const [email, setEmail] = useState(user?.email || "");
   const [phone, setPhone] = useState(user?.phone || "");
   const [department, setDepartment] = useState(user?.department || "");
+  const [departments, setDepartments] = useState<Array<{ code: string; name: string }>>([]);
   const [yearSection, setYearSection] = useState(user?.yearSection || "");
   const [picture, setPicture] = useState<File | null>(null);
   const [preview, setPreview] = useState(user?.avatar || "");
@@ -23,6 +24,15 @@ export default function EditProfileModal({ onClose, onSaved }: EditProfileModalP
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    api.getDepartments().then((response) => {
+      if (!active || !response.success || !Array.isArray(response.data)) return;
+      setDepartments(response.data);
+    });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     if (!picture) return;
@@ -55,6 +65,9 @@ export default function EditProfileModal({ onClose, onSaved }: EditProfileModalP
     if (phone && !phonePattern.test(phone)) return setError("Enter a valid phone number.");
     if (user?.role === "STUDENT" && !yearSection.trim()) {
       return setError("Year & Section is required for Student accounts.");
+    }
+    if ((user?.role === "STUDENT" || user?.role === "FACULTY") && !department.trim()) {
+      return setError("Department is required for Student and Faculty accounts.");
     }
 
     setSaving(true);
@@ -118,7 +131,18 @@ export default function EditProfileModal({ onClose, onSaved }: EditProfileModalP
           <Field label="Email" type="email" value={email} onChange={setEmail} required />
           <Field label="Phone Number" value={phone} onChange={setPhone} placeholder="+63 912 345 6789" />
           <Field label="ID Number" value={user?.libraryId || ""} onChange={() => {}} disabled />
-          <Field label="Department" value={department} onChange={setDepartment} />
+          <label className="block space-y-1.5 text-sm font-medium text-zinc-300">
+            Department{user?.role === "LIBRARIAN" ? " (optional)" : " *"}
+            <select
+              value={department}
+              onChange={(event) => setDepartment(event.target.value)}
+              required={user?.role !== "LIBRARIAN"}
+              className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500"
+            >
+              <option value="">Select a department</option>
+              {departments.map((option) => <option key={option.code} value={option.code}>{option.name} ({option.code})</option>)}
+            </select>
+          </label>
           {user?.role === "STUDENT" && <Field label="Year & Section" value={yearSection} onChange={setYearSection} required />}
 
           <div className="flex justify-end gap-3 border-t border-zinc-800 pt-5">

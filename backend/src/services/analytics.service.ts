@@ -3,6 +3,8 @@
 // ============================================================
 
 import { prisma } from '../config';
+import { LIBRARY_CATEGORIES } from '../constants/categories';
+import { DEPARTMENTS } from '../constants/departments';
 
 export interface DashboardStats {
   overview: {
@@ -263,22 +265,28 @@ interface TopBookRaw { bookId: string; _count: { bookId: number } }
    * Get category distribution
    */
   async getCategoryDistribution() {
-    const categories = await prisma.category.findMany({
-      include: {
-        _count: { select: { books: true, eBooks: true } },
-      },
-      orderBy: { name: 'asc' },
-    });
+    const [books, eBooks] = await Promise.all([
+      prisma.book.findMany({ where: { deletedAt: null }, select: { category: { select: { name: true } } } }),
+      prisma.eBook.findMany({ where: { deletedAt: null }, select: { category: { select: { name: true } } } }),
+    ]);
+    const counts = new Map<string, number>();
+    let uncategorized = 0;
+    for (const item of [...books, ...eBooks]) {
+      const name = item.category?.name;
+      if (name && LIBRARY_CATEGORIES.some((category) => category.name === name)) {
+        counts.set(name, (counts.get(name) || 0) + 1);
+      } else {
+        uncategorized++;
+      }
+    }
 
-    interface CategWithCount { id: string; name: string; slug: string; _count: { books: number; eBooks: number } }
-    return (categories as CategWithCount[]).map((c: CategWithCount) => ({
-      id: c.id,
-      name: c.name,
-      slug: c.slug,
-      books: c._count.books,
-      eBooks: c._count.eBooks,
-      total: c._count.books + c._count.eBooks,
-    }));
+    const distribution: Array<{ name: string; slug: string; total: number }> = LIBRARY_CATEGORIES.map((category) => ({
+      name: category.name,
+      slug: category.slug,
+      total: counts.get(category.name) || 0,
+    })).filter((category) => category.total > 0);
+    if (uncategorized > 0) distribution.push({ name: 'Uncategorized', slug: 'uncategorized', total: uncategorized });
+    return distribution;
   }
 
   /**
@@ -292,26 +300,28 @@ interface TopBookRaw { bookId: string; _count: { bookId: number } }
     });
 
     // Get user details to find departments
-    const userIds = departments.map((d: any) => d.userId);
     const users = await prisma.user.findMany({
-      where: { id: { in: userIds } },
+      where: { department: { not: null } },
       select: { id: true, department: true },
     });
 
     const userDeptMap = new Map(users.map((u: any) => [u.id, u.department || 'Unknown']));
 
     // Group borrows by department
-    const deptMap = new Map<string, number>();
+    const deptMap = new Map(DEPARTMENTS.map((department) => [department.code, 0]));
     for (const dept of departments) {
       const department = userDeptMap.get(dept.userId) || 'Unknown';
-      const current = deptMap.get(department) || 0;
-      deptMap.set(department, current + dept._count.userId);
+      if (deptMap.has(department)) {
+        deptMap.set(department, (deptMap.get(department) || 0) + dept._count.userId);
+      }
     }
 
     // Convert to array and sort by borrow count (descending)
-    const result = Array.from(deptMap.entries())
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value);
+    const result = DEPARTMENTS.map((department) => ({
+      code: department.code,
+      name: `${department.name} (${department.code})`,
+      value: deptMap.get(department.code) || 0,
+    }));
 
     return result;
   }

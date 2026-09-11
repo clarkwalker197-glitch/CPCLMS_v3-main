@@ -5,6 +5,7 @@
 import { prisma } from '../config';
 import { NotFoundError, ConflictError } from '../utils/errors';
 import { getPaginationParams, buildPaginationMeta } from '../utils/pagination';
+import { normalizeClassificationNumber } from '../constants/categories';
 
 export class EBookService {
   /**
@@ -85,6 +86,7 @@ export class EBookService {
     publishYear?: number;
     edition?: string;
     categoryId?: string;
+    classificationNumber?: string;
     description?: string;
     coverImage?: string;
     language?: string;
@@ -109,6 +111,7 @@ export class EBookService {
         publishYear: input.publishYear,
         edition: input.edition,
         categoryId: input.categoryId,
+        classificationNumber: input.classificationNumber ? normalizeClassificationNumber(input.classificationNumber) : null,
         description: input.description,
         coverImage: input.coverImage,
         language: input.language || 'English',
@@ -137,6 +140,7 @@ export class EBookService {
       publishYear: number;
       edition: string;
       categoryId: string;
+      classificationNumber?: string;
       description: string;
       coverImage: string;
       language: string;
@@ -161,7 +165,12 @@ export class EBookService {
 
     const updated = await prisma.eBook.update({
       where: { id },
-      data: input as any,
+      data: {
+        ...input,
+        ...(input.classificationNumber !== undefined && {
+          classificationNumber: normalizeClassificationNumber(input.classificationNumber),
+        }),
+      } as any,
       include: {
         category: { select: { id: true, name: true, slug: true } },
       },

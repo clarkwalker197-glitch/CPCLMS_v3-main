@@ -280,8 +280,20 @@ async put<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
     return this.get('/auth/me');
   }
 
+  async getDepartments(): Promise<ApiResponse<Array<{ code: string; name: string }>>> {
+    return this.get('/auth/departments');
+  }
+
   async updateProfile(formData: FormData): Promise<ApiResponse<any>> {
     return this.uploadMultipart('/auth/me', formData, 'PUT');
+  }
+
+  async changePassword(currentPassword: string, newPassword: string): Promise<ApiResponse<any>> {
+    return this.put('/auth/change-password', { currentPassword, newPassword });
+  }
+
+  async updateNotificationPreferences(notificationsEnabled: boolean): Promise<ApiResponse<any>> {
+    return this.put('/auth/notification-preferences', { notificationsEnabled });
   }
 
   async forgotPassword(identifier: string): Promise<ApiResponse<any>> {
@@ -545,6 +557,7 @@ async payFine(id: string, amount: number): Promise<ApiResponse<any>> {
     publishYear?: number;
     edition?: string;
     categoryId?: string;
+    classificationNumber?: string;
     description?: string;
     coverImage?: string;
     language?: string;

@@ -137,6 +137,7 @@ model Book {
   pages           Int?
   categoryId      String?    @map("category_id")
   category        Category?  @relation(fields: [categoryId], references: [id])
+  classificationNumber String? @map("classification_number")
   description     String?
   coverImage      String?    @map("cover_image")
   language        String     @default("English")
@@ -173,6 +174,7 @@ model EBook {
   edition     String?
   categoryId  String?    @map("category_id")
   category    Category?  @relation(fields: [categoryId], references: [id])
+  classificationNumber String? @map("classification_number")
   description String?
   coverImage  String?    @map("cover_image")
   language    String     @default("English")

@@ -7,6 +7,11 @@ import { authService } from '../services';
 import { asyncHandler } from '../utils/asyncHandler';
 import { sendSuccess } from '../utils/helpers';
 import { AuthenticatedRequest } from '../types';
+import { DEPARTMENTS } from '../constants/departments';
+
+export const getDepartments = asyncHandler(async (_req: Request, res: Response) => {
+  sendSuccess(res, DEPARTMENTS);
+});
 
 /**
  * POST /api/auth/login
@@ -111,6 +116,14 @@ export const changePassword = asyncHandler(async (req: AuthenticatedRequest, res
   const { currentPassword, newPassword } = req.body;
   await authService.changePassword(req.user!.userId, currentPassword, newPassword);
   sendSuccess(res, null, 'Password changed successfully');
+});
+
+export const updateNotificationPreferences = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const user = await authService.updateNotificationPreferences(
+    req.user!.userId,
+    req.body.notificationsEnabled
+  );
+  sendSuccess(res, user, 'Notification preferences updated successfully');
 });
 
 /**

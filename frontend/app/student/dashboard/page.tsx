@@ -15,9 +15,6 @@ import {
   BookMarked,
   Clock,
   Coins,
-  User,
-  Settings,
-  LogOut,
 } from "lucide-react";
 
 const statusBadge: Record<string, string> = {
@@ -31,12 +28,11 @@ const statusBadge: Record<string, string> = {
 };
 
 export default function StudentDashboardPage() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const router = useRouter();
   const [stats, setStats] = useState<any>(null);
   const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [profileOpen, setProfileOpen] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -91,58 +87,13 @@ const formatDate = (d?: string) =>
               <div className="flex items-center gap-2">
                 <NotificationBell />
 
-                {/* Profile dropdown */}
-                <div className="relative">
-                  <button
-                    onClick={() => setProfileOpen((o) => !o)}
-                    className="w-10 h-10 ml-1 rounded-xl bg-blue-600 flex items-center justify-center text-white font-semibold text-sm shadow-lg shadow-blue-600/30 hover:bg-blue-700 transition-colors"
-                  >
+                <Link
+                  href="/profile"
+                  aria-label="Open profile"
+                  className="w-10 h-10 ml-1 rounded-xl bg-blue-600 flex items-center justify-center text-white font-semibold text-sm shadow-lg shadow-blue-600/30 hover:bg-blue-700 transition-colors"
+                >
                     {user?.firstName?.charAt(0)}{user?.lastName?.charAt(0)}
-                  </button>
-
-                  {profileOpen && (
-                    <>
-                      <div className="fixed inset-0 z-30" onClick={() => setProfileOpen(false)} />
-                      <div className="absolute right-0 mt-2 w-52 z-40 rounded-2xl border border-zinc-800 bg-zinc-900 shadow-2xl shadow-black/40 overflow-hidden">
-                        <div className="px-4 py-3 border-b border-zinc-800">
-                          <p className="text-sm font-semibold text-white">
-                            {user?.firstName} {user?.lastName}
-                          </p>
-                          <p className="text-xs text-zinc-500 mt-0.5">{user?.role}</p>
-                        </div>
-                        <div className="p-1.5">
-                          <Link
-                            href="/profile"
-                            onClick={() => setProfileOpen(false)}
-                            className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-xl text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors"
-                          >
-                            <User className="w-4 h-4" />
-                            Profile
-                          </Link>
-                          <button
-                            onClick={() => { setProfileOpen(false); router.push("/profile/settings"); }}
-                            className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-xl text-sm text-zinc-300 hover:bg-zinc-800 hover:text-white transition-colors"
-                          >
-                            <Settings className="w-4 h-4" />
-                            Settings
-                          </button>
-                          <div className="my-1.5 border-t border-zinc-800" />
-                          <button
-                            onClick={async () => {
-                              setProfileOpen(false);
-                              await logout();
-                              router.push("/login");
-                            }}
-                            className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-xl text-sm font-medium text-red-400 hover:bg-red-500/10 transition-colors"
-                          >
-                            <LogOut className="w-4 h-4" />
-                            Log out
-                          </button>
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
+                </Link>
               </div>
             </div>
 

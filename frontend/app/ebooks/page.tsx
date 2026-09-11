@@ -7,6 +7,7 @@ import Sidebar from '@/components/Sidebar';
 import ResponsiveTable from '@/components/ResponsiveTable';
 import { AddEBookModal } from '@/components/AddEBookModal';
 import { EditEBookModal } from '@/components/EditEBookModal';
+import MobileBookTypeSelect from '@/components/MobileBookTypeSelect';
 import {
   Plus,
   Search,
@@ -199,6 +200,7 @@ export default function EBooksPage() {
                   <option key={cat.id} value={cat.id} className="bg-zinc-900 text-white">{cat.name}</option>
                 ))}
               </select>
+              <MobileBookTypeSelect current="ebook" />
               <div className="flex gap-1 p-1 bg-zinc-950 border border-zinc-700 rounded-xl">
                 <button
                   onClick={() => setView('grid')}
@@ -260,20 +262,20 @@ export default function EBooksPage() {
                       </span>
                     </div>
                   </div>
-                  <div className="p-4">
-                    <h3 className="font-semibold text-white line-clamp-2 leading-snug">{ebook.title}</h3>
-                    <p className="text-sm text-zinc-400 mt-1">{ebook.author}</p>
-                    <div className="flex items-center gap-2 mt-3 flex-wrap">
+                  <div className="p-3 sm:p-4">
+                    <h3 className="line-clamp-2 text-sm font-semibold leading-4 text-white sm:text-base sm:leading-snug">{ebook.title}</h3>
+                    <p className="mt-1 truncate text-xs text-zinc-400 sm:text-sm">{ebook.author}</p>
+                    <div className="mt-2 flex min-h-5 flex-wrap items-center gap-1.5">
                       {ebook.category ? (
-                        <span className="text-xs bg-blue-500/15 text-blue-300 px-2 py-0.5 rounded-full">{ebook.category.name}</span>
+                        <span className="max-w-full truncate rounded-full bg-blue-500/15 px-1.5 py-0.5 text-[10px] text-blue-300 sm:px-2 sm:text-xs">{ebook.category.name}</span>
                       ) : (
-                        <span className="text-xs bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded-full">General</span>
+                        <span className="rounded-full bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400 sm:px-2 sm:text-xs">General</span>
                       )}
                       {ebook.fileSize && (
-                        <span className="text-xs text-zinc-500">{formatFileSize(ebook.fileSize)}</span>
+                        <span className="text-[10px] text-zinc-500 sm:text-xs">{formatFileSize(ebook.fileSize)}</span>
                       )}
                       {isLibrarian && (
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                        <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium sm:px-2 sm:text-xs ${
                           ebook.status === 'AVAILABLE'
                             ? 'bg-emerald-500/15 text-emerald-400'
                             : 'bg-orange-500/15 text-orange-400'
@@ -282,19 +284,19 @@ export default function EBooksPage() {
                         </span>
                       )}
                     </div>
-                    <div className="flex gap-2 mt-4">
+                    <div className="mt-2 flex gap-1.5">
                       {isLibrarian ? (
                         <>
                           <button
                             onClick={() => handleEdit(ebook)}
-                            className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm font-medium rounded-lg transition-colors"
+                            className="flex-1 inline-flex items-center justify-center gap-1 px-2 py-2 text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg transition-colors sm:text-sm"
                           >
                             <Pencil className="w-4 h-4" /> Edit
                           </button>
                           <button
                             onClick={() => handleToggleAvailability(ebook)}
                             disabled={togglingStatusId !== null}
-                            className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                            className={`flex-1 inline-flex items-center justify-center gap-1 px-1.5 py-2 text-[10px] font-medium rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed sm:gap-1.5 sm:px-3 sm:text-sm ${
                               ebook.status === 'AVAILABLE'
                                 ? 'bg-orange-500/10 hover:bg-orange-500/20 text-orange-400'
                                 : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400'
@@ -308,7 +310,7 @@ export default function EBooksPage() {
                         <>
                           <button
                             onClick={() => window.open(ebook.fileUrl, '_blank')}
-                            className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors shadow-lg shadow-blue-600/20"
+                            className="flex-1 inline-flex items-center justify-center gap-1 px-2 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors shadow-lg shadow-blue-600/20 sm:gap-1.5 sm:px-3 sm:text-sm"
                           >
                             <BookOpen className="w-4 h-4" /> View
                           </button>

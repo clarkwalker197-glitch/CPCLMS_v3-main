@@ -14,6 +14,7 @@ export interface User {
   phone: string | null;
   avatar: string | null;
   isActive: boolean;
+  notificationsEnabled: boolean;
   createdAt: string;
 }
 

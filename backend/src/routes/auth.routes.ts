@@ -20,11 +20,13 @@ import {
   verifyPasswordResetSchema,
   googleLoginSchema,
   updateProfileSchema,
+  updateNotificationPreferencesSchema,
 } from '../validators/auth.schema';
 
 const router = Router();
 
 // ─── Public Routes (rate-limited) ──────────────────────────
+router.get('/departments', authController.getDepartments);
 router.post('/login', authLimiter, validate(loginSchema), authController.login);
 router.post('/forgot-password', authLimiter, validate(forgotPasswordSchema), authController.forgotPassword);
 router.post('/reset-password', authLimiter, validate(resetPasswordSchema), authController.resetPassword);
@@ -41,6 +43,12 @@ router.put(
   authenticate,
   validate(changePasswordSchema),
   authController.changePassword
+);
+router.put(
+  '/notification-preferences',
+  authenticate,
+  validate(updateNotificationPreferencesSchema),
+  authController.updateNotificationPreferences
 );
 router.post('/logout', authenticate, validate(logoutSchema), authController.logout);
 router.post('/logout-all', authenticate, authController.logoutAll);

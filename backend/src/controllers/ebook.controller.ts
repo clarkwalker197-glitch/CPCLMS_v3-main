@@ -8,6 +8,7 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { sendSuccess } from '../utils/helpers';
 import { BadRequestError } from '../utils/errors';
 import { formatFromExtension } from '../middlewares/upload';
+import { normalizeClassificationNumber } from '../constants/categories';
 
 /**
  * GET /api/ebooks
@@ -47,10 +48,14 @@ export const uploadEBook = asyncHandler(async (req: Request, res: Response) => {
     throw new BadRequestError('An e-book file is required');
   }
 
-  const { isbn, title, author, publisher, publishYear, edition, categoryId, description, language, coverImage: coverImageUrl } = req.body;
+  const { isbn, title, author, publisher, publishYear, edition, categoryId, classificationNumber, description, language, coverImage: coverImageUrl } = req.body;
 
-  if (!isbn || !title || !author) {
-    throw new BadRequestError('ISBN, title, and author are required');
+  if (!isbn || !title || !author || !categoryId || !classificationNumber) {
+    throw new BadRequestError('ISBN, title, author, category, and classification number are required');
+  }
+  const normalizedClassificationNumber = normalizeClassificationNumber(classificationNumber);
+  if (!normalizedClassificationNumber) {
+    throw new BadRequestError('Classification number must be between 001 and 999');
   }
 
   const baseUrl = `${req.protocol}://${req.get('host')}`;
@@ -67,6 +72,7 @@ export const uploadEBook = asyncHandler(async (req: Request, res: Response) => {
     publishYear: publishYear ? Number(publishYear) : undefined,
     edition: edition || undefined,
     categoryId: categoryId || undefined,
+    classificationNumber: normalizedClassificationNumber,
     description: description || undefined,
     coverImage,
     language: language || 'English',

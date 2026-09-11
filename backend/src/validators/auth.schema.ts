@@ -3,6 +3,9 @@
 // ============================================================
 
 import { z } from 'zod';
+import { DEPARTMENTS } from '../constants/departments';
+
+const departmentCodeSchema = z.enum(DEPARTMENTS.map((department) => department.code) as [string, ...string[]]);
 
 // Enum values matching the Prisma Role enum
 /** @see prisma/schema.prisma Role enum */
@@ -49,7 +52,7 @@ email: z
       .string()
       .min(8, 'Password must be at least 8 characters')
       .max(128),
-    department: z.string().optional(),
+    department: departmentCodeSchema.optional(),
     yearSection: z.string().optional(),
     phone: z.string().optional(),
   }).superRefine((data, ctx) => {
@@ -59,6 +62,13 @@ email: z
         code: z.ZodIssueCode.custom,
         path: ['yearSection'],
         message: 'Year & Section is required for Student accounts',
+      });
+    }
+    if ((role === 'STUDENT' || role === 'FACULTY') && !data.department) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['department'],
+        message: 'Department is required for Student and Faculty accounts',
       });
     }
   }),
@@ -88,12 +98,20 @@ export const createUserSchema = z.object({
     role: z.enum(RoleValues, {
       errorMap: () => ({ message: 'Role must be STUDENT, FACULTY, or LIBRARIAN' }),
     }),
-    department: z.string().optional(),
+    department: departmentCodeSchema.optional(),
     yearSection: z.string().optional(),
     phone: z
       .string()
       .regex(/^\+?[\d\s-]{7,15}$/, 'Invalid phone number format')
       .optional(),
+  }).superRefine((data, ctx) => {
+    if ((data.role === 'STUDENT' || data.role === 'FACULTY') && !data.department) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['department'],
+        message: 'Department is required for Student and Faculty accounts',
+      });
+    }
   }),
 });
 
@@ -104,6 +122,12 @@ export const changePasswordSchema = z.object({
       .string()
       .min(8, 'New password must be at least 8 characters')
       .max(128),
+  }),
+});
+
+export const updateNotificationPreferencesSchema = z.object({
+  body: z.object({
+    notificationsEnabled: z.boolean(),
   }),
 });
 

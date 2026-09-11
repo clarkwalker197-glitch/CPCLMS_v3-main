@@ -4,6 +4,7 @@ import { useState, useRef } from "react";
 import { Dialog, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import api from "@/lib/api";
+import { categoryForClassification, LIBRARY_CATEGORIES, normalizeClassificationNumber } from "@/lib/categories";
 import { BookOpen, Upload, FileText, X } from "lucide-react";
 
 interface Category {
@@ -38,6 +39,7 @@ export function AddBookModal(props: {
     edition: "",
     pages: "",
     categoryId: "",
+    classificationNumber: "",
     description: "",
     coverImage: "",
     language: "English",
@@ -54,6 +56,18 @@ export function AddBookModal(props: {
   const update = (field: keyof typeof form) => (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => setForm((f) => ({ ...f, [field]: e.target.value }));
+
+  const updateClassificationNumber = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.replace(/\D/g, "").slice(0, 3);
+    const detected = categoryForClassification(value);
+    const categoryId = detected ? props.categories.find((category) => category.name === detected.name)?.id || "" : undefined;
+    setForm((current) => ({ ...current, classificationNumber: value, ...(categoryId ? { categoryId } : {}) }));
+  };
+
+  const normalizeClassification = () => setForm((current) => ({
+    ...current,
+    classificationNumber: normalizeClassificationNumber(current.classificationNumber) || current.classificationNumber,
+  }));
 
   const onPickCoverFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -88,8 +102,9 @@ export function AddBookModal(props: {
     e.preventDefault();
     setError("");
 
-    if (!form.isbn.trim() || !form.accessionNo.trim() || !form.title.trim() || !form.author.trim()) {
-      setError("ISBN, accession number, title, and author are required.");
+    const classificationNumber = normalizeClassificationNumber(form.classificationNumber);
+    if (!form.isbn.trim() || !form.accessionNo.trim() || !form.title.trim() || !form.author.trim() || !form.categoryId || !classificationNumber) {
+      setError("ISBN, accession number, title, author, category, and a classification number from 001 to 999 are required.");
       return;
     }
     const copiesNum = form.copies ? Number(form.copies) : 1;
@@ -110,6 +125,7 @@ export function AddBookModal(props: {
         edition: form.edition.trim() || undefined,
         pages: form.pages ? Number(form.pages) : undefined,
         categoryId: form.categoryId || undefined,
+        classificationNumber,
         description: form.description.trim() || undefined,
         language: form.language.trim() || "English",
         shelf: form.shelf.trim() || undefined,
@@ -235,16 +251,30 @@ export function AddBookModal(props: {
             <input className={inputClass} value={form.edition} onChange={update("edition")} />
           </div>
           <div>
-            <label className={labelClass}>Category</label>
-            <select className={inputClass} value={form.categoryId} onChange={update("categoryId")}>
-              <option value="">General</option>
-              {props.categories.map((cat) => (
-                <option key={cat.id} value={cat.id}>
-                  {cat.name}
-                </option>
-              ))}
-            </select>
+            <label className={labelClass}>Classification Number *</label>
+            <input
+              className={inputClass}
+              value={form.classificationNumber}
+              onChange={updateClassificationNumber}
+              onBlur={normalizeClassification}
+              inputMode="numeric"
+              maxLength={3}
+              placeholder="e.g., 050"
+              required
+            />
           </div>
+        </div>
+
+        <div>
+          <label className={labelClass}>Category *</label>
+          <select className={inputClass} value={form.categoryId} onChange={update("categoryId")} required>
+            <option value="">Select a category</option>
+            {LIBRARY_CATEGORIES.map((category) => {
+              const record = props.categories.find((item) => item.name === category.name);
+              return record ? <option key={record.id} value={record.id}>{category.name}</option> : null;
+            })}
+          </select>
+          <p className="mt-1 text-xs text-zinc-500">Numeric classifications auto-select a category; Filipiniana and Biology may be selected manually.</p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

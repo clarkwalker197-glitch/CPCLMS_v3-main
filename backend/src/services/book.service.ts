@@ -7,6 +7,7 @@ import { prisma } from '../config';
 import { NotFoundError, ConflictError } from '../utils/errors';
 import { getPaginationParams, buildPaginationMeta } from '../utils/pagination';
 import { CreateBookInput, UpdateBookInput, CreateCategoryInput } from '../validators';
+import { normalizeClassificationNumber } from '../constants/categories';
 
 export class BookService {
   // ============================================================
@@ -101,6 +102,7 @@ export class BookService {
     const book = await prisma.book.create({
       data: {
         ...input,
+        classificationNumber: normalizeClassificationNumber(input.classificationNumber),
         availableCopies: input.copies,
       },
       include: {
@@ -122,6 +124,9 @@ export class BookService {
       where: { id },
       data: {
         ...input,
+        ...(input.classificationNumber !== undefined && {
+          classificationNumber: normalizeClassificationNumber(input.classificationNumber),
+        }),
         ...(input.copies !== undefined && {
           availableCopies: input.copies - (book.copies - book.availableCopies),
         }),

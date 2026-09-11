@@ -8,6 +8,7 @@ import { useDebounce } from "@/lib/useDebounce";
 import { BookBorrowModal } from "@/components/BookBorrowModal";
 import { AddBookModal } from "@/components/AddBookModal";
 import { EditBookModal } from "@/components/EditBookModal";
+import MobileBookTypeSelect from "@/components/MobileBookTypeSelect";
 import Sidebar from "@/components/Sidebar";
 import ResponsiveTable from "@/components/ResponsiveTable";
 import {
@@ -41,7 +42,6 @@ export default function BooksPage() {
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
-  const [typeFilter, setTypeFilter] = useState<"" | "physical" | "ebook">("");
   const [view, setView] = useState<"grid" | "list">("grid");
   const [currentPage, setCurrentPage] = useState(1);
   const [cart, setCart] = useState<any[]>([]);
@@ -65,15 +65,12 @@ export default function BooksPage() {
       const params: Record<string, string> = {};
       if (debouncedSearch) params.search = debouncedSearch;
       if (debouncedCategory) params.categoryId = debouncedCategory;
-      const [booksRes, ebooksRes, catsRes] = await Promise.all([
+      const [booksRes, catsRes] = await Promise.all([
         api.getBooks(params),
-        api.getEBooks(params),
         api.getCategories(),
       ]);
-      if (booksRes.success || ebooksRes.success) {
-        const physicalBooks = (booksRes.data || []).map((book: any) => ({ ...book, bookType: "physical" }));
-        const ebooks = (ebooksRes.data || []).map((book: any) => ({ ...book, bookType: "ebook" }));
-        setBooks([...physicalBooks, ...ebooks]);
+      if (booksRes.success) {
+        setBooks((booksRes.data || []).map((book: any) => ({ ...book, bookType: "physical" })));
       } else if (booksRes.rateLimited) {
         setError("You're moving too fast. Please wait a moment and try again.");
       }
@@ -85,7 +82,7 @@ export default function BooksPage() {
     }
   }, [debouncedSearch, debouncedCategory]);
 
-  const visibleBooks = books.filter((book) => !typeFilter || book.bookType === typeFilter);
+  const visibleBooks = books;
 
   useEffect(() => {
     loadData();
@@ -93,7 +90,7 @@ export default function BooksPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearch, debouncedCategory, typeFilter, visibleBooks.length]);
+  }, [debouncedSearch, debouncedCategory, visibleBooks.length]);
 
   const inCart = (id: string) => cart.some((b) => b.id === id);
 
@@ -218,11 +215,10 @@ export default function BooksPage() {
     </div>
   );
 
-  const hasActiveFilters = Boolean(search.trim() || categoryFilter || typeFilter);
+  const hasActiveFilters = Boolean(search.trim() || categoryFilter);
   const clearFilters = () => {
     setSearch("");
     setCategoryFilter("");
-    setTypeFilter("");
   };
   const typeBadge = (book: any) => book.bookType === "ebook"
     ? "bg-violet-500/15 text-violet-300"
@@ -289,16 +285,7 @@ export default function BooksPage() {
                 <option key={cat.id} value={cat.id} className="bg-zinc-900 text-white">{cat.name}</option>
               ))}
             </select>
-            <select
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value as "" | "physical" | "ebook")}
-              className="px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition appearance-none"
-              aria-label="Filter by book type"
-            >
-              <option value="" className="bg-zinc-900 text-white">All Types</option>
-              <option value="physical" className="bg-zinc-900 text-white">Physical Books</option>
-              <option value="ebook" className="bg-zinc-900 text-white">eBooks</option>
-            </select>
+            <MobileBookTypeSelect current="physical" />
             <div className="flex gap-1 p-1 bg-zinc-950 border border-zinc-700 rounded-xl">
               <button
                 onClick={() => setView("grid")}
@@ -338,7 +325,7 @@ export default function BooksPage() {
             <BookOpen className="w-12 h-12 text-zinc-600 mb-4" />
             <p className="text-zinc-300 font-medium">{hasActiveFilters ? "No books match your filters" : "No books found"}</p>
             <p className="text-sm text-zinc-500 mt-1">
-              {hasActiveFilters ? "Try adjusting your search, category, or type." : "Add a book to get started"}
+              {hasActiveFilters ? "Try adjusting your search or category." : "Add a book to get started"}
             </p>
             {hasActiveFilters && <button onClick={clearFilters} className="mt-5 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 transition-colors hover:bg-blue-700">Clear filters</button>}
           </div>
@@ -364,21 +351,21 @@ export default function BooksPage() {
                       </div>
                     )}
                   </div>
-                  <div className="p-4">
-                    <h3 className="font-semibold text-white line-clamp-2 leading-snug">{book.title}</h3>
-                    <p className="text-sm text-zinc-400 mt-1">{book.author}</p>
-                    <div className="flex items-center gap-2 mt-3 flex-wrap">
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${typeBadge(book)}`}>{typeLabel(book)}</span>
+                  <div className="p-3 sm:p-4">
+                    <h3 className="line-clamp-2 text-sm font-semibold leading-4 text-white sm:text-base sm:leading-snug">{book.title}</h3>
+                    <p className="mt-1 truncate text-xs text-zinc-400 sm:text-sm">{book.author}</p>
+                    <div className="mt-2 flex min-h-5 flex-wrap items-center gap-1.5">
+                      <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium sm:px-2 sm:text-xs ${typeBadge(book)}`}>{typeLabel(book)}</span>
                       {book.category ? (
-                        <span className="text-xs bg-blue-500/15 text-blue-300 px-2 py-0.5 rounded-full">{book.category.name}</span>
+                        <span className="max-w-full truncate rounded-full bg-blue-500/15 px-1.5 py-0.5 text-[10px] text-blue-300 sm:px-2 sm:text-xs">{book.category.name}</span>
                       ) : (
-                        <span className="text-xs bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded-full">General</span>
+                        <span className="rounded-full bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400 sm:px-2 sm:text-xs">General</span>
                       )}
                       {book.publishYear && (
-                        <span className="text-xs text-zinc-500">{book.publishYear}</span>
+                        <span className="text-[10px] text-zinc-500 sm:text-xs">{book.publishYear}</span>
                       )}
                       {isLibrarian && (
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                        <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium sm:px-2 sm:text-xs ${
                           book.status === 'AVAILABLE'
                             ? 'bg-emerald-500/15 text-emerald-400'
                             : 'bg-orange-500/15 text-orange-400'
@@ -387,20 +374,20 @@ export default function BooksPage() {
                         </span>
                       )}
                     </div>
-                    {book.bookType === "physical" ? <div className="mt-3 text-xs text-zinc-400"><span className="text-emerald-400 font-medium">{book.availableCopies ?? 0}</span><span className="text-zinc-500"> / {book.copies ?? 0} available</span></div> : <div className="mt-3 text-xs text-violet-300">Digital reader available</div>}
-                    <div className="flex gap-2 mt-4">
+                    <div className="mt-2 text-[10px] text-zinc-400 sm:text-xs"><span className="font-medium text-emerald-400">{book.availableCopies ?? 0}</span><span className="text-zinc-500"> / {book.copies ?? 0} available</span></div>
+                    <div className="mt-2 flex gap-1.5">
                       {isLibrarian ? (
                         <>
                           <button
                             onClick={() => handleEdit(book)}
-                            className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm font-medium rounded-lg transition-colors"
+                            className="flex-1 inline-flex items-center justify-center gap-1 px-2 py-2 text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg transition-colors sm:text-sm"
                           >
                             <Pencil className="w-4 h-4" /> Edit
                           </button>
                           <button
                             onClick={() => handleToggleAvailability(book)}
                             disabled={togglingStatusId !== null}
-                            className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                            className={`flex-1 inline-flex items-center justify-center gap-1 px-1.5 py-2 text-[10px] font-medium rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed sm:gap-1.5 sm:px-3 sm:text-sm ${
                               book.status === 'AVAILABLE'
                                 ? 'bg-orange-500/10 hover:bg-orange-500/20 text-orange-400'
                                 : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400'
@@ -414,7 +401,7 @@ export default function BooksPage() {
                         <button
                           onClick={() => handleAddToCart(book)}
                           disabled={(book.availableCopies ?? 0) <= 0}
-                          className={`flex-1 px-3 py-2 text-white text-sm font-semibold rounded-lg transition-colors ${
+                            className={`flex-1 px-1.5 py-2 text-[11px] font-semibold text-white rounded-lg transition-colors sm:px-3 sm:text-sm ${
                             inCart(book.id)
                               ? "bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-600/20"
                               : "bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-600/20"

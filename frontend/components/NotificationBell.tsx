@@ -148,7 +148,7 @@ export default function NotificationBell() {
       {open && (
         <>
           <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 mt-2 w-80 sm:w-96 z-40 rounded-2xl border border-zinc-800 bg-zinc-900 shadow-2xl shadow-black/50 overflow-hidden">
+          <div className="fixed inset-x-2 top-16 z-40 mt-0 max-h-[calc(100dvh-5rem)] rounded-2xl border border-zinc-800 bg-zinc-900 shadow-2xl shadow-black/50 overflow-hidden sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-96 sm:max-h-none">
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
               <div className="flex items-center gap-2">
@@ -177,7 +177,7 @@ export default function NotificationBell() {
             </div>
 
             {/* Notification list */}
-            <div className="max-h-96 overflow-y-auto">
+            <div className="max-h-[calc(100dvh-11rem)] overflow-y-auto sm:max-h-96">
               {loading ? (
                 <div className="space-y-2 p-4">
                   {Array.from({ length: 4 }).map((_, i) => (

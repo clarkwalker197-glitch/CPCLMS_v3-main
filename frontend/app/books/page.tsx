@@ -42,6 +42,7 @@ export default function BooksPage() {
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
+  const [classificationFilter, setClassificationFilter] = useState("");
   const [view, setView] = useState<"grid" | "list">("grid");
   const [currentPage, setCurrentPage] = useState(1);
   const [cart, setCart] = useState<any[]>([]);
@@ -57,6 +58,7 @@ export default function BooksPage() {
   // Debounced search/filter values (300ms) to avoid per-keystroke API spam
   const debouncedSearch = useDebounce(search, 300);
   const debouncedCategory = useDebounce(categoryFilter, 300);
+  const debouncedClassification = useDebounce(classificationFilter, 300);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -65,6 +67,7 @@ export default function BooksPage() {
       const params: Record<string, string> = {};
       if (debouncedSearch) params.search = debouncedSearch;
       if (debouncedCategory) params.categoryId = debouncedCategory;
+      if (debouncedClassification) params.classificationNumber = debouncedClassification;
       const [booksRes, catsRes] = await Promise.all([
         api.getBooks(params),
         api.getCategories(),
@@ -74,13 +77,13 @@ export default function BooksPage() {
       } else if (booksRes.rateLimited) {
         setError("You're moving too fast. Please wait a moment and try again.");
       }
-      if (catsRes.success) setCategories(catsRes.data || []);
+      if (catsRes.success) setCategories((catsRes.data || []).filter((category: any) => category.slug?.startsWith("dewey-")));
     } catch {
       setError("Failed to load books");
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, debouncedCategory]);
+  }, [debouncedSearch, debouncedCategory, debouncedClassification]);
 
   const visibleBooks = books;
 
@@ -90,7 +93,7 @@ export default function BooksPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearch, debouncedCategory, visibleBooks.length]);
+  }, [debouncedSearch, debouncedCategory, debouncedClassification, visibleBooks.length]);
 
   const inCart = (id: string) => cart.some((b) => b.id === id);
 
@@ -215,10 +218,11 @@ export default function BooksPage() {
     </div>
   );
 
-  const hasActiveFilters = Boolean(search.trim() || categoryFilter);
+  const hasActiveFilters = Boolean(search.trim() || categoryFilter || classificationFilter);
   const clearFilters = () => {
     setSearch("");
     setCategoryFilter("");
+    setClassificationFilter("");
   };
   const typeBadge = (book: any) => book.bookType === "ebook"
     ? "bg-violet-500/15 text-violet-300"
@@ -271,7 +275,7 @@ export default function BooksPage() {
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search by title or author..."
+                placeholder="Search by title, author, or Dewey number..."
                 className="w-full pl-10 pr-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
               />
             </div>
@@ -285,6 +289,14 @@ export default function BooksPage() {
                 <option key={cat.id} value={cat.id} className="bg-zinc-900 text-white">{cat.name}</option>
               ))}
             </select>
+            <input
+              type="text"
+              value={classificationFilter}
+              onChange={(e) => setClassificationFilter(e.target.value)}
+              placeholder="Dewey no. e.g., 510.5"
+              inputMode="decimal"
+              className="w-full lg:w-44 px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+            />
             <div className="flex w-full items-center gap-2 sm:hidden">
               <MobileBookTypeSelect current="physical" className="min-w-0 flex-1" />
               <div className="flex shrink-0 gap-1 rounded-xl border border-zinc-700 bg-zinc-950 p-1">

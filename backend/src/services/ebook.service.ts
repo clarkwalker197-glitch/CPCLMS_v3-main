@@ -16,19 +16,24 @@ export class EBookService {
 
     const where: Record<string, unknown> = { deletedAt: null };
 
-    // Search by title, author, ISBN
+    // Search by title, author, ISBN, or Dewey classification
     if (query.search) {
       const search = query.search as string;
       where.OR = [
         { title: { contains: search, mode: 'insensitive' } },
         { author: { contains: search, mode: 'insensitive' } },
         { isbn: { contains: search } },
+        { classificationNumber: { contains: search } },
       ];
     }
 
     // Filter by category
     if (query.categoryId) {
       where.categoryId = query.categoryId;
+    }
+
+    if (query.classificationNumber) {
+      where.classificationNumber = { contains: query.classificationNumber };
     }
 
     // Filter by format

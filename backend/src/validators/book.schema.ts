@@ -6,8 +6,8 @@ import { z } from 'zod';
 
 const classificationNumberSchema = z
   .string()
-  .regex(/^\d{1,3}$/, 'Classification number must contain 1 to 3 digits')
-  .refine((value) => Number(value) >= 1 && Number(value) <= 999, 'Classification number must be between 001 and 999');
+  .regex(/^\d{1,3}(?:\.\d{1,5})?$/, 'Classification number must contain up to 3 digits and up to 5 decimal places')
+  .refine((value) => Number(value) >= 0 && Number(value) <= 999, 'Classification number must be between 000 and 999');
 
 export const createBookSchema = z.object({
   body: z.object({

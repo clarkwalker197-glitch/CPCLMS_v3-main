@@ -22,7 +22,7 @@ export class BookService {
 
     const where: Prisma.BookWhereInput = { deletedAt: null };
 
-    // Search by title, author, ISBN
+    // Search by title, author, ISBN, accession number, or Dewey classification
     if (query.search) {
       const search = query.search as string;
       where.OR = [
@@ -30,6 +30,7 @@ export class BookService {
         { author: { contains: search, mode: 'insensitive' } },
         { isbn: { contains: search } },
         { accessionNo: { contains: search } },
+        { classificationNumber: { contains: search } },
       ];
     }
 
@@ -41,6 +42,10 @@ export class BookService {
     // Filter by category
     if (query.categoryId) {
       where.categoryId = query.categoryId as string;
+    }
+
+    if (query.classificationNumber) {
+      where.classificationNumber = { contains: query.classificationNumber as string };
     }
 
     const [books, total] = await Promise.all([

@@ -4,7 +4,7 @@ import { useState, useRef } from "react";
 import { Dialog, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import api from "@/lib/api";
-import { categoryForClassification, LIBRARY_CATEGORIES, normalizeClassificationNumber } from "@/lib/categories";
+import { categoryForClassification, LIBRARY_CATEGORIES, normalizeClassificationNumber, sanitizeClassificationInput } from "@/lib/categories";
 import { BookOpen, Upload, FileText, X } from "lucide-react";
 
 interface Category {
@@ -58,7 +58,7 @@ export function AddBookModal(props: {
   ) => setForm((f) => ({ ...f, [field]: e.target.value }));
 
   const updateClassificationNumber = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/\D/g, "").slice(0, 3);
+    const value = sanitizeClassificationInput(e.target.value);
     const detected = categoryForClassification(value);
     const categoryId = detected ? props.categories.find((category) => category.name === detected.name)?.id || "" : undefined;
     setForm((current) => ({ ...current, classificationNumber: value, ...(categoryId ? { categoryId } : {}) }));
@@ -104,7 +104,7 @@ export function AddBookModal(props: {
 
     const classificationNumber = normalizeClassificationNumber(form.classificationNumber);
     if (!form.isbn.trim() || !form.accessionNo.trim() || !form.title.trim() || !form.author.trim() || !form.categoryId || !classificationNumber) {
-      setError("ISBN, accession number, title, author, category, and a classification number from 001 to 999 are required.");
+      setError("ISBN, accession number, title, author, category, and a valid Dewey classification number are required.");
       return;
     }
     const copiesNum = form.copies ? Number(form.copies) : 1;
@@ -257,9 +257,9 @@ export function AddBookModal(props: {
               value={form.classificationNumber}
               onChange={updateClassificationNumber}
               onBlur={normalizeClassification}
-              inputMode="numeric"
-              maxLength={3}
-              placeholder="e.g., 050"
+              inputMode="decimal"
+              maxLength={9}
+              placeholder="e.g., 510.5"
               required
             />
           </div>
@@ -274,7 +274,7 @@ export function AddBookModal(props: {
               return record ? <option key={record.id} value={record.id}>{category.name}</option> : null;
             })}
           </select>
-          <p className="mt-1 text-xs text-zinc-500">Numeric classifications auto-select a category; Filipiniana and Biology may be selected manually.</p>
+          <p className="mt-1 text-xs text-zinc-500">Use a Dewey number with up to 5 decimal places. The first three digits select the category.</p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

@@ -55,7 +55,7 @@ export const uploadEBook = asyncHandler(async (req: Request, res: Response) => {
   }
   const normalizedClassificationNumber = normalizeClassificationNumber(classificationNumber);
   if (!normalizedClassificationNumber) {
-    throw new BadRequestError('Classification number must be between 001 and 999');
+    throw new BadRequestError('Classification number must be between 000 and 999 with up to 5 decimal places');
   }
 
   const baseUrl = `${req.protocol}://${req.get('host')}`;

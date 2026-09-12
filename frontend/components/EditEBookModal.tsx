@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Dialog, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import api from "@/lib/api";
-import { categoryForClassification, LIBRARY_CATEGORIES, normalizeClassificationNumber } from "@/lib/categories";
+import { categoryForClassification, LIBRARY_CATEGORIES, normalizeClassificationNumber, sanitizeClassificationInput } from "@/lib/categories";
 import { BookOpen, Link2, Trash2 } from "lucide-react";
 
 interface Category {
@@ -95,7 +95,7 @@ export function EditEBookModal(props: {
   ) => setForm((f) => ({ ...f, [field]: e.target.value }));
 
   const updateClassificationNumber = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/\D/g, "").slice(0, 3);
+    const value = sanitizeClassificationInput(e.target.value);
     const detected = categoryForClassification(value);
     const categoryId = detected ? props.categories.find((category) => category.name === detected.name)?.id || "" : undefined;
     setForm((current) => ({ ...current, classificationNumber: value, ...(categoryId ? { categoryId } : {}) }));
@@ -128,7 +128,7 @@ export function EditEBookModal(props: {
 
     const classificationNumber = normalizeClassificationNumber(form.classificationNumber);
     if (!form.title.trim() || !form.author.trim() || !form.fileUrl.trim() || !form.categoryId || !classificationNumber) {
-      setError("Title, author, file URL, category, and a classification number from 001 to 999 are required.");
+      setError("Title, author, file URL, category, and a valid Dewey classification number are required.");
       return;
     }
 
@@ -265,7 +265,7 @@ export function EditEBookModal(props: {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className={labelClass}>Classification Number *</label>
-            <input className={inputClass} value={form.classificationNumber} onChange={updateClassificationNumber} onBlur={normalizeClassification} inputMode="numeric" maxLength={3} placeholder="e.g., 812" required />
+            <input className={inputClass} value={form.classificationNumber} onChange={updateClassificationNumber} onBlur={normalizeClassification} inputMode="decimal" maxLength={9} placeholder="e.g., 812.54" required />
           </div>
           <div>
             <label className={labelClass}>Category *</label>

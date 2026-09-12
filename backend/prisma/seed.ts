@@ -4,6 +4,7 @@
 
 import { PrismaClient, Role, BookStatus, EBookFormat } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
+import { DEWEY_SECOND_SUMMARY } from '../src/constants/categories';
 
 const prisma = new PrismaClient();
 
@@ -117,63 +118,24 @@ async function main() {
   // ============================================================
   // 2. CATEGORIES (with parent-child hierarchy)
   // ============================================================
-  const science = await prisma.category.create({
-    data: {
-      name: 'Science',
-      slug: 'science',
-      description: 'Scientific books covering various disciplines',
-    },
-  });
-
-  const computerScience = await prisma.category.create({
-    data: {
-      name: 'Computer Science',
-      slug: 'computer-science',
-      description: 'Computing, programming, and software development',
-      parentId: science.id,
-    },
-  });
-
-  const physics = await prisma.category.create({
-    data: {
-      name: 'Physics',
-      slug: 'physics',
-      description: 'Physics and natural sciences',
-      parentId: science.id,
-    },
-  });
-
-  const mathematics = await prisma.category.create({
-    data: {
-      name: 'Mathematics',
-      slug: 'mathematics',
-      description: 'Mathematics and statistics',
-    },
-  });
-
-  const history = await prisma.category.create({
-    data: {
-      name: 'History',
-      slug: 'history',
-      description: 'Historical books and references',
-    },
-  });
-
-  const technology = await prisma.category.create({
-    data: {
-      name: 'Technology',
-      slug: 'technology',
-      description: 'Technology and engineering',
-    },
-  });
-
-  const fiction = await prisma.category.create({
-    data: {
-      name: 'Fiction',
-      slug: 'fiction',
-      description: 'Literary fiction and novels',
-    },
-  });
+  const deweyCategories = await Promise.all(
+    DEWEY_SECOND_SUMMARY.map(([code, name]) => prisma.category.create({
+      data: {
+        id: `dewey-${code}`,
+        name: `${code} ${name}`,
+        slug: `dewey-${code}`,
+        description: `Dewey Decimal 2nd Summary ${code}`,
+      },
+    }))
+  );
+  const categoryByCode = Object.fromEntries(
+    DEWEY_SECOND_SUMMARY.map(([code], index) => [code, deweyCategories[index]])
+  );
+  const computerScience = categoryByCode['000'];
+  const physics = categoryByCode['530'];
+  const mathematics = categoryByCode['510'];
+  const history = categoryByCode['900'];
+  const fiction = categoryByCode['800'];
 
   console.log('✅ Categories seeded');
 

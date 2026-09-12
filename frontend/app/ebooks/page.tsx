@@ -38,6 +38,7 @@ export default function EBooksPage() {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [classificationFilter, setClassificationFilter] = useState('');
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [currentPage, setCurrentPage] = useState(1);
   const [successMsg, setSuccessMsg] = useState('');
@@ -55,18 +56,19 @@ export default function EBooksPage() {
       const params: Record<string, string> = {};
       if (search) params.search = search;
       if (categoryFilter) params.categoryId = categoryFilter;
+      if (classificationFilter) params.classificationNumber = classificationFilter;
       const [ebooksRes, catsRes] = await Promise.all([
         api.getEBooks(params),
         api.getCategories(),
       ]);
       if (ebooksRes.success) setEbooks(ebooksRes.data || []);
-      if (catsRes.success) setCategories(catsRes.data || []);
+      if (catsRes.success) setCategories((catsRes.data || []).filter((category: any) => category.slug?.startsWith('dewey-')));
     } catch {
       setError('Failed to load e-books');
     } finally {
       setLoading(false);
     }
-  }, [search, categoryFilter]);
+  }, [search, categoryFilter, classificationFilter]);
 
   useEffect(() => {
     const timer = setTimeout(loadData, 300);
@@ -75,7 +77,7 @@ export default function EBooksPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, categoryFilter, ebooks.length]);
+  }, [search, categoryFilter, classificationFilter, ebooks.length]);
 
   const totalPages = Math.max(1, Math.ceil(ebooks.length / PAGE_SIZE));
   const paginatedEBooks = ebooks.slice(
@@ -186,7 +188,7 @@ export default function EBooksPage() {
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search e-books by title or author..."
+                  placeholder="Search by title, author, or Dewey number..."
                   className="w-full pl-10 pr-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
                 />
               </div>
@@ -200,6 +202,14 @@ export default function EBooksPage() {
                   <option key={cat.id} value={cat.id} className="bg-zinc-900 text-white">{cat.name}</option>
                 ))}
               </select>
+              <input
+                type="text"
+                value={classificationFilter}
+                onChange={(e) => setClassificationFilter(e.target.value)}
+                placeholder="Dewey no. e.g., 510.5"
+                inputMode="decimal"
+                className="w-full sm:w-44 px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+              />
               <div className="flex w-full items-center gap-2 sm:hidden">
                 <MobileBookTypeSelect current="ebook" className="min-w-0 flex-1" />
                 <div className="flex shrink-0 gap-1 rounded-xl border border-zinc-700 bg-zinc-950 p-1">

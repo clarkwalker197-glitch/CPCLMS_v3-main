@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { Dialog, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import api from "@/lib/api";
-import { categoryForClassification, LIBRARY_CATEGORIES, normalizeClassificationNumber, sanitizeClassificationInput } from "@/lib/categories";
+import { categoryCodeForId, categoryForClassification, DEWEY_MAIN_CATEGORIES, mainCategoryForCode, normalizeClassificationNumber, sanitizeClassificationInput, subcategoriesForMain } from "@/lib/categories";
 import { BookOpen, Upload, X, Trash2 } from "lucide-react";
 
 interface Category {
@@ -68,6 +68,7 @@ export function EditBookModal(props: {
   };
 
   const [form, setForm] = useState(emptyForm);
+  const [mainCategoryCode, setMainCategoryCode] = useState("");
   const [originalCoverImage, setOriginalCoverImage] = useState<string>("");
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
@@ -92,6 +93,8 @@ export function EditBookModal(props: {
         copies: props.book.copies ? String(props.book.copies) : "1",
         availableCopies: props.book.availableCopies ? String(props.book.availableCopies) : "1",
       });
+      const categoryCode = categoryCodeForId(props.book.categoryId, props.categories);
+      setMainCategoryCode((mainCategoryForCode(categoryCode) || mainCategoryForCode(props.book.classificationNumber?.slice(0, 3)))?.code || "");
       setOriginalCoverImage(props.book.coverImage || "");
       setCoverFile(null);
       setError("");
@@ -106,6 +109,7 @@ export function EditBookModal(props: {
     const value = sanitizeClassificationInput(e.target.value);
     const detected = categoryForClassification(value);
     const categoryId = detected ? props.categories.find((category) => category.name === detected.name)?.id || "" : undefined;
+    if (detected) setMainCategoryCode(detected.code.slice(0, 1) + "00");
     setForm((current) => ({ ...current, classificationNumber: value, ...(categoryId ? { categoryId } : {}) }));
   };
 
@@ -140,6 +144,7 @@ export function EditBookModal(props: {
 
   const reset = () => {
     setForm(emptyForm);
+    setMainCategoryCode("");
     setCoverFile(null);
     setOriginalCoverImage("");
     setError("");
@@ -348,14 +353,23 @@ export function EditBookModal(props: {
 
         <div>
           <label className={labelClass}>Category *</label>
-          <select className={inputClass} value={form.categoryId} onChange={update("categoryId")} required>
-            <option value="">Select a category</option>
-            {LIBRARY_CATEGORIES.map((category) => {
+          <select className={inputClass} value={mainCategoryCode} onChange={(e) => {
+            setMainCategoryCode(e.target.value);
+            setForm((current) => ({ ...current, categoryId: "" }));
+          }} required>
+            <option value="">Select a main category</option>
+            {DEWEY_MAIN_CATEGORIES.map((category) => (
+              <option key={category.code} value={category.code}>{category.name} ({category.range})</option>
+            ))}
+          </select>
+          <select className={`${inputClass} mt-2`} value={form.categoryId} onChange={update("categoryId")} disabled={!mainCategoryCode} required>
+            <option value="">Select a subcategory</option>
+            {subcategoriesForMain(mainCategoryCode).map((category) => {
               const record = props.categories.find((item) => item.name === category.name);
               return record ? <option key={record.id} value={record.id}>{category.name}</option> : null;
             })}
           </select>
-          <p className="mt-1 text-xs text-zinc-500">Use a Dewey number with up to 5 decimal places. The first three digits select the category.</p>
+          <p className="mt-1 text-xs text-zinc-500">Choose a main category, then its 2nd Summary subcategory.</p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

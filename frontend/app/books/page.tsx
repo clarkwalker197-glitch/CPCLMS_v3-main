@@ -11,6 +11,7 @@ import { EditBookModal } from "@/components/EditBookModal";
 import MobileBookTypeSelect from "@/components/MobileBookTypeSelect";
 import Sidebar from "@/components/Sidebar";
 import ResponsiveTable from "@/components/ResponsiveTable";
+import { DEWEY_MAIN_CATEGORIES, subcategoriesForMain } from "@/lib/categories";
 import {
   Plus,
   Search,
@@ -42,6 +43,7 @@ export default function BooksPage() {
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
+  const [mainCategoryFilter, setMainCategoryFilter] = useState("");
   const [classificationFilter, setClassificationFilter] = useState("");
   const [view, setView] = useState<"grid" | "list">("grid");
   const [currentPage, setCurrentPage] = useState(1);
@@ -58,6 +60,7 @@ export default function BooksPage() {
   // Debounced search/filter values (300ms) to avoid per-keystroke API spam
   const debouncedSearch = useDebounce(search, 300);
   const debouncedCategory = useDebounce(categoryFilter, 300);
+  const debouncedMainCategory = useDebounce(mainCategoryFilter, 300);
   const debouncedClassification = useDebounce(classificationFilter, 300);
 
   const loadData = useCallback(async () => {
@@ -67,6 +70,7 @@ export default function BooksPage() {
       const params: Record<string, string> = {};
       if (debouncedSearch) params.search = debouncedSearch;
       if (debouncedCategory) params.categoryId = debouncedCategory;
+      else if (debouncedMainCategory) params.categoryMain = debouncedMainCategory;
       if (debouncedClassification) params.classificationNumber = debouncedClassification;
       const [booksRes, catsRes] = await Promise.all([
         api.getBooks(params),
@@ -83,7 +87,7 @@ export default function BooksPage() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, debouncedCategory, debouncedClassification]);
+  }, [debouncedSearch, debouncedCategory, debouncedMainCategory, debouncedClassification]);
 
   const visibleBooks = books;
 
@@ -218,10 +222,11 @@ export default function BooksPage() {
     </div>
   );
 
-  const hasActiveFilters = Boolean(search.trim() || categoryFilter || classificationFilter);
+  const hasActiveFilters = Boolean(search.trim() || mainCategoryFilter || categoryFilter || classificationFilter);
   const clearFilters = () => {
     setSearch("");
     setCategoryFilter("");
+    setMainCategoryFilter("");
     setClassificationFilter("");
   };
   const typeBadge = (book: any) => book.bookType === "ebook"
@@ -280,14 +285,29 @@ export default function BooksPage() {
               />
             </div>
             <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
+              value={mainCategoryFilter}
+              onChange={(e) => {
+                setMainCategoryFilter(e.target.value);
+                setCategoryFilter("");
+              }}
               className="px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition appearance-none"
             >
-              <option value="" className="bg-zinc-900 text-white">All Categories</option>
-              {categories.map((cat: any) => (
-                <option key={cat.id} value={cat.id} className="bg-zinc-900 text-white">{cat.name}</option>
+              <option value="" className="bg-zinc-900 text-white">All Main Categories</option>
+              {DEWEY_MAIN_CATEGORIES.map((category) => (
+                <option key={category.code} value={category.code} className="bg-zinc-900 text-white">{category.name} ({category.range})</option>
               ))}
+            </select>
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              disabled={!mainCategoryFilter}
+              className="px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition appearance-none disabled:opacity-50"
+            >
+              <option value="">All Subcategories</option>
+              {subcategoriesForMain(mainCategoryFilter).map((category) => {
+                const record = categories.find((item: any) => item.name === category.name);
+                return record ? <option key={record.id} value={record.id}>{category.name}</option> : null;
+              })}
             </select>
             <input
               type="text"

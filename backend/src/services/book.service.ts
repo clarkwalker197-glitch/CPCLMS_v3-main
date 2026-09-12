@@ -7,7 +7,7 @@ import { prisma } from '../config';
 import { NotFoundError, ConflictError } from '../utils/errors';
 import { getPaginationParams, buildPaginationMeta } from '../utils/pagination';
 import { CreateBookInput, UpdateBookInput, CreateCategoryInput } from '../validators';
-import { normalizeClassificationNumber } from '../constants/categories';
+import { DEWEY_SECOND_SUMMARY, normalizeClassificationNumber } from '../constants/categories';
 
 export class BookService {
   // ============================================================
@@ -42,6 +42,8 @@ export class BookService {
     // Filter by category
     if (query.categoryId) {
       where.categoryId = query.categoryId as string;
+    } else if (query.categoryMain) {
+      where.category = { slug: { startsWith: `dewey-${String(query.categoryMain).slice(0, 1)}` } };
     }
 
     if (query.classificationNumber) {
@@ -181,7 +183,22 @@ export class BookService {
    * List all categories (tree structure)
    */
   async listCategories() {
+    // Keep the category API usable even when a deployment has not run the latest seed.
+    await prisma.$transaction(
+      DEWEY_SECOND_SUMMARY.map(([code, name]) => prisma.category.upsert({
+        where: { slug: `dewey-${code}` },
+        update: { name: `${code} ${name}`, description: `Dewey Decimal 2nd Summary ${code}` },
+        create: {
+          id: `dewey-${code}`,
+          name: `${code} ${name}`,
+          slug: `dewey-${code}`,
+          description: `Dewey Decimal 2nd Summary ${code}`,
+        },
+      }))
+    );
+
     const categories = await prisma.category.findMany({
+      where: { slug: { startsWith: 'dewey-' } },
       include: {
         children: { include: { _count: { select: { books: true, eBooks: true } } } },
         _count: { select: { books: true, eBooks: true } },

@@ -4,7 +4,7 @@ import { useState, useRef } from "react";
 import { Dialog, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import api from "@/lib/api";
-import { categoryForClassification, LIBRARY_CATEGORIES, normalizeClassificationNumber, sanitizeClassificationInput } from "@/lib/categories";
+import { categoryForClassification, DEWEY_MAIN_CATEGORIES, LIBRARY_CATEGORIES, normalizeClassificationNumber, sanitizeClassificationInput, subcategoriesForMain } from "@/lib/categories";
 import { BookOpen, Upload, FileText, X } from "lucide-react";
 
 interface Category {
@@ -48,6 +48,7 @@ export function AddBookModal(props: {
     copies: "1",
   };
   const [form, setForm] = useState(emptyForm);
+  const [mainCategoryCode, setMainCategoryCode] = useState("");
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -61,6 +62,7 @@ export function AddBookModal(props: {
     const value = sanitizeClassificationInput(e.target.value);
     const detected = categoryForClassification(value);
     const categoryId = detected ? props.categories.find((category) => category.name === detected.name)?.id || "" : undefined;
+    if (detected) setMainCategoryCode(detected.code.slice(0, 1) + "00");
     setForm((current) => ({ ...current, classificationNumber: value, ...(categoryId ? { categoryId } : {}) }));
   };
 
@@ -88,6 +90,7 @@ export function AddBookModal(props: {
 
   const reset = () => {
     setForm(emptyForm);
+    setMainCategoryCode("");
     setCoverFile(null);
     setError("");
   };
@@ -267,14 +270,23 @@ export function AddBookModal(props: {
 
         <div>
           <label className={labelClass}>Category *</label>
-          <select className={inputClass} value={form.categoryId} onChange={update("categoryId")} required>
-            <option value="">Select a category</option>
-            {LIBRARY_CATEGORIES.map((category) => {
+          <select className={inputClass} value={mainCategoryCode} onChange={(e) => {
+            setMainCategoryCode(e.target.value);
+            setForm((current) => ({ ...current, categoryId: "" }));
+          }} required>
+            <option value="">Select a main category</option>
+            {DEWEY_MAIN_CATEGORIES.map((category) => (
+              <option key={category.code} value={category.code}>{category.name} ({category.range})</option>
+            ))}
+          </select>
+          <select className={`${inputClass} mt-2`} value={form.categoryId} onChange={update("categoryId")} disabled={!mainCategoryCode} required>
+            <option value="">Select a subcategory</option>
+            {subcategoriesForMain(mainCategoryCode).map((category) => {
               const record = props.categories.find((item) => item.name === category.name);
               return record ? <option key={record.id} value={record.id}>{category.name}</option> : null;
             })}
           </select>
-          <p className="mt-1 text-xs text-zinc-500">Use a Dewey number with up to 5 decimal places. The first three digits select the category.</p>
+          <p className="mt-1 text-xs text-zinc-500">Choose a main category, then its 2nd Summary subcategory. Detailed decimals remain in the classification number.</p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

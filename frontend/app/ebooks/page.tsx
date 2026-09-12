@@ -8,6 +8,7 @@ import ResponsiveTable from '@/components/ResponsiveTable';
 import { AddEBookModal } from '@/components/AddEBookModal';
 import { EditEBookModal } from '@/components/EditEBookModal';
 import MobileBookTypeSelect from '@/components/MobileBookTypeSelect';
+import { DEWEY_MAIN_CATEGORIES, subcategoriesForMain } from '@/lib/categories';
 import {
   Plus,
   Search,
@@ -38,6 +39,7 @@ export default function EBooksPage() {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [mainCategoryFilter, setMainCategoryFilter] = useState('');
   const [classificationFilter, setClassificationFilter] = useState('');
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [currentPage, setCurrentPage] = useState(1);
@@ -56,6 +58,7 @@ export default function EBooksPage() {
       const params: Record<string, string> = {};
       if (search) params.search = search;
       if (categoryFilter) params.categoryId = categoryFilter;
+      else if (mainCategoryFilter) params.categoryMain = mainCategoryFilter;
       if (classificationFilter) params.classificationNumber = classificationFilter;
       const [ebooksRes, catsRes] = await Promise.all([
         api.getEBooks(params),
@@ -68,7 +71,7 @@ export default function EBooksPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, categoryFilter, classificationFilter]);
+  }, [search, mainCategoryFilter, categoryFilter, classificationFilter]);
 
   useEffect(() => {
     const timer = setTimeout(loadData, 300);
@@ -193,14 +196,29 @@ export default function EBooksPage() {
                 />
               </div>
               <select
-                value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
+                value={mainCategoryFilter}
+                onChange={(e) => {
+                  setMainCategoryFilter(e.target.value);
+                  setCategoryFilter('');
+                }}
                 className="px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition appearance-none"
               >
-                <option value="" className="bg-zinc-900 text-white">All</option>
-                {categories.map((cat: any) => (
-                  <option key={cat.id} value={cat.id} className="bg-zinc-900 text-white">{cat.name}</option>
+                <option value="" className="bg-zinc-900 text-white">All Main Categories</option>
+                {DEWEY_MAIN_CATEGORIES.map((category) => (
+                  <option key={category.code} value={category.code} className="bg-zinc-900 text-white">{category.name} ({category.range})</option>
                 ))}
+              </select>
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                disabled={!mainCategoryFilter}
+                className="px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition appearance-none disabled:opacity-50"
+              >
+                <option value="">All Subcategories</option>
+                {subcategoriesForMain(mainCategoryFilter).map((category) => {
+                  const record = categories.find((item: any) => item.name === category.name);
+                  return record ? <option key={record.id} value={record.id}>{category.name}</option> : null;
+                })}
               </select>
               <input
                 type="text"

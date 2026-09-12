@@ -30,6 +30,8 @@ export class EBookService {
     // Filter by category
     if (query.categoryId) {
       where.categoryId = query.categoryId;
+    } else if (query.categoryMain) {
+      where.category = { slug: { startsWith: `dewey-${String(query.categoryMain).slice(0, 1)}` } };
     }
 
     if (query.classificationNumber) {

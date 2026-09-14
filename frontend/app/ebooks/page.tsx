@@ -25,6 +25,8 @@ import {
 
 const PAGE_SIZE = 8;
 
+const isEBookAvailable = (ebook: any) => ebook?.status === 'AVAILABLE';
+
 const formatBadge: Record<string, string> = {
   PDF: 'bg-red-500/15 text-red-400 ring-red-500/30',
   EPUB: 'bg-emerald-500/15 text-emerald-400 ring-emerald-500/30',
@@ -339,35 +341,38 @@ export default function EBooksPage() {
                         </span>
                       )}
                     </div>
-                    <div className="mt-2 flex gap-1.5">
+                    <div className="mt-2 flex items-stretch gap-2">
                       {isLibrarian ? (
                         <>
                           <button
                             onClick={() => handleEdit(ebook)}
-                            className="flex-1 inline-flex items-center justify-center gap-1 px-2 py-2 text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg transition-colors sm:text-sm"
+                            className="flex-1 min-w-0 whitespace-nowrap inline-flex items-center justify-center gap-1 rounded-lg bg-zinc-800 px-2 py-2 text-[10px] font-medium text-zinc-200 transition-colors hover:bg-zinc-700 sm:text-xs"
                           >
-                            <Pencil className="w-4 h-4" /> Edit
+                            <Pencil className="h-4 w-4 shrink-0" />
+                            <span>Edit</span>
                           </button>
                           <button
                             onClick={() => handleToggleAvailability(ebook)}
                             disabled={togglingStatusId !== null}
-                            className={`flex-1 inline-flex items-center justify-center gap-1 px-1.5 py-2 text-[10px] font-medium rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed sm:gap-1.5 sm:px-3 sm:text-sm ${
+                            aria-label={ebook.status === 'AVAILABLE' ? 'Mark not available' : 'Mark available'}
+                            className={`flex-1 min-w-0 whitespace-nowrap inline-flex items-center justify-center gap-1 rounded-lg px-2 py-2 text-[10px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 sm:text-xs ${
                               ebook.status === 'AVAILABLE'
-                                ? 'bg-orange-500/10 hover:bg-orange-500/20 text-orange-400'
-                                : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400'
+                                ? 'bg-orange-500/10 text-orange-400 hover:bg-orange-500/20'
+                                : 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
                             }`}
                           >
-                            <AlertCircle className={`w-4 h-4 ${togglingStatusId === ebook.id ? "animate-spin" : ""}`} />
-                            {ebook.status === 'AVAILABLE' ? 'Mark Unavailable' : 'Mark Available'}
+                            <AlertCircle className={`h-4 w-4 shrink-0 ${togglingStatusId === ebook.id ? "animate-spin" : ""}`} />
+                            <span>{ebook.status === 'AVAILABLE' ? 'Unavailable' : 'Available'}</span>
                           </button>
                         </>
                       ) : (
                         <>
                           <button
                             onClick={() => window.open(ebook.fileUrl, '_blank')}
-                            className="flex-1 inline-flex items-center justify-center gap-1 px-2 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors shadow-lg shadow-blue-600/20 sm:gap-1.5 sm:px-3 sm:text-sm"
+                            disabled={!isEBookAvailable(ebook)}
+                            className="flex-1 inline-flex items-center justify-center gap-1 px-2 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors shadow-lg shadow-blue-600/20 disabled:opacity-40 disabled:cursor-not-allowed sm:gap-1.5 sm:px-3 sm:text-sm"
                           >
-                            <BookOpen className="w-4 h-4" /> View
+                            <BookOpen className="w-4 h-4" /> {isEBookAvailable(ebook) ? 'View' : 'Unavailable'}
                           </button>
                         </>
                       )}
@@ -465,9 +470,10 @@ export default function EBooksPage() {
                             <div className="inline-flex items-center gap-1.5">
                               <button
                                 onClick={() => window.open(ebook.fileUrl, '_blank')}
-                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors"
+                                disabled={!isEBookAvailable(ebook)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                               >
-                                <BookOpen className="w-3.5 h-3.5" /> View
+                                <BookOpen className="w-3.5 h-3.5" /> {isEBookAvailable(ebook) ? 'View' : 'Unavailable'}
                               </button>
                             </div>
                           )}
@@ -483,7 +489,7 @@ export default function EBooksPage() {
                 <article key={ebook.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-lg shadow-black/10">
                   <div className="flex items-start gap-3 border-b border-zinc-800/80 pb-3"><div className="h-14 w-11 shrink-0 overflow-hidden rounded-lg bg-zinc-800">{ebook.coverImage ? <img src={ebook.coverImage} alt={ebook.title} className="h-full w-full object-cover" /> : <ImageIcon className="m-3 h-5 w-5 text-zinc-600" />}</div><div className="min-w-0"><p className="font-semibold text-zinc-100 break-words">{ebook.title}</p><p className="mt-1 text-sm text-zinc-500 break-words">{ebook.author}</p></div></div>
                   <div className="grid grid-cols-2 gap-3 py-4 text-sm"><div><p className="text-xs text-zinc-500">Category</p><p className="mt-1 text-zinc-300">{ebook.category?.name || "General"}</p></div><div><p className="text-xs text-zinc-500">Format</p><p className="mt-1 text-zinc-300">{ebook.format}</p></div></div>
-                  <div className="flex items-center justify-between gap-3 border-t border-zinc-800/80 pt-3"><span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${ebook.status === 'AVAILABLE' ? 'bg-emerald-500/15 text-emerald-400 ring-emerald-500/30' : 'bg-orange-500/15 text-orange-400 ring-orange-500/30'}`}>{ebook.status === 'AVAILABLE' ? 'Available' : 'Not Available'}</span>{isLibrarian ? <div className="flex gap-2"><button onClick={() => handleEdit(ebook)} className="rounded-lg bg-zinc-800 px-3 py-2 text-xs text-zinc-200">Edit</button><button onClick={() => handleToggleAvailability(ebook)} className="rounded-lg bg-orange-500/10 px-3 py-2 text-xs text-orange-400">Toggle</button></div> : <button onClick={() => window.open(ebook.fileUrl, '_blank')} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white">View</button>}</div>
+                  <div className="flex items-center justify-between gap-3 border-t border-zinc-800/80 pt-3"><span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${isEBookAvailable(ebook) ? 'bg-emerald-500/15 text-emerald-400 ring-emerald-500/30' : 'bg-orange-500/15 text-orange-400 ring-orange-500/30'}`}>{isEBookAvailable(ebook) ? 'Available' : 'Unavailable'}</span>{isLibrarian ? <div className="flex gap-2"><button onClick={() => handleEdit(ebook)} className="rounded-lg bg-zinc-800 px-3 py-2 text-xs text-zinc-200">Edit</button><button onClick={() => handleToggleAvailability(ebook)} className="rounded-lg bg-orange-500/10 px-3 py-2 text-xs text-orange-400">Toggle</button></div> : <button onClick={() => window.open(ebook.fileUrl, '_blank')} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white" disabled={!isEBookAvailable(ebook)}>{isEBookAvailable(ebook) ? 'View' : 'Unavailable'}</button>}</div>
                 </article>
               ))
             } />

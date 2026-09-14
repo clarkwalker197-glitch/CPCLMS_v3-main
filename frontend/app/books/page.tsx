@@ -34,6 +34,10 @@ const PAGE_SIZE = 8;
 const MAX_BOOKS_PER_TRANSACTION = 3;
 const MAX_LIMIT_MESSAGE = "You can only borrow a maximum of 3 books per transaction.";
 
+const isPhysicalBookAvailable = (book: any) => {
+  return book?.status === 'AVAILABLE' && (book?.availableCopies ?? 0) > 0;
+};
+
 export default function BooksPage() {
   const { user } = useAuth();
   const router = useRouter();
@@ -104,6 +108,10 @@ export default function BooksPage() {
   const handleAddToCart = (book: any) => {
     if (!user) {
       router.push("/login");
+      return;
+    }
+    if (!isPhysicalBookAvailable(book)) {
+      setError('This book is currently unavailable.');
       return;
     }
     if (inCart(book.id)) {
@@ -432,39 +440,41 @@ export default function BooksPage() {
                       )}
                     </div>
                     <div className="mt-2 text-[10px] text-zinc-400 sm:text-xs"><span className="font-medium text-emerald-400">{book.availableCopies ?? 0}</span><span className="text-zinc-500"> / {book.copies ?? 0} available</span></div>
-                    <div className="mt-2 flex gap-1.5">
+                    <div className="mt-2 flex items-stretch gap-2">
                       {isLibrarian ? (
                         <>
                           <button
                             onClick={() => handleEdit(book)}
-                            className="flex-1 inline-flex items-center justify-center gap-1 px-2 py-2 text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg transition-colors sm:text-sm"
+                            className="flex-1 min-w-0 whitespace-nowrap inline-flex items-center justify-center gap-1 rounded-lg bg-zinc-800 px-2 py-2 text-[10px] font-medium text-zinc-200 transition-colors hover:bg-zinc-700 sm:text-xs"
                           >
-                            <Pencil className="w-4 h-4" /> Edit
+                            <Pencil className="h-4 w-4 shrink-0" />
+                            <span>Edit</span>
                           </button>
                           <button
                             onClick={() => handleToggleAvailability(book)}
                             disabled={togglingStatusId !== null}
-                            className={`flex-1 inline-flex items-center justify-center gap-1 px-1.5 py-2 text-[10px] font-medium rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed sm:gap-1.5 sm:px-3 sm:text-sm ${
+                            aria-label={book.status === 'AVAILABLE' ? 'Mark not available' : 'Mark available'}
+                            className={`flex-1 min-w-0 whitespace-nowrap inline-flex items-center justify-center gap-1 rounded-lg px-2 py-2 text-[10px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 sm:text-xs ${
                               book.status === 'AVAILABLE'
-                                ? 'bg-orange-500/10 hover:bg-orange-500/20 text-orange-400'
-                                : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400'
+                                ? 'bg-orange-500/10 text-orange-400 hover:bg-orange-500/20'
+                                : 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
                             }`}
                           >
-                            <AlertCircle className={`w-4 h-4 ${togglingStatusId === book.id ? "animate-spin" : ""}`} />
-                            {book.status === 'AVAILABLE' ? 'Mark Unavailable' : 'Mark Available'}
+                            <AlertCircle className={`h-4 w-4 shrink-0 ${togglingStatusId === book.id ? "animate-spin" : ""}`} />
+                            <span>{book.status === 'AVAILABLE' ? 'Unavailable' : 'Available'}</span>
                           </button>
                         </>
                       ) : (
                         <button
                           onClick={() => handleAddToCart(book)}
-                          disabled={(book.availableCopies ?? 0) <= 0}
+                          disabled={!isPhysicalBookAvailable(book)}
                             className={`flex-1 px-1.5 py-2 text-[11px] font-semibold text-white rounded-lg transition-colors sm:px-3 sm:text-sm ${
                             inCart(book.id)
                               ? "bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-600/20"
                               : "bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-600/20"
                           } disabled:opacity-40 disabled:cursor-not-allowed`}
                         >
-                          {(book.availableCopies ?? 0) <= 0
+                          {!isPhysicalBookAvailable(book)
                             ? "Unavailable"
                             : inCart(book.id)
                               ? "Remove"
@@ -523,11 +533,11 @@ export default function BooksPage() {
                       <td className="px-6 py-4">
                         <div className="flex flex-col gap-2">
                           <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 w-fit ${
-                            (book.availableCopies ?? 0) > 0
+                            isPhysicalBookAvailable(book)
                               ? "bg-emerald-500/15 text-emerald-400 ring-emerald-500/30"
                               : "bg-red-500/15 text-red-400 ring-red-500/30"
                           }`}>
-                            {(book.availableCopies ?? 0)}/{book.copies ?? 0} available
+                            {isPhysicalBookAvailable(book) ? `${book.availableCopies ?? 0}/${book.copies ?? 0} available` : "Unavailable"}
                           </span>
                           {book.bookType === "ebook" && <span className={`rounded-full px-2.5 py-1 text-xs font-medium w-fit ${typeBadge(book)}`}>Digital reader</span>}
                           {isLibrarian && (
@@ -567,14 +577,14 @@ export default function BooksPage() {
                         ) : (
                           <button
                             onClick={() => handleAddToCart(book)}
-                            disabled={(book.availableCopies ?? 0) <= 0}
+                            disabled={!isPhysicalBookAvailable(book)}
                             className={`px-3 py-1.5 text-white text-xs font-semibold rounded-lg transition-colors ${
                               inCart(book.id)
                                 ? "bg-emerald-600 hover:bg-emerald-700"
                                 : "bg-blue-600 hover:bg-blue-700"
                             } disabled:opacity-40 disabled:cursor-not-allowed`}
                           >
-                            {(book.availableCopies ?? 0) <= 0 ? "Unavailable" : inCart(book.id) ? "Remove" : "Add to Cart"}
+                            {!isPhysicalBookAvailable(book) ? "Unavailable" : inCart(book.id) ? "Remove" : "Add to Cart"}
                           </button>
                         )}
                       </td>
@@ -591,7 +601,7 @@ export default function BooksPage() {
                     <div className="min-w-0"><p className="font-semibold text-zinc-100 break-words">{book.title}</p><p className="mt-1 text-sm text-zinc-500 break-words">{book.author}</p></div>
                   </div>
                   <div className="grid grid-cols-2 gap-3 py-4 text-sm"><div><p className="text-xs text-zinc-500">Type</p><span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${typeBadge(book)}`}>{typeLabel(book)}</span></div><div><p className="text-xs text-zinc-500">Genre</p><p className="mt-1 text-zinc-300">{book.category?.name || "General"}</p></div><div><p className="text-xs text-zinc-500">Year</p><p className="mt-1 text-zinc-300">{book.publishYear || "—"}</p></div><div><p className="text-xs text-zinc-500">{book.bookType === "ebook" ? "Access" : "Copies"}</p><p className="mt-1 text-zinc-300">{book.bookType === "ebook" ? "Digital reader" : `${book.availableCopies ?? 0}/${book.copies ?? 0} available`}</p></div></div>
-                  <div className="flex items-center justify-between gap-3 border-t border-zinc-800/80 pt-3"><span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${(book.availableCopies ?? 0) > 0 ? "bg-emerald-500/15 text-emerald-400 ring-emerald-500/30" : "bg-red-500/15 text-red-400 ring-red-500/30"}`}>{(book.availableCopies ?? 0) > 0 ? "Available" : "Unavailable"}</span>{isLibrarian ? <div className="flex gap-2"><button onClick={() => handleEdit(book)} className="rounded-lg bg-zinc-800 px-3 py-2 text-xs text-zinc-200">Edit</button><button onClick={() => handleToggleAvailability(book)} className="rounded-lg bg-orange-500/10 px-3 py-2 text-xs text-orange-400">Toggle</button></div> : <button onClick={() => handleAddToCart(book)} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white">{inCart(book.id) ? "Remove" : "Add to Cart"}</button>}</div>
+                  <div className="flex items-center justify-between gap-3 border-t border-zinc-800/80 pt-3"><span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${isPhysicalBookAvailable(book) ? "bg-emerald-500/15 text-emerald-400 ring-emerald-500/30" : "bg-red-500/15 text-red-400 ring-red-500/30"}`}>{isPhysicalBookAvailable(book) ? "Available" : "Unavailable"}</span>{isLibrarian ? <div className="flex gap-2"><button onClick={() => handleEdit(book)} className="rounded-lg bg-zinc-800 px-3 py-2 text-xs text-zinc-200">Edit</button><button onClick={() => handleToggleAvailability(book)} className="rounded-lg bg-orange-500/10 px-3 py-2 text-xs text-orange-400">Toggle</button></div> : <button onClick={() => handleAddToCart(book)} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white" disabled={!isPhysicalBookAvailable(book)}>{inCart(book.id) ? "Remove" : "Add to Cart"}</button>}</div>
                 </article>
               ))
             } />

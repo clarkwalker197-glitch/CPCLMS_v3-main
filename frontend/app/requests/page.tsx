@@ -9,6 +9,7 @@ import ResponsiveTable from "@/components/ResponsiveTable";
 import BorrowHistoryCard from "@/components/BorrowHistoryCard";
 import { QRApprovalModal } from "@/components/QRApprovalModal";
 import { QRScanner } from "@/components/QRScanner";
+import { parseApprovalInput } from "@/lib/qr-approval";
 import {
   Search,
   BookOpen,
@@ -279,41 +280,17 @@ export default function RequestsPage() {
     if (!qrScannerRequest) return;
     setQrScannerLoading(true);
     setQrScannerError("");
+
     try {
-      let approvalCode = "";
-      let token = "";
-
-      // Check if QR data is a URL (contains ://) or just the transaction ID
-      if (qrData.includes("://")) {
-        // Parse URL to extract parameters
-        try {
-          const url = new URL(qrData);
-          approvalCode = url.searchParams.get("code") || "";
-          token = url.searchParams.get("token") || "";
-        } catch {
-          setQrScannerError("Invalid QR code format");
-          setQrScannerLoading(false);
-          return;
-        }
-      } else {
-        // Assume it's the transaction ID (BRW-XXXX-XXX format)
-        approvalCode = qrData.toUpperCase().trim();
-      }
-
-      if (!approvalCode) {
-        setQrScannerError("Could not extract transaction ID from QR code");
-        setQrScannerLoading(false);
+      const parsed = parseApprovalInput(qrData);
+      if (parsed.error) {
+        setQrScannerError(parsed.error);
         return;
       }
 
-      // Validate transaction ID format (BRW-XXXX-XXX)
-      if (!/^BRW-\d{4}-\d{3}$/.test(approvalCode)) {
-        setQrScannerError("Invalid transaction ID format. Expected BRW-XXXX-XXX");
-        setQrScannerLoading(false);
-        return;
-      }
+      const { approvalCode, token } = parsed;
+      const res = await api.approveByQRCode(qrScannerRequest.id, token || "", approvalCode);
 
-      const res = await api.approveByQRCode(qrScannerRequest.id, token, approvalCode);
       if (res.success) {
         setSuccessMsg(`Borrow request for "${qrScannerRequest.book?.title || "this book"}" approved`);
         setQrScannerRequest(null);
@@ -872,6 +849,7 @@ export default function RequestsPage() {
         <QRScanner
           onScan={handleQRScan}
           onClose={() => setQrScannerRequest(null)}
+          loading={qrScannerLoading}
         />
       )}
     </div>

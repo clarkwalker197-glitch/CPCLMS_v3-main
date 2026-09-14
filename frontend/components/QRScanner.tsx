@@ -4,11 +4,12 @@ import { useState, useEffect, useRef, useCallback, useId } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 
 interface QRScannerProps {
-  onScan: (data: string) => void;
+  onScan: (data: string) => Promise<void> | void;
   onClose: () => void;
+  loading?: boolean;
 }
 
-export function QRScanner({ onScan, onClose }: QRScannerProps) {
+export function QRScanner({ onScan, onClose, loading = false }: QRScannerProps) {
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState("");
   const [manualInput, setManualInput] = useState("");
@@ -227,11 +228,17 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
     setSelectedCamera(cameraId);
   };
 
-  const handleManualSubmit = (e: React.FormEvent) => {
+  const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (manualInput.trim()) {
-      setLastResult(manualInput.trim());
-      onScan(manualInput.trim());
+    const nextValue = manualInput.trim();
+    if (!nextValue) return;
+
+    setLastResult(nextValue);
+    setError("");
+    try {
+      await onScan(nextValue);
+    } catch {
+      setError("Failed to approve this transaction.");
     }
   };
 
@@ -306,14 +313,14 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
             Or enter Transaction ID manually
           </label>
           <p className="text-xs text-zinc-500 mb-2">
-            If QR scan fails, you can enter the Transaction ID (BRW-XXXX-XXX format)
+            If QR scan fails, you can enter the Transaction ID (BRW-XXXX-XXXXX format)
           </p>
           <div className="flex gap-2">
             <input
               type="text"
               value={manualInput}
               onChange={(e) => setManualInput(e.target.value.toUpperCase())}
-              placeholder="Enter Transaction ID (e.g. BRW-1234-567)"
+              placeholder="Enter Transaction ID (e.g. BRW-1234-56789)"
               className="flex-1 px-3 py-2 border border-zinc-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono uppercase"
             />
             <button
@@ -345,7 +352,14 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
         </div>
 
         {/* Last result indicator */}
-        {lastResult && (
+        {loading && (
+          <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700 flex items-center gap-2">
+            <span className="inline-block h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+            Approving transaction...
+          </div>
+        )}
+
+        {!loading && lastResult && (
           <div className="mt-3 p-2 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-700 truncate">
             ✅ Scanned: {lastResult.length > 50 ? lastResult.slice(0, 50) + "..." : lastResult}
           </div>

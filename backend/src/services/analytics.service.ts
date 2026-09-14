@@ -3,7 +3,6 @@
 // ============================================================
 
 import { prisma } from '../config';
-import { LIBRARY_CATEGORIES } from '../constants/categories';
 import { DEPARTMENTS } from '../constants/departments';
 
 export interface DashboardStats {
@@ -262,31 +261,57 @@ interface TopBookRaw { bookId: string; _count: { bookId: number } }
   }
 
   /**
-   * Get category distribution
+   * Get the most borrowed Dewey categories.
    */
-  async getCategoryDistribution() {
-    const [books, eBooks] = await Promise.all([
-      prisma.book.findMany({ where: { deletedAt: null }, select: { category: { select: { name: true } } } }),
-      prisma.eBook.findMany({ where: { deletedAt: null }, select: { category: { select: { name: true } } } }),
-    ]);
-    const counts = new Map<string, number>();
-    let uncategorized = 0;
-    for (const item of [...books, ...eBooks]) {
-      const name = item.category?.name;
-      if (name && LIBRARY_CATEGORIES.some((category) => category.name === name)) {
-        counts.set(name, (counts.get(name) || 0) + 1);
-      } else {
-        uncategorized++;
+  async getMostBorrowedCategories(range: string = 'all', requestedLimit: number = 10) {
+    const validRanges = new Set(['all', '30d', '90d', 'semester']);
+    const selectedRange = validRanges.has(range) ? range : 'all';
+    const limit = Math.min(50, Math.max(1, Number.isFinite(requestedLimit) ? Math.floor(requestedLimit) : 10));
+    const where: { borrowDate?: { gte: Date } } = {};
+
+    if (selectedRange !== 'all') {
+      const since = new Date();
+      if (selectedRange === '30d') since.setDate(since.getDate() - 30);
+      if (selectedRange === '90d') since.setDate(since.getDate() - 90);
+      if (selectedRange === 'semester') {
+        const semesterStartMonth = since.getMonth() < 6 ? 0 : 6;
+        since.setMonth(semesterStartMonth, 1);
       }
+      since.setHours(0, 0, 0, 0);
+      where.borrowDate = { gte: since };
     }
 
-    const distribution: Array<{ name: string; slug: string; total: number }> = LIBRARY_CATEGORIES.map((category) => ({
-      name: category.name,
-      slug: category.slug,
-      total: counts.get(category.name) || 0,
-    })).filter((category) => category.total > 0);
-    if (uncategorized > 0) distribution.push({ name: 'Uncategorized', slug: 'uncategorized', total: uncategorized });
-    return distribution;
+    const transactions = await prisma.borrowTransaction.findMany({
+      where,
+      select: {
+        book: {
+          select: {
+            category: { select: { name: true, slug: true } },
+          },
+        },
+      },
+    });
+    const counts = new Map<string, { name: string; slug: string; borrowCount: number }>();
+    for (const transaction of transactions) {
+      const category = transaction.book.category;
+      if (!category) continue;
+      const current = counts.get(category.slug) || { name: category.name, slug: category.slug, borrowCount: 0 };
+      current.borrowCount++;
+      counts.set(category.slug, current);
+    }
+
+    return {
+      range: selectedRange,
+      data: Array.from(counts.entries())
+        .map(([slug, category]) => ({
+          categoryCode: slug.replace(/^dewey-/, ''),
+          name: category.name,
+          slug,
+          borrowCount: category.borrowCount,
+        }))
+        .sort((a, b) => b.borrowCount - a.borrowCount || a.name.localeCompare(b.name))
+        .slice(0, limit),
+    };
   }
 
   /**

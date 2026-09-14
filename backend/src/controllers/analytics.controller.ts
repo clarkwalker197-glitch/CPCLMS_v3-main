@@ -26,8 +26,10 @@ export const getMonthlyTrends = asyncHandler(async (req: Request, res: Response)
   sendSuccess(res, trends);
 });
 
-export const getCategoryDistribution = asyncHandler(async (_req: Request, res: Response) => {
-  const distribution = await analyticsService.getCategoryDistribution();
+export const getMostBorrowedCategories = asyncHandler(async (req: Request, res: Response) => {
+  const range = req.query.range as string | undefined;
+  const limit = req.query.limit ? Number(req.query.limit) : undefined;
+  const distribution = await analyticsService.getMostBorrowedCategories(range, limit);
   sendSuccess(res, distribution);
 });
 

@@ -520,6 +520,10 @@ async payFine(id: string, amount: number): Promise<ApiResponse<any>> {
     return this.get('/analytics/department-distribution');
   }
 
+  async getMostBorrowedCategories(range: string = 'all', limit = 10): Promise<ApiResponse<any>> {
+    return this.get(`/analytics/most-borrowed-categories?range=${encodeURIComponent(range)}&limit=${limit}`);
+  }
+
   // Policies
   async getPolicies(): Promise<ApiResponse<any[]>> {
     return this.get('/policies');

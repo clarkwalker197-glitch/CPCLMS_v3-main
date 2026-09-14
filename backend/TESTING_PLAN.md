@@ -620,7 +620,7 @@ curl -X POST http://localhost:4000/api/reservations \
 |----|--------|-------|------|------|-------------|------|
 | 9.1 | **GET** | `/api/analytics/dashboard` | Yes | LIBRARIAN | Dashboard summary stats | — |
 | 9.2 | **GET** | `/api/analytics/monthly-trends` | Yes | LIBRARIAN | Monthly borrowing trends | `?months=6` |
-| 9.3 | **GET** | `/api/analytics/category-distribution` | Yes | ANY | Category distribution | — |
+| 9.3 | **GET** | `/api/analytics/most-borrowed-categories` | Yes | ANY | Most borrowed Dewey categories | `?range=all&limit=10` |
 
 ### Sample Requests
 
@@ -646,19 +646,21 @@ curl http://localhost:4000/api/analytics/dashboard \
 }
 ```
 
-#### ✅ 9.3 Category Distribution (any authenticated user)
+#### ✅ 9.3 Most Borrowed Categories (any authenticated user)
 ```bash
-curl http://localhost:4000/api/analytics/category-distribution \
+curl "http://localhost:4000/api/analytics/most-borrowed-categories?range=90d&limit=10" \
   -H "Authorization: Bearer <STUDENT_TOKEN>"
 ```
 **Expected (200):**
 ```json
 {
   "success": true,
-  "data": [
-    { "name": "Computer Science", "count": 45 },
-    { "name": "Mathematics", "count": 30 }
-  ]
+  "data": {
+    "range": "90d",
+    "data": [
+      { "categoryCode": "370", "name": "370 Education", "slug": "dewey-370", "borrowCount": 12 }
+    ]
+  }
 }
 ```
 
@@ -794,7 +796,7 @@ curl -X POST http://localhost:4000/api/auth/refresh \
 
 | Role | Can Access |
 |------|-----------|
-| **STUDENT** | `/auth/me`, `/auth/change-password`, `/auth/logout*`, `/books*` (read), `/ebooks*` (read), `/categories*` (read), `/transactions/requests` (own), `/transactions` (own), `/transactions/:id/pay-fine`, `/reservations*` (own), `/analytics/category-distribution`, `/activities*`, `/notifications*` |
+| **STUDENT** | `/auth/me`, `/auth/change-password`, `/auth/logout*`, `/books*` (read), `/ebooks*` (read), `/categories*` (read), `/transactions/requests` (own), `/transactions` (own), `/transactions/:id/pay-fine`, `/reservations*` (own), `/analytics/most-borrowed-categories`, `/activities*`, `/notifications*` |
 | **FACULTY** | Same as STUDENT |
 | **LIBRARIAN** | Everything above + `/auth/users*`, `/auth/admin/users`, `/auth/users/:id/toggle-status`, `/books*` (CRUD), `/ebooks*` (CRUD), `/categories*` (CRUD), `/transactions/requests/:id/approve`, `/transactions/requests/:id/reject`, `/transactions/:id/return`, `/transactions/check-overdue`, `/analytics/dashboard`, `/analytics/monthly-trends`, `/policies*`, `/reports*` |
 
@@ -912,7 +914,7 @@ Below is a complete importable JSON collection. Copy this into Postman (Import �
       "item": [
         { "name": "Dashboard Stats (Librarian)", "request": { "method": "GET", "url": {"raw":"{{baseUrl}}/analytics/dashboard","host":["{{baseUrl}}"],"path":["analytics","dashboard"]} } },
         { "name": "Monthly Trends (Librarian)", "request": { "method": "GET", "url": {"raw":"{{baseUrl}}/analytics/monthly-trends?months=6","host":["{{baseUrl}}"],"path":["analytics","monthly-trends"],"query":[{"key":"months","value":"6"}]} } },
-        { "name": "Category Distribution", "request": { "method": "GET", "url": {"raw":"{{baseUrl}}/analytics/category-distribution","host":["{{baseUrl}}"],"path":["analytics","category-distribution"]} } }
+        { "name": "Most Borrowed Categories", "request": { "method": "GET", "url": {"raw":"{{baseUrl}}/analytics/most-borrowed-categories?range=all&limit=10","host":["{{baseUrl}}"],"path":["analytics","most-borrowed-categories"],"query":[{"key":"range","value":"all"},{"key":"limit","value":"10"}]} } }
       ]
     },
     {

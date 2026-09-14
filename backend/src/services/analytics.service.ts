@@ -358,9 +358,10 @@ interface TopBookRaw { bookId: string; _count: { bookId: number } }
     // Convert to array and sort by borrow count (descending)
     const result = DEPARTMENTS.map((department) => ({
       code: department.code,
-      name: `${department.name} (${department.code})`,
+      name: department.name,
+      shortName: department.code,
       value: deptMap.get(department.code) || 0,
-    }));
+    })).sort((a, b) => (b.value || 0) - (a.value || 0));
 
     return result;
   }

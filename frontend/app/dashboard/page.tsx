@@ -29,8 +29,10 @@ import {
   ResponsiveContainer,
   BarChart,
   Bar,
+  Cell,
   LabelList,
 } from "recharts";
+import { getDepartmentColor } from "@/lib/department-colors";
 
 const statusBadge: Record<string, string> = {
   ACTIVE: "bg-blue-500/15 text-blue-400 ring-blue-500/30",
@@ -143,16 +145,38 @@ export default function DashboardPage() {
                 <h2 className="text-base font-semibold text-white mb-6">Most Active Departments in Borrowing</h2>
                 <div className="h-72">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={departments.length ? departments : [{ name: "No data", value: 0 }]}>
+                    <BarChart
+                      data={departments.length ? departments : [{ code: "No data", name: "No data", value: 0 }]}
+                      margin={{ top: 8, right: 12, left: 12, bottom: 28 }}
+                    >
                       <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
-                      <XAxis dataKey="name" stroke="#71717a" fontSize={12} tickLine={false} axisLine={false} />
-                      <YAxis stroke="#71717a" fontSize={12} tickLine={false} axisLine={false} />
+                      <XAxis
+                        dataKey="code"
+                        stroke="#71717a"
+                        fontSize={12}
+                        tickLine={false}
+                        axisLine={false}
+                        interval={0}
+                        minTickGap={12}
+                        height={40}
+                        tick={{ fill: "#a1a1aa" }}
+                      />
+                      <YAxis stroke="#71717a" fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} />
                       <Tooltip
                         contentStyle={{ background: "#18181b", border: "1px solid #27272a", borderRadius: "12px", color: "#fff" }}
                         labelStyle={{ color: "#a1a1aa" }}
+                        labelFormatter={(_, payload) => payload?.[0]?.payload?.name || payload?.[0]?.payload?.code || "Department"}
                         formatter={(value) => [`${value} borrows`, "Total Borrows"]}
                       />
-                      <Bar dataKey="value" fill="#3b82f6" radius={[8, 8, 0, 0]} name="Total Borrows" />
+                      <Bar dataKey="value" radius={[8, 8, 0, 0]} name="Total Borrows">
+                        {departments.length > 0 ? (
+                          departments.map((entry) => (
+                            <Cell key={entry.code || entry.name} fill={getDepartmentColor(entry.code || entry.shortName)} />
+                          ))
+                        ) : (
+                          <Cell fill="#3b82f6" />
+                        )}
+                      </Bar>
                     </BarChart>
                   </ResponsiveContainer>
                 </div>

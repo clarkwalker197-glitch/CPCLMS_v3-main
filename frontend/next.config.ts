@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
+import withPWA from "next-pwa";
 
 const nextConfig: NextConfig = {
+  turbopack: {},
   async headers() {
     return [
       {
@@ -46,4 +48,47 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withPWA({
+  dest: "public",
+  register: true,
+  skipWaiting: true,
+  clientsClaim: true,
+  cacheId: "cpclms-v1",
+  disable: process.env.NODE_ENV === "development",
+  runtimeCaching: [
+    {
+      urlPattern: ({ url }) => url.pathname.startsWith("/api") || /\/api\//i.test(url.pathname),
+      handler: "NetworkFirst",
+      options: {
+        cacheName: "api-cache",
+        networkTimeoutSeconds: 10,
+        expiration: {
+          maxEntries: 200,
+          maxAgeSeconds: 60 * 60 * 24,
+        },
+        cacheableResponse: {
+          statuses: [0, 200],
+        },
+      },
+    },
+    {
+      urlPattern: ({ request, url }) =>
+        request.destination === "image" ||
+        request.destination === "font" ||
+        request.destination === "script" ||
+        request.destination === "style" ||
+        /\.(?:png|jpe?g|gif|svg|webp|ico|css|js|woff2?)$/i.test(url.pathname),
+      handler: "CacheFirst",
+      options: {
+        cacheName: "static-assets",
+        expiration: {
+          maxEntries: 200,
+          maxAgeSeconds: 60 * 60 * 24 * 30,
+        },
+        cacheableResponse: {
+          statuses: [0, 200],
+        },
+      },
+    },
+  ],
+})(nextConfig);

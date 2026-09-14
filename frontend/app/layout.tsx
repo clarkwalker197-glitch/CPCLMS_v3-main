@@ -26,15 +26,22 @@ export const metadata: Metadata = {
     "books",
     "catalog",
   ],
+  manifest: "/manifest.json",
+  themeColor: "#059669",
   appleWebApp: {
     capable: true,
     title: "CPC Library",
     statusBarStyle: "default",
   },
   icons: {
-    icon: "/CPClogo.png",
-    shortcut: "/CPClogo.png",
-    apple: "/CPClogo.png",
+    icon: "/icons/icon-192.png",
+    shortcut: "/icons/icon-192.png",
+    apple: "/apple-touch-icon.png",
+  },
+  other: {
+    "apple-mobile-web-app-capable": "yes",
+    "apple-mobile-web-app-status-bar-style": "default",
+    "apple-mobile-web-app-title": "CPCLMS",
   },
   openGraph: {
     title: "CPC Library",

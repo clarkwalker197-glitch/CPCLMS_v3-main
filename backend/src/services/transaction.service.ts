@@ -317,7 +317,11 @@ export class TransactionService {
           action: 'APPROVE_REQUEST',
           entity: 'BorrowRequest',
           entityId: requestId,
-          details: { bookTitle: request.book.title, userId: request.userId, dueDate },
+          details: {
+            bookTitle: request.book.title,
+            borrowerName: `${request.user.firstName} ${request.user.lastName}`,
+            dueDate,
+          },
         },
       }),
     ]);

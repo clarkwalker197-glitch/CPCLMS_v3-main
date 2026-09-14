@@ -39,8 +39,7 @@ export default function ActivitiesPage() {
   const [search, setSearch] = useState("");
   const [actionFilter, setActionFilter] = useState("");
   const [userFilter, setUserFilter] = useState("");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const [dateFilter, setDateFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
 
   const isLibrarian = user?.role === "LIBRARIAN";
@@ -56,8 +55,22 @@ export default function ActivitiesPage() {
       if (search) params.search = search;
       if (actionFilter) params.action = actionFilter;
       if (userFilter) params.userId = userFilter;
-      if (fromDate) params.fromDate = fromDate;
-      if (toDate) params.toDate = toDate;
+      if (dateFilter !== "all") {
+        const from = new Date();
+        if (dateFilter === "today") {
+          from.setHours(0, 0, 0, 0);
+        } else if (dateFilter === "7") {
+          from.setDate(from.getDate() - 6);
+          from.setHours(0, 0, 0, 0);
+        } else if (dateFilter === "30") {
+          from.setDate(from.getDate() - 29);
+          from.setHours(0, 0, 0, 0);
+        } else if (dateFilter === "month") {
+          from.setDate(1);
+          from.setHours(0, 0, 0, 0);
+        }
+        params.fromDate = from.toISOString();
+      }
 
       const res = await api.get<any>(`/activities?${new URLSearchParams(params).toString()}`);
       if (res.success) {
@@ -69,7 +82,7 @@ export default function ActivitiesPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, actionFilter, userFilter, fromDate, toDate, currentPage]);
+  }, [search, actionFilter, userFilter, dateFilter, currentPage]);
 
   useEffect(() => {
     loadData();
@@ -77,7 +90,7 @@ export default function ActivitiesPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, actionFilter, userFilter, fromDate, toDate]);
+  }, [search, actionFilter, userFilter, dateFilter]);
 
   const formatTimestamp = (d?: string) => {
     if (!d) return "—";
@@ -106,14 +119,57 @@ export default function ActivitiesPage() {
     SYSTEM: "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30",
   };
 
-  const formatDetails = (details?: any) => {
-    if (!details) return "-";
-    try {
-      if (typeof details === "string") return details;
-      const str = JSON.stringify(details);
-      return str.length > 120 ? str.substring(0, 120) + "…" : str;
-    } catch {
-      return "-";
+  const formatDetails = (action: string, details?: any) => {
+    if (!details) {
+      if (action === "LOGIN" || action === "LOGIN_GOOGLE") return "Successful login";
+      return "No additional details";
+    }
+
+    if (typeof details === "string") return details;
+
+    const readableDate = (value: unknown) => {
+      if (!value) return "";
+      const date = new Date(String(value));
+      return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleDateString("en-PH");
+    };
+
+    switch (action) {
+      case "BORROW_REQUEST":
+        return details.bookTitle ? `Book: ${details.bookTitle}` : "Borrow request submitted";
+      case "APPROVE_REQUEST":
+        return [
+          details.bookTitle && `Book: ${details.bookTitle}`,
+          details.borrowerName && `Borrower: ${details.borrowerName}`,
+        ].filter(Boolean).join(" · ") || "Borrow request approved";
+      case "RETURN_BOOK":
+        return details.bookTitle ? `Book: ${details.bookTitle}` : "Book returned";
+      case "LOGIN":
+      case "LOGIN_GOOGLE":
+        return "Successful login";
+      case "EMAIL_SENT":
+        return details.to ? `Sent to: ${details.to}` : "Email sent successfully";
+      default: {
+        const labels: Record<string, string> = {
+          bookTitle: "Book",
+          borrowerName: "Borrower",
+          reason: "Reason",
+          fineAmount: "Fine",
+          dueDate: "Due",
+          isOverdue: "Overdue",
+          subject: "Subject",
+          to: "Recipient",
+          message: "Message",
+        };
+        const summary = Object.entries(details)
+          .filter(([key, value]) => value !== undefined && value !== null && !/id|token|code|accession/i.test(key))
+          .map(([key, value]) => {
+            const label = labels[key] || formatAction(key);
+            const displayValue = key.toLowerCase().includes("date") ? readableDate(value) : String(value);
+            return `${label}: ${displayValue}`;
+          })
+          .join(" · ");
+        return summary || "Activity recorded";
+      }
     }
   };
 
@@ -143,14 +199,13 @@ export default function ActivitiesPage() {
                 Track all system activities and user actions ({total} total)
               </p>
             </div>
-            {(search || actionFilter || userFilter || fromDate || toDate) && (
+            {(search || actionFilter || userFilter || dateFilter !== "all") && (
               <button
                 onClick={() => {
                   setSearch("");
                   setActionFilter("");
                   setUserFilter("");
-                  setFromDate("");
-                  setToDate("");
+                  setDateFilter("all");
                   setCurrentPage(1);
                 }}
                 className="inline-flex items-center gap-2 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white text-sm font-semibold rounded-xl transition-colors"
@@ -204,20 +259,18 @@ export default function ActivitiesPage() {
                     ))}
                 </select>
               )}
-              <div className="flex gap-2">
-                <input
-                  type="date"
-                  value={fromDate}
-                  onChange={(e) => setFromDate(e.target.value)}
-                  className="px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                />
-                <input
-                  type="date"
-                  value={toDate}
-                  onChange={(e) => setToDate(e.target.value)}
-                  className="px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                />
-              </div>
+              <select
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+                aria-label="Filter by date"
+                className="px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition appearance-none"
+              >
+                <option value="all" className="bg-zinc-900 text-white">All Time</option>
+                <option value="today" className="bg-zinc-900 text-white">Today</option>
+                <option value="7" className="bg-zinc-900 text-white">Last 7 days</option>
+                <option value="30" className="bg-zinc-900 text-white">Last 30 days</option>
+                <option value="month" className="bg-zinc-900 text-white">This Month</option>
+              </select>
             </div>
           </div>
 
@@ -236,7 +289,7 @@ export default function ActivitiesPage() {
               <ScrollText className="w-12 h-12 text-zinc-600 mb-4" />
               <p className="text-zinc-300 font-medium">No activity logs found</p>
               <p className="text-sm text-zinc-500 mt-1">
-                {search || actionFilter || userFilter || fromDate || toDate
+                {search || actionFilter || userFilter || dateFilter !== "all"
                   ? "Try adjusting your search or filters"
                   : "System activities will appear here"}
               </p>
@@ -255,7 +308,6 @@ export default function ActivitiesPage() {
                       <th className="px-6 py-3 font-medium">User</th>
                       <th className="px-6 py-3 font-medium">Action</th>
                       <th className="px-6 py-3 font-medium hidden lg:table-cell">Details</th>
-                      <th className="px-6 py-3 font-medium hidden md:table-cell">IP Address</th>
                       <th className="px-6 py-3 font-medium">Status</th>
                     </tr>
                   </thead>
@@ -274,11 +326,8 @@ export default function ActivitiesPage() {
                             {formatAction(log.action)}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-zinc-400 max-w-[280px] truncate hidden lg:table-cell">
-                          {formatDetails(log.details)}
-                        </td>
-                        <td className="px-6 py-4 text-zinc-400 hidden md:table-cell font-mono text-xs">
-                          {log.ipAddress || "—"}
+                        <td className="px-6 py-4 text-zinc-400 max-w-[420px] truncate hidden lg:table-cell">
+                          {formatDetails(log.action, log.details)}
                         </td>
                         <td className="px-6 py-4">
                           <span className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 bg-emerald-500/15 text-emerald-400 ring-emerald-500/30">
@@ -300,8 +349,7 @@ export default function ActivitiesPage() {
                   </div>
                   <div className="grid grid-cols-2 gap-3 py-4 text-sm">
                     <div><p className="text-xs text-zinc-500">Timestamp</p><p className="mt-1 text-zinc-300">{formatTimestamp(log.createdAt)}</p></div>
-                    <div><p className="text-xs text-zinc-500">IP Address</p><p className="mt-1 break-words font-mono text-xs text-zinc-300">{log.ipAddress || "—"}</p></div>
-                    <div><p className="text-xs text-zinc-500">Details</p><p className="mt-1 break-words text-zinc-300">{formatDetails(log.details)}</p></div>
+                    <div className="col-span-2"><p className="text-xs text-zinc-500">Details</p><p className="mt-1 break-words text-zinc-300">{formatDetails(log.action, log.details)}</p></div>
                   </div>
                   <div className="flex items-center justify-between gap-3 border-t border-zinc-800/80 pt-3">
                     <span className={`inline-flex max-w-[70%] items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${actionBadge[log.action] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>{formatAction(log.action)}</span>

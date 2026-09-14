@@ -32,7 +32,15 @@ export const DEWEY_MAIN_CATEGORIES = [
 
 export function subcategoriesForMain(mainCode: string) {
   const start = Number(mainCode);
-  return LIBRARY_CATEGORIES.filter((category) => Number(category.code) > start && Number(category.code) < start + 100);
+  return LIBRARY_CATEGORIES.filter((category) =>
+    Number(category.code) > start &&
+    Number(category.code) < start + 100 &&
+    !category.name.includes("[Unassigned]")
+  );
+}
+
+export function categoryDisplayName(name: string): string {
+  return name.replace(/^\d{3}\s+/, "").trim();
 }
 
 export function mainCategoryForCode(code?: string) {

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Dialog, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import api from "@/lib/api";
-import { categoryCodeForId, categoryForClassification, DEWEY_MAIN_CATEGORIES, mainCategoryForClassification, mainCategoryForCode, normalizeClassificationNumber, sanitizeClassificationInput, subcategoriesForMain } from "@/lib/categories";
+import { categoryCodeForId, categoryDisplayName, categoryForClassification, DEWEY_MAIN_CATEGORIES, mainCategoryForClassification, mainCategoryForCode, normalizeClassificationNumber, sanitizeClassificationInput, subcategoriesForMain } from "@/lib/categories";
 import { BookOpen, Link2, Trash2 } from "lucide-react";
 
 interface Category {
@@ -288,7 +288,7 @@ export function EditEBookModal(props: {
               <option value="">Select a subcategory</option>
               {subcategoriesForMain(mainCategoryCode).map((category) => {
                 const record = props.categories.find((item) => item.name === category.name);
-                return record ? <option key={record.id} value={record.id}>{category.name}</option> : null;
+                return record ? <option key={record.id} value={record.id}>{categoryDisplayName(category.name)}</option> : null;
               })}
             </select>
           </div>

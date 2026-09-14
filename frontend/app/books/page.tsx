@@ -11,7 +11,7 @@ import { EditBookModal } from "@/components/EditBookModal";
 import MobileBookTypeSelect from "@/components/MobileBookTypeSelect";
 import Sidebar from "@/components/Sidebar";
 import ResponsiveTable from "@/components/ResponsiveTable";
-import { DEWEY_MAIN_CATEGORIES, subcategoriesForMain } from "@/lib/categories";
+import { categoryDisplayName, DEWEY_MAIN_CATEGORIES, subcategoriesForMain } from "@/lib/categories";
 import {
   Plus,
   Search,
@@ -306,7 +306,7 @@ export default function BooksPage() {
               <option value="">All Subcategories</option>
               {subcategoriesForMain(mainCategoryFilter).map((category) => {
                 const record = categories.find((item: any) => item.name === category.name);
-                return record ? <option key={record.id} value={record.id}>{category.name}</option> : null;
+                return record ? <option key={record.id} value={record.id}>{categoryDisplayName(category.name)}</option> : null;
               })}
             </select>
             <input

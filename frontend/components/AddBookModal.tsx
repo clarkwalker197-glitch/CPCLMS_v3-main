@@ -4,7 +4,7 @@ import { useState, useRef } from "react";
 import { Dialog, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import api from "@/lib/api";
-import { categoryForClassification, DEWEY_MAIN_CATEGORIES, LIBRARY_CATEGORIES, mainCategoryForClassification, normalizeClassificationNumber, sanitizeClassificationInput, subcategoriesForMain } from "@/lib/categories";
+import { categoryDisplayName, categoryForClassification, DEWEY_MAIN_CATEGORIES, LIBRARY_CATEGORIES, mainCategoryForClassification, normalizeClassificationNumber, sanitizeClassificationInput, subcategoriesForMain } from "@/lib/categories";
 import { BookOpen, Upload, FileText, X } from "lucide-react";
 
 interface Category {
@@ -135,6 +135,7 @@ export function AddBookModal(props: {
         shelf: form.shelf.trim() || undefined,
         row: form.row.trim() || undefined,
         copies: copiesNum,
+        availableCopies: copiesNum,
       };
 
       const res = coverFile
@@ -284,7 +285,7 @@ export function AddBookModal(props: {
             <option value="">Select a subcategory</option>
             {subcategoriesForMain(mainCategoryCode).map((category) => {
               const record = props.categories.find((item) => item.name === category.name);
-              return record ? <option key={record.id} value={record.id}>{category.name}</option> : null;
+              return record ? <option key={record.id} value={record.id}>{categoryDisplayName(category.name)}</option> : null;
             })}
           </select>
           <p className="mt-1 text-xs text-zinc-500">Choose a main category, then its 2nd Summary subcategory. Detailed decimals remain in the classification number.</p>

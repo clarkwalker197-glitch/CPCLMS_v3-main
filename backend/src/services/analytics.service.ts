@@ -267,6 +267,18 @@ interface TopBookRaw { bookId: string; _count: { bookId: number } }
     const validRanges = new Set(['all', '30d', '90d', 'semester']);
     const selectedRange = validRanges.has(range) ? range : 'all';
     const limit = Math.min(50, Math.max(1, Number.isFinite(requestedLimit) ? Math.floor(requestedLimit) : 10));
+    const mainCategories: Record<string, { name: string; slug: string }> = {
+      '000': { name: 'Generalities', slug: 'dewey-000' },
+      '100': { name: 'Philosophy & psychology', slug: 'dewey-100' },
+      '200': { name: 'Religion', slug: 'dewey-200' },
+      '300': { name: 'Social sciences', slug: 'dewey-300' },
+      '400': { name: 'Language', slug: 'dewey-400' },
+      '500': { name: 'Science', slug: 'dewey-500' },
+      '600': { name: 'Technology', slug: 'dewey-600' },
+      '700': { name: 'Arts & recreation', slug: 'dewey-700' },
+      '800': { name: 'Literature', slug: 'dewey-800' },
+      '900': { name: 'History & geography', slug: 'dewey-900' },
+    };
     const where: { borrowDate?: { gte: Date } } = {};
 
     if (selectedRange !== 'all') {
@@ -291,25 +303,27 @@ interface TopBookRaw { bookId: string; _count: { bookId: number } }
         },
       },
     });
-    const counts = new Map<string, { name: string; slug: string; borrowCount: number }>();
+    const counts = new Map<string, number>();
     for (const transaction of transactions) {
       const category = transaction.book.category;
       if (!category) continue;
-      const current = counts.get(category.slug) || { name: category.name, slug: category.slug, borrowCount: 0 };
-      current.borrowCount++;
-      counts.set(category.slug, current);
+      const categoryCode = category.slug.match(/^dewey-(\d{3})$/)?.[1];
+      if (!categoryCode) continue;
+      const mainCode = `${categoryCode[0]}00`;
+      if (!mainCategories[mainCode]) continue;
+      counts.set(mainCode, (counts.get(mainCode) || 0) + 1);
     }
 
     return {
       range: selectedRange,
       data: Array.from(counts.entries())
-        .map(([slug, category]) => ({
-          categoryCode: slug.replace(/^dewey-/, ''),
-          name: category.name,
-          slug,
-          borrowCount: category.borrowCount,
+        .map(([categoryCode, borrowCount]) => ({
+          categoryCode,
+          name: mainCategories[categoryCode].name,
+          slug: mainCategories[categoryCode].slug,
+          borrowCount,
         }))
-        .sort((a, b) => b.borrowCount - a.borrowCount || a.name.localeCompare(b.name))
+        .sort((a, b) => Number(a.categoryCode) - Number(b.categoryCode))
         .slice(0, limit),
     };
   }

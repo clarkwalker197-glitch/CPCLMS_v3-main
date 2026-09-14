@@ -4,7 +4,7 @@
 
 import { Prisma, BookStatus } from '@prisma/client';
 import { prisma } from '../config';
-import { NotFoundError, ConflictError } from '../utils/errors';
+import { NotFoundError, ConflictError, BadRequestError } from '../utils/errors';
 import { getPaginationParams, buildPaginationMeta } from '../utils/pagination';
 import { CreateBookInput, UpdateBookInput, CreateCategoryInput } from '../validators';
 import { DEWEY_SECOND_SUMMARY, normalizeClassificationNumber } from '../constants/categories';
@@ -106,6 +106,14 @@ export class BookService {
     });
     if (existing) throw new ConflictError('Book with this accession number already exists');
 
+    const copies = Number(data.copies) || 1;
+    const availableCopies = data.availableCopies == null
+      ? copies
+      : Number(data.availableCopies);
+    if (!Number.isInteger(availableCopies) || availableCopies < 0 || availableCopies > copies) {
+      throw new BadRequestError('Available copies must be between 0 and total copies');
+    }
+
     const book = await prisma.book.create({
       data: {
         isbn: data.isbn,
@@ -123,8 +131,8 @@ export class BookService {
         language: data.language || 'English',
         shelf: data.shelf || null,
         row: data.row || null,
-        copies: Number(data.copies) || 1,
-        availableCopies: Number(data.availableCopies) || 1,
+        copies,
+        availableCopies,
       },
       include: {
         category: { select: { id: true, name: true, slug: true } },

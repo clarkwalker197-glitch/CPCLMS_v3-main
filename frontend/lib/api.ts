@@ -352,6 +352,7 @@ async put<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
     shelf?: string;
     row?: string;
     copies?: number;
+    availableCopies?: number;
   }): Promise<ApiResponse<any>> {
     return this.post('/books', data);
   }

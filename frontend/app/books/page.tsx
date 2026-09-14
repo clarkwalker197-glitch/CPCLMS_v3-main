@@ -238,7 +238,7 @@ export default function BooksPage() {
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex">
       <Sidebar />
 <div className="flex-1 min-w-0">
-      <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-28 lg:pb-8 ${!isLibrarian && cart.length > 0 ? "lg:pb-44" : ""}`}>
+      <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-8 ${!isLibrarian && cart.length > 0 ? "lg:pb-44" : ""}`}>
         {successMsg && (
           <div className="p-4 mb-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-sm text-emerald-400">
             {successMsg}
@@ -251,57 +251,81 @@ export default function BooksPage() {
         )}
 
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-<div>
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
             <h1 className="text-2xl font-bold text-white">Books Collection</h1>
-            <p className="text-sm text-zinc-400 mt-1">Manage your library&apos;s book collection</p>
+            <p className="mt-1 text-sm text-zinc-400">Manage your library&apos;s book collection</p>
           </div>
-<div className="flex items-center gap-2">
-            {isLibrarian && (
+          {isLibrarian && (
             <button
               onClick={() => setShowAddModal(true)}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl shadow-lg shadow-blue-600/30 transition-colors"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-600/30 transition-colors hover:bg-blue-700 sm:w-auto sm:justify-start"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="h-4 w-4" />
               Add Book
             </button>
-            )}
-          </div>
+          )}
         </div>
 
         {/* Toolbar */}
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 mb-6">
-          <div className="flex flex-col lg:flex-row gap-3">
-            <div className="flex-1 relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Search className="w-5 h-5 text-zinc-500" />
+        <div className="mb-6 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3 sm:p-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+            <div className="relative w-full sm:flex-1">
+              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                <Search className="h-5 w-5 text-zinc-500" />
               </div>
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search by title, author, or Dewey number..."
-                className="w-full pl-10 pr-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                className="min-h-[44px] w-full rounded-xl border border-zinc-700 bg-zinc-950 pl-10 pr-3 text-sm text-white placeholder:text-zinc-500 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
+
+            <div className="flex items-center gap-2 sm:hidden">
+              <MobileBookTypeSelect current="physical" className="min-w-0 flex-1" />
+              <div className="flex shrink-0 items-center gap-1 rounded-xl border border-zinc-700 bg-zinc-950 p-1">
+                <button
+                  onClick={() => setView("grid")}
+                  className={`flex h-11 w-11 items-center justify-center rounded-lg border transition-colors ${view === "grid" ? "border-blue-400/50 bg-blue-600 text-white shadow-md shadow-blue-600/20" : "border-transparent text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}
+                  aria-label="Grid view"
+                  aria-pressed={view === "grid"}
+                >
+                  <LayoutGrid className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => setView("list")}
+                  className={`flex h-11 w-11 items-center justify-center rounded-lg border transition-colors ${view === "list" ? "border-blue-400/50 bg-blue-600 text-white shadow-md shadow-blue-600/20" : "border-transparent text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}
+                  aria-label="List view"
+                  aria-pressed={view === "list"}
+                >
+                  <List className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-2 grid grid-cols-2 gap-2 sm:mt-3 sm:flex sm:flex-wrap sm:items-center sm:gap-3">
             <select
               value={mainCategoryFilter}
               onChange={(e) => {
                 setMainCategoryFilter(e.target.value);
                 setCategoryFilter("");
               }}
-              className="px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition appearance-none"
+              className="min-h-[44px] w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-sm text-white outline-none transition focus:border-transparent focus:ring-2 focus:ring-blue-500 appearance-none sm:w-auto sm:min-w-[180px]"
             >
               <option value="" className="bg-zinc-900 text-white">All Main Categories</option>
               {DEWEY_MAIN_CATEGORIES.map((category) => (
                 <option key={category.code} value={category.code} className="bg-zinc-900 text-white">{category.name} ({category.range})</option>
               ))}
             </select>
+
             <select
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
               disabled={!mainCategoryFilter}
-              className="px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition appearance-none disabled:opacity-50"
+              className="min-h-[44px] w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-sm text-white outline-none transition focus:border-transparent focus:ring-2 focus:ring-blue-500 appearance-none disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:min-w-[180px]"
             >
               <option value="">All Subcategories</option>
               {subcategoriesForMain(mainCategoryFilter).map((category) => {
@@ -309,53 +333,34 @@ export default function BooksPage() {
                 return record ? <option key={record.id} value={record.id}>{categoryDisplayName(category.name)}</option> : null;
               })}
             </select>
+
             <input
               type="text"
               value={classificationFilter}
               onChange={(e) => setClassificationFilter(e.target.value)}
-              placeholder="Dewey no. e.g., 510.5"
+              placeholder="Dewey no."
               inputMode="decimal"
-              className="w-full lg:w-44 px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+              className="min-h-[44px] w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-sm text-white placeholder:text-zinc-500 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 sm:w-[150px]"
             />
-            <div className="flex w-full items-center gap-2 sm:hidden">
-              <MobileBookTypeSelect current="physical" className="min-w-0 flex-1" />
-              <div className="flex shrink-0 gap-1 rounded-xl border border-zinc-700 bg-zinc-950 p-1">
-                <button
-                  onClick={() => setView("grid")}
-                  className={`rounded-lg border p-2 transition-colors ${view === "grid" ? "border-blue-400/50 bg-blue-600 text-white shadow-md shadow-blue-600/20" : "border-transparent text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}
-                  aria-label="Grid view"
-                  aria-pressed={view === "grid"}
-                >
-                  <LayoutGrid className="h-5 w-5" />
-                </button>
-                <button
-                  onClick={() => setView("list")}
-                  className={`rounded-lg border p-2 transition-colors ${view === "list" ? "border-blue-400/50 bg-blue-600 text-white shadow-md shadow-blue-600/20" : "border-transparent text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}
-                  aria-label="List view"
-                  aria-pressed={view === "list"}
-                >
-                  <List className="h-5 w-5" />
-                </button>
-              </div>
-            </div>
-            <div className="hidden gap-1 rounded-xl border border-zinc-700 bg-zinc-950 p-1 sm:flex">
+
+            <div className="hidden items-center gap-1 rounded-xl border border-zinc-700 bg-zinc-950 p-1 sm:flex">
               <button
                 onClick={() => setView("grid")}
-                className={`p-2 rounded-lg border transition-colors ${view === "grid" ? "border-blue-400/50 bg-blue-600 text-white shadow-md shadow-blue-600/20" : "border-transparent text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}
+                className={`flex h-11 w-11 items-center justify-center rounded-lg border transition-colors ${view === "grid" ? "border-blue-400/50 bg-blue-600 text-white shadow-md shadow-blue-600/20" : "border-transparent text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}
                 aria-label="Grid view"
                 aria-pressed={view === "grid"}
               >
-                <LayoutGrid className="w-5 h-5" />
+                <LayoutGrid className="h-4 w-4" />
               </button>
               <button
                 onClick={() => setView("list")}
-                className={`p-2 rounded-lg border transition-colors ${view === "list" ? "border-blue-400/50 bg-blue-600 text-white shadow-md shadow-blue-600/20" : "border-transparent text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}
+                className={`flex h-11 w-11 items-center justify-center rounded-lg border transition-colors ${view === "list" ? "border-blue-400/50 bg-blue-600 text-white shadow-md shadow-blue-600/20" : "border-transparent text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}
                 aria-label="List view"
                 aria-pressed={view === "list"}
               >
-                <List className="w-5 h-5" />
+                <List className="h-4 w-4" />
               </button>
-              <span className="self-center text-xs text-zinc-500 px-2 hidden sm:block">
+              <span className="self-center px-2 text-xs text-zinc-500">
                 {visibleBooks.length} books
               </span>
             </div>

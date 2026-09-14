@@ -54,6 +54,8 @@ export class AnalyticsService {
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
+    const activeBookWhere = { archivedAt: null, deletedAt: null };
+    const activeUserWhere = { archivedAt: null, isActive: true };
 
     const [
       totalBooks,
@@ -77,40 +79,76 @@ export class AnalyticsService {
       topBooksRaw,
       overdueUsers,
     ] = await Promise.all([
-      prisma.book.count(),
-      prisma.eBook.count(),
-      prisma.user.count(),
-      prisma.borrowTransaction.count(),
-      prisma.borrowTransaction.count({ where: { status: 'ACTIVE' } }),
-      prisma.borrowTransaction.count({ where: { status: 'OVERDUE' } }),
-      prisma.borrowRequest.count({ where: { status: 'PENDING' } }),
-      prisma.reservation.count({ where: { status: 'ACTIVE' } }),
-      prisma.book.count({ where: { status: 'AVAILABLE' } }),
-      prisma.book.count({ where: { status: 'BORROWED' } }),
-      prisma.book.count({ where: { status: 'MAINTENANCE' } }),
-      prisma.book.count({ where: { status: 'LOST' } }),
-      prisma.user.count({ where: { role: 'STUDENT' } }),
-      prisma.user.count({ where: { role: 'FACULTY' } }),
-      prisma.user.count({ where: { role: 'LIBRARIAN' } }),
+      prisma.book.count({ where: activeBookWhere }),
+      prisma.eBook.count({ where: activeBookWhere }),
+      prisma.user.count({ where: activeUserWhere }),
       prisma.borrowTransaction.count({
-        where: { borrowDate: { gte: todayStart, lt: todayEnd } },
+        where: {
+          user: activeUserWhere,
+          book: activeBookWhere,
+        },
       }),
       prisma.borrowTransaction.count({
-        where: { returnDate: { gte: todayStart, lt: todayEnd } },
+        where: {
+          status: 'ACTIVE',
+          user: activeUserWhere,
+          book: activeBookWhere,
+        },
+      }),
+      prisma.borrowTransaction.count({
+        where: {
+          status: 'OVERDUE',
+          user: activeUserWhere,
+          book: activeBookWhere,
+        },
+      }),
+      prisma.borrowRequest.count({ where: { status: 'PENDING', user: activeUserWhere } }),
+      prisma.reservation.count({ where: { status: 'ACTIVE', user: activeUserWhere } }),
+      prisma.book.count({ where: { ...activeBookWhere, status: 'AVAILABLE' } }),
+      prisma.book.count({ where: { ...activeBookWhere, status: 'BORROWED' } }),
+      prisma.book.count({ where: { ...activeBookWhere, status: 'MAINTENANCE' } }),
+      prisma.book.count({ where: { ...activeBookWhere, status: 'LOST' } }),
+      prisma.user.count({ where: { ...activeUserWhere, role: 'STUDENT' } }),
+      prisma.user.count({ where: { ...activeUserWhere, role: 'FACULTY' } }),
+      prisma.user.count({ where: { ...activeUserWhere, role: 'LIBRARIAN' } }),
+      prisma.borrowTransaction.count({
+        where: {
+          borrowDate: { gte: todayStart, lt: todayEnd },
+          user: activeUserWhere,
+          book: activeBookWhere,
+        },
+      }),
+      prisma.borrowTransaction.count({
+        where: {
+          returnDate: { gte: todayStart, lt: todayEnd },
+          user: activeUserWhere,
+          book: activeBookWhere,
+        },
       }),
       prisma.user.count({
-        where: { createdAt: { gte: todayStart, lt: todayEnd } },
+        where: {
+          ...activeUserWhere,
+          createdAt: { gte: todayStart, lt: todayEnd },
+        },
       }),
       // Top 10 most borrowed books
       prisma.borrowTransaction.groupBy({
         by: ['bookId'],
+        where: {
+          user: activeUserWhere,
+          book: activeBookWhere,
+        },
         _count: { bookId: true },
         orderBy: { _count: { bookId: 'desc' } },
         take: 10,
       }),
       // Users with overdue books
       prisma.borrowTransaction.findMany({
-        where: { status: 'OVERDUE' },
+        where: {
+          status: 'OVERDUE',
+          user: activeUserWhere,
+          book: activeBookWhere,
+        },
         include: {
           user: {
             select: { id: true, firstName: true, lastName: true, libraryId: true },
@@ -294,7 +332,11 @@ interface TopBookRaw { bookId: string; _count: { bookId: number } }
     }
 
     const transactions = await prisma.borrowTransaction.findMany({
-      where,
+      where: {
+        ...where,
+        user: { archivedAt: null, isActive: true },
+        book: { archivedAt: null, deletedAt: null },
+      },
       select: {
         book: {
           select: {
@@ -332,15 +374,17 @@ interface TopBookRaw { bookId: string; _count: { bookId: number } }
    * Get department-wise borrowing distribution
    */
   async getDepartmentDistribution() {
-    const departments = await prisma.borrowTransaction.groupBy({
-      by: ['userId'],
-      _count: { userId: true },
-      orderBy: { _count: { userId: 'desc' } },
+    const departments = await prisma.borrowTransaction.findMany({
+      where: {
+        user: { archivedAt: null, isActive: true },
+        book: { archivedAt: null, deletedAt: null },
+      },
+      select: { userId: true },
     });
 
     // Get user details to find departments
     const users = await prisma.user.findMany({
-      where: { department: { not: null } },
+      where: { department: { not: null }, archivedAt: null, isActive: true },
       select: { id: true, department: true },
     });
 
@@ -351,7 +395,7 @@ interface TopBookRaw { bookId: string; _count: { bookId: number } }
     for (const dept of departments) {
       const department = userDeptMap.get(dept.userId) || 'Unknown';
       if (deptMap.has(department)) {
-        deptMap.set(department, (deptMap.get(department) || 0) + dept._count.userId);
+        deptMap.set(department, (deptMap.get(department) || 0) + 1);
       }
     }
 

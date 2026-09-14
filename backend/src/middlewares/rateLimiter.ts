@@ -47,3 +47,14 @@ export const authLimiter = rateLimit({
     error: 'Too many authentication attempts, please try again later.',
   },
 });
+
+export const qrApprovalLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: 'Too many QR approval attempts. Please wait before trying again.',
+  },
+});

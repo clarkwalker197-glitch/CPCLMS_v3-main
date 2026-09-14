@@ -6,11 +6,13 @@ import { Router } from 'express';
 import { transactionController } from '../controllers';
 import { authenticate, authorize } from '../middlewares/auth';
 import { validate } from '../middlewares/validate';
+import { qrApprovalLimiter } from '../middlewares/rateLimiter';
 import {
   createBorrowRequestSchema,
   rejectRequestSchema,
   returnBookSchema,
   payFineSchema,
+  approveByQRCodeSchema,
 } from '../validators/transaction.schema';
 
 const router = Router();
@@ -19,7 +21,7 @@ const router = Router();
 // The borrower opens this via the QR deep link on their phone.
 // Authorization is the token embedded in the QR, NOT a JWT session,
 // so this must be registered BEFORE the global authenticate middleware.
-router.post('/requests/approve-qr', transactionController.approveByQRCode);
+router.post('/requests/approve-qr', qrApprovalLimiter, validate(approveByQRCodeSchema), transactionController.approveByQRCode);
 
 // All transaction routes require authentication
 router.use(authenticate);

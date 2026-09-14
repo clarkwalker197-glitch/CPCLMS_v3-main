@@ -17,6 +17,19 @@ import { generateQRCode, generateQRFromText } from '../utils/qrcode';
 import { policyService } from './policy.service';
 import { notificationService } from './notification.service';
 import { Role } from '@prisma/client';
+import crypto from 'crypto';
+import jwt, { JwtPayload as JsonWebTokenPayload } from 'jsonwebtoken';
+
+const QR_TOKEN_TTL_SECONDS = 10 * 60;
+
+function generateApprovalCode(): string {
+  const value = crypto.randomInt(0, 1_000_000_000).toString().padStart(9, '0');
+  return `BRW-${value.slice(0, 4)}-${value.slice(4)}`;
+}
+
+function hashQrToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
 
 export class TransactionService {
   // ============================================================
@@ -235,13 +248,6 @@ export class TransactionService {
     const borrowDate = new Date();
     const dueDate = await this.calculateBorrowDueDate(request.user, borrowDate);
 
-    // Generate unique approval code (Transaction ID) in format BRW-XXXX-XXX
-    const generateApprovalCode = (): string => {
-      const num = Math.floor(Math.random() * 1000000000); // 0-999999999
-      const code = String(num).padStart(9, '0'); // Pad to 9 digits
-      return `BRW-${code.slice(0, 4)}-${code.slice(4)}`; // BRW-XXXX-XXXXX
-    };
-    
     let approvalCode = generateApprovalCode();
     let attempts = 0;
     while (attempts < 5) {
@@ -281,7 +287,13 @@ export class TransactionService {
       }),
       prisma.borrowRequest.update({
         where: { id: requestId },
-        data: { status: 'APPROVED', approvalCode, processedById: librarianId, processedAt: new Date() },
+          data: {
+            status: 'APPROVED',
+            approvalCode,
+            approvalTokenUsedAt: new Date(),
+            processedById: librarianId,
+            processedAt: new Date(),
+          },
       }),
       prisma.book.update({
         where: { id: request.bookId },
@@ -358,7 +370,7 @@ export class TransactionService {
           type: 'REQUEST_REJECTED',
           title: 'Borrow Request Rejected',
           message: `Your request to borrow "${request.book.title}" was rejected. Reason: ${reason}`,
-          link: `/requests/${requestId}`,
+          link: '/requests',
         },
       }),
       prisma.activityLog.create({
@@ -767,13 +779,11 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
       throw new BadRequestError('Request has already been processed');
     }
 
-    // Generate unique Transaction ID: BRW-XXXX-XXX
+    // Generate the same nine-digit Transaction ID used by direct approvals.
     let approvalCode = '';
     let isUnique = false;
     while (!isUnique) {
-      const part1 = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-      const part2 = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-      approvalCode = `BRW-${part1}-${part2}`;
+      approvalCode = generateApprovalCode();
       
       const existing = await prisma.borrowRequest.findUnique({
         where: { approvalCode },
@@ -781,14 +791,28 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
       isUnique = !existing;
     }
 
-    // Store the approval code
+    const token = jwt.sign(
+      {
+        requestId: request.id,
+        approvalCode,
+        issuerId: librarianId,
+        jti: crypto.randomUUID(),
+      },
+      env.JWT_SECRET,
+      { expiresIn: QR_TOKEN_TTL_SECONDS }
+    );
+    const tokenExpiresAt = new Date(Date.now() + QR_TOKEN_TTL_SECONDS * 1000);
+
     await prisma.borrowRequest.update({
       where: { id: requestId },
-      data: { approvalCode },
+      data: {
+        approvalCode,
+        approvalTokenHash: hashQrToken(token),
+        approvalTokenExpiresAt: tokenExpiresAt,
+        approvalTokenUsedAt: null,
+        approvalTokenIssuedById: librarianId,
+      },
     });
-
-    // Unique, single-use token for this approve request (time + random).
-    const token = `${request.id}.${Date.now().toString(36)}.${Math.random().toString(36).slice(2, 10)}`;
     const frontendUrl = (env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
 
     // The deep link the borrower opens on their phone to confirm approval.
@@ -806,6 +830,7 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
       qrCode: qrCodeDataUrl,
       approveUrl,
       issuedAt: new Date().toISOString(),
+      expiresAt: tokenExpiresAt.toISOString(),
     };
   }
 
@@ -817,44 +842,75 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
    * matching (single-use style) token or approval code.
    */
   async approveByQRCode(requestId: string, token: string, approvalCode?: string) {
-    // Try to find request by ID first
-    let request = await prisma.borrowRequest.findUnique({
+    const request = await prisma.borrowRequest.findUnique({
       where: { id: requestId },
       include: { book: true, user: true },
     });
-    
-    // If not found by ID and approvalCode provided, search by approval code
-    if (!request && approvalCode) {
-      request = await prisma.borrowRequest.findUnique({
-        where: { approvalCode },
-        include: { book: true, user: true },
-      });
-    }
-    
     if (!request) throw new NotFoundError('Borrow request');
 
-    // If token provided, validate the token format: <requestId>.<timestamp>.<random>
-    if (token && !approvalCode) {
-      const expectedPrefix = `${request.id}.`;
-      if (!token.startsWith(expectedPrefix)) {
-        throw new BadRequestError('Invalid QR code');
-      }
-    }
-    
-    // If approval code provided, validate it matches
-    if (approvalCode && request.approvalCode !== approvalCode) {
-      throw new BadRequestError('Invalid transaction ID');
-    }
-
-    // Ensure the request is still pending (not already approved by a librarian
-    // or via a previous scan).
     if (request.status !== 'PENDING') {
       throw new BadRequestError('Request has already been processed');
     }
 
-    // Token/Code-verified approval. There is no librarian session on the borrower's
-    // phone, so we attribute the action to the requester themselves.
-    return this.approveRequest(requestId, request.userId);
+    if (approvalCode && request.approvalCode !== approvalCode) {
+      throw new BadRequestError('Invalid transaction ID');
+    }
+
+    let issuerId = request.approvalTokenIssuedById;
+    if (token) {
+      let claims: JsonWebTokenPayload;
+      try {
+        const decoded = jwt.verify(token, env.JWT_SECRET);
+        if (typeof decoded === 'string') throw new Error('Invalid token payload');
+        claims = decoded;
+      } catch {
+        throw new BadRequestError('Invalid or expired QR token');
+      }
+      if (
+        claims.requestId !== request.id ||
+        claims.approvalCode !== request.approvalCode ||
+        claims.issuerId !== request.approvalTokenIssuedById ||
+        !request.approvalTokenHash ||
+        request.approvalTokenHash !== hashQrToken(token) ||
+        !request.approvalTokenExpiresAt ||
+        request.approvalTokenExpiresAt <= new Date() ||
+        request.approvalTokenUsedAt
+      ) {
+        throw new BadRequestError('Invalid, expired, or already used QR token');
+      }
+    } else if (
+      !approvalCode ||
+      !issuerId ||
+      !request.approvalTokenExpiresAt ||
+      request.approvalTokenExpiresAt <= new Date() ||
+      request.approvalTokenUsedAt
+    ) {
+      throw new BadRequestError('Invalid, expired, or already used approval code');
+    }
+
+    if (!issuerId) throw new BadRequestError('QR approval issuer is missing');
+
+    const issuer = await prisma.user.findUnique({
+      where: { id: issuerId },
+      select: { id: true, role: true, isActive: true },
+    });
+    if (!issuer || !issuer.isActive || issuer.role !== Role.LIBRARIAN) {
+      throw new BadRequestError('QR approval was not issued by an active librarian');
+    }
+
+    const claimed = await prisma.borrowRequest.updateMany({
+      where: {
+        id: request.id,
+        status: 'PENDING',
+        approvalCode: request.approvalCode,
+        approvalTokenUsedAt: null,
+        ...(token ? { approvalTokenHash: hashQrToken(token) } : {}),
+      },
+      data: { approvalTokenUsedAt: new Date() },
+    });
+    if (claimed.count !== 1) throw new BadRequestError('QR approval has already been used');
+
+    return this.approveRequest(request.id, issuer.id);
   }
 
   // ============================================================

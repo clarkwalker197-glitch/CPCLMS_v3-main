@@ -204,6 +204,10 @@ model BorrowRequest {
   status        RequestStatus @default(PENDING)
   notes         String?
   approvalCode  String?       @unique @map("approval_code") /// Transaction ID (e.g. BRW-1234-567) for QR approval
+  approvalTokenHash      String?   @map("approval_token_hash")
+  approvalTokenExpiresAt  DateTime? @map("approval_token_expires_at")
+  approvalTokenUsedAt     DateTime? @map("approval_token_used_at")
+  approvalTokenIssuedById String?   @map("approval_token_issued_by_id")
   processedById String?       @map("processed_by_id")
   processedBy   User?         @relation("ProcessedBy", fields: [processedById], references: [id])
   processedAt   DateTime?     @map("processed_at")

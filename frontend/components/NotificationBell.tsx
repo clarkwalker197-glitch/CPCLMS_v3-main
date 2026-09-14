@@ -118,8 +118,7 @@ export default function NotificationBell() {
 
     setOpen(false);
 
-    // Redirect to the Borrow Requests page
-    router.push("/requests");
+    router.push(n.link || "/requests");
   };
 
   const hasUnread = unreadCount > 0;

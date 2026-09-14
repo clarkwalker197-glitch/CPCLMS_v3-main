@@ -18,6 +18,7 @@ const { login, googleLogin, user, isAuthenticated, loading } = useAuth();
   const [submitting, setSubmitting] = useState(false);
   const [searchParams] = useState(() => new URLSearchParams(typeof window !== 'undefined' ? window.location.search : ''));
   const resetMessage = searchParams.get('reset') === 'success' ? 'Password reset successfully. You can now sign in.' : '';
+  const inactivityMessage = searchParams.get('reason') === 'inactivity' ? 'You have been logged out due to inactivity.' : '';
 
   useEffect(() => {
     if (!loading && isAuthenticated) {
@@ -131,6 +132,11 @@ const { login, googleLogin, user, isAuthenticated, loading } = useAuth();
                 {resetMessage && (
                   <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg text-sm text-emerald-400">
                     {resetMessage}
+                  </div>
+                )}
+                {inactivityMessage && (
+                  <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-sm text-amber-300">
+                    {inactivityMessage}
                   </div>
                 )}
 

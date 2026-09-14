@@ -26,6 +26,8 @@ RATE_LIMIT_WINDOW_MS: z.coerce.number().default(15 * 60 * 1000),
   COOKIE_SECRET: z.string().default('cookie-secret-change-me'),
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
+  EMAIL_USER: z.string().email().optional(),
+  EMAIL_PASS: z.string().min(1).optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

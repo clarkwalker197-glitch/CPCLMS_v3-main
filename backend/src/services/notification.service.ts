@@ -1,13 +1,14 @@
 // ============================================================
 // Notification Service
 // - In-app notifications CRUD
-// - Simulated email notification (logs to console + ActivityLog)
+// - Explicit email delivery + ActivityLog
 // ============================================================
 
 import { prisma } from '../config';
 import { NotificationType } from '@prisma/client';
 import { getPaginationParams, buildPaginationMeta } from '../utils/pagination';
 import { NotFoundError } from '../utils/errors';
+import { sendEmail as sendEmailMessage } from '../utils/email';
 
 export interface EmailPayload {
   to: string;
@@ -59,14 +60,6 @@ export class NotificationService {
   ) {
     const notification = await prisma.notification.create({
       data: { userId, type, title, message, link },
-    });
-
-    // Also simulate email notification
-    await this.sendEmail({
-      to: userId, // In production, would be user.email
-      subject: title,
-      body: message || title,
-      userId,
     });
 
     return notification;
@@ -156,23 +149,18 @@ export class NotificationService {
   }
 
   // ============================================================
-  // Email Simulation
-  // In production, replace this with nodemailer/SendGrid/etc.
+  // Email Delivery
   // ============================================================
 
   /**
    * Simulated email sending — logs to console and creates activity log
    */
   async sendEmail(payload: EmailPayload): Promise<void> {
-    // In development, log to console
-    if (process.env.NODE_ENV === 'development') {
-      console.log('');
-      console.log('📧 [EMAIL SIMULATION]');
-      console.log(`   To:      ${payload.to}`);
-      console.log(`   Subject: ${payload.subject}`);
-      console.log(`   Body:    ${payload.body}`);
-      console.log('');
-    }
+    await sendEmailMessage({
+      to: payload.to,
+      subject: payload.subject,
+      text: payload.body,
+    });
 
     // Log the email in ActivityLog
     if (payload.userId) {

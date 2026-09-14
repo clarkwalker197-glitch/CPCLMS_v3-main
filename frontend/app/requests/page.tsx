@@ -19,8 +19,6 @@ import {
   Coins,
   AlertTriangle,
   QrCode,
-  X,
-  Loader2,
 } from "lucide-react";
 
 const PAGE_SIZE = 10;
@@ -869,60 +867,8 @@ export default function RequestsPage() {
         />
       )}
 
-      {/* QR Scanner modal (student/faculty - to scan librarian's approval QR code) */}
+      {/* QRScanner owns the camera viewport and manual transaction fallback. */}
       {qrScannerRequest && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={() => !qrScannerLoading && setQrScannerRequest(null)} />
-          <div className="relative z-50 w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl shadow-black/50">
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <h3 className="text-lg font-semibold text-white">Scan Approval QR Code</h3>
-                <p className="text-sm text-zinc-400 mt-1">
-                  Position your camera to scan the librarian's approval QR code for "{qrScannerRequest.book?.title || "this book"}"
-                </p>
-              </div>
-              <button
-                onClick={() => setQrScannerRequest(null)}
-                disabled={qrScannerLoading}
-                className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 disabled:opacity-50 transition-colors shrink-0"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {qrScannerLoading && (
-              <div className="flex flex-col items-center justify-center py-12">
-                <Loader2 className="w-8 h-8 text-blue-400 animate-spin mb-3" />
-                <p className="text-sm text-zinc-400">Processing QR code...</p>
-              </div>
-            )}
-
-            {!qrScannerLoading && (
-              <>
-                <div className="mb-4 rounded-xl border border-zinc-700 bg-zinc-950/50 overflow-hidden" id="qr-scanner-element" />
-
-                {qrScannerError && (
-                  <div className="p-3 mb-4 bg-red-500/10 border border-red-500/30 rounded-xl text-sm text-red-400">
-                    {qrScannerError}
-                  </div>
-                )}
-
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => setQrScannerRequest(null)}
-                    className="flex-1 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm font-medium rounded-xl border border-zinc-700 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Initialize QR Scanner when modal opens */}
-      {qrScannerRequest && !qrScannerLoading && (
         <QRScanner
           onScan={handleQRScan}
           onClose={() => setQrScannerRequest(null)}

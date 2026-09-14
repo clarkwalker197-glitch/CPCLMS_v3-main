@@ -1,14 +1,12 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useId } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 
 interface QRScannerProps {
   onScan: (data: string) => void;
   onClose: () => void;
 }
-
-const SCANNER_ELEMENT_ID = "qr-scanner-element";
 
 export function QRScanner({ onScan, onClose }: QRScannerProps) {
   const [scanning, setScanning] = useState(false);
@@ -18,6 +16,8 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
   const [selectedCamera, setSelectedCamera] = useState<string>("");
   const [lastResult, setLastResult] = useState<string>("");
   const scannerRef = useRef<Html5Qrcode | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const scannerElementId = `qr-scanner-${useId().replace(/:/g, "")}`;
   const mountedRef = useRef(true);
 
   // Cleanup on unmount
@@ -31,6 +31,11 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
   // List available cameras
   const listCameras = useCallback(async () => {
     try {
+      const permissionStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" } },
+        audio: false,
+      });
+      permissionStream.getTracks().forEach((track) => track.stop());
       const devices = await Html5Qrcode.getCameras();
       if (!mountedRef.current) return;
       if (devices.length > 0) {
@@ -38,15 +43,18 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
         setCameras(camList);
         // Prefer back/environment camera
         const backCam = camList.find(
-          (c) => c.label.toLowerCase().includes("back") || c.label.toLowerCase().includes("environment")
+          (c) => /back|rear|environment/i.test(c.label)
         );
         setSelectedCamera(backCam?.id || camList[0].id);
       } else {
         setError("No cameras found. Use manual entry below.");
       }
-    } catch {
+    } catch (err: any) {
       if (mountedRef.current) {
-        setError("Could not access camera list. Use manual entry below.");
+        const permissionDenied = err?.name === "NotAllowedError" || err?.name === "PermissionDeniedError";
+        setError(permissionDenied
+          ? "Camera permission was denied. Allow camera access in your browser settings or use manual entry below."
+          : "Could not access the camera. Use manual entry below.");
       }
     }
   }, []);
@@ -59,7 +67,7 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
 
     try {
       // Ensure the element exists
-      const existingEl = document.getElementById(SCANNER_ELEMENT_ID);
+      const existingEl = document.getElementById(scannerElementId);
       if (!existingEl) {
         setError("Scanner element not found");
         setScanning(false);
@@ -71,7 +79,7 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
         try { await scannerRef.current.stop(); } catch {}
       }
 
-      const scanner = new Html5Qrcode(SCANNER_ELEMENT_ID);
+      const scanner = new Html5Qrcode(scannerElementId);
       scannerRef.current = scanner;
 
       await scanner.start(
@@ -79,7 +87,6 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
         {
           fps: 10,
           qrbox: { width: 250, height: 250 },
-          aspectRatio: 1.0,
         },
         (decodedText) => {
           // Success callback
@@ -93,34 +100,54 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
           // Ignore individual frame failures
         }
       );
+      const video = existingEl.querySelector("video");
+      if (video) {
+        video.setAttribute("playsinline", "true");
+        video.muted = true;
+        video.style.display = "block";
+        video.style.width = "100%";
+        video.style.height = "auto";
+        video.style.minHeight = "250px";
+        video.style.objectFit = "cover";
+      }
     } catch (err: any) {
       if (!mountedRef.current) return;
       console.error("Scanner start failed:", err);
 
       // Fallback: try BarcodeDetector API
       if (typeof window !== "undefined" && "BarcodeDetector" in window) {
-        setError("html5-qrcode failed. Falling back to native BarcodeDetector...");
+        setError("QR scanner could not start. Trying the device camera directly...");
         tryFallbackBarcodeDetector();
       } else {
-        setError(err?.message || "Failed to start camera. Use manual entry below.");
+        const permissionDenied = err?.name === "NotAllowedError" || err?.name === "PermissionDeniedError";
+        setError(permissionDenied
+          ? "Camera permission was denied. Allow camera access in your browser settings or use manual entry below."
+          : err?.message || "Failed to start camera. Use manual entry below.");
         setScanning(false);
       }
     }
-  }, [onScan]);
+  }, [onScan, scannerElementId]);
 
   // Fallback: use native BarcodeDetector API
   const tryFallbackBarcodeDetector = useCallback(async () => {
     if (!mountedRef.current) return;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
+        video: { facingMode: { ideal: "environment" } },
+        audio: false,
       });
+      streamRef.current = stream;
       if (!mountedRef.current) { stream.getTracks().forEach(t => t.stop()); return; }
 
       const videoEl = document.createElement("video");
+      const viewport = document.getElementById(scannerElementId);
+      if (!viewport) throw new Error("Scanner element not found");
+      viewport.replaceChildren(videoEl);
+      videoEl.className = "w-full h-auto min-h-[250px] object-cover";
       videoEl.srcObject = stream;
       videoEl.setAttribute("playsinline", "true");
-      videoEl.play();
+      videoEl.muted = true;
+      await videoEl.play();
 
       const detector = new (window as any).BarcodeDetector({ formats: ["qr_code"] });
       const checkInterval = setInterval(async () => {
@@ -134,6 +161,7 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
           if (barcodes.length > 0) {
             clearInterval(checkInterval);
             stream.getTracks().forEach(t => t.stop());
+            streamRef.current = null;
             videoEl.remove();
             if (mountedRef.current) {
               setScanning(false);
@@ -148,6 +176,7 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
       setTimeout(() => {
         clearInterval(checkInterval);
         stream.getTracks().forEach(t => t.stop());
+        streamRef.current = null;
         videoEl.remove();
         if (mountedRef.current) {
           setScanning(false);
@@ -174,6 +203,10 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
       }
       scannerRef.current = null;
     }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
     setScanning(false);
   }, []);
 
@@ -187,7 +220,7 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
     if (selectedCamera && !scanning) {
       startScanner(selectedCamera);
     }
-  }, [selectedCamera]);
+  }, [selectedCamera, startScanner, scanning]);
 
   const handleCameraChange = (cameraId: string) => {
     stopScanner();
@@ -239,7 +272,7 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
         {/* Scanner viewport */}
         <div className="bg-zinc-900 rounded-lg overflow-hidden mb-4 relative" style={{ minHeight: "250px" }}>
           {/* HTML5 QR Code scanner mounts here */}
-          <div id={SCANNER_ELEMENT_ID} className="w-full" style={{ minHeight: "250px" }} />
+          <div id={scannerElementId} className="w-full min-h-[250px]" />
 
           {!scanning && !error && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -301,7 +334,8 @@ export function QRScanner({ onScan, onClose }: QRScannerProps) {
                 stopScanner();
               } else {
                 setError("");
-                listCameras();
+                setSelectedCamera("");
+                void listCameras();
               }
             }}
             className="text-sm text-emerald-600 hover:text-emerald-700 font-medium transition-colors"

@@ -195,17 +195,22 @@ export class EBookService {
     const ebook = await prisma.eBook.findUnique({ where: { id } });
     if (!ebook) throw new NotFoundError('E-Book');
 
-    await prisma.eBook.update({ where: { id }, data: { deletedAt: new Date() } });
+    const archivedAt = new Date();
+    await prisma.eBook.update({ where: { id }, data: { deletedAt: archivedAt, archivedAt } });
   }
 
   async listArchivedEBooks() {
-    return prisma.eBook.findMany({ where: { deletedAt: { not: null } }, include: { category: true }, orderBy: { deletedAt: 'desc' } });
+    return prisma.eBook.findMany({
+      where: { deletedAt: { not: null } },
+      include: { category: true },
+      orderBy: [{ archivedAt: 'desc' }, { deletedAt: 'desc' }],
+    });
   }
 
   async restoreEBook(id: string) {
     const ebook = await prisma.eBook.findUnique({ where: { id } });
     if (!ebook) throw new NotFoundError('E-Book');
-    return prisma.eBook.update({ where: { id }, data: { deletedAt: null } });
+    return prisma.eBook.update({ where: { id }, data: { deletedAt: null, archivedAt: null } });
   }
 }
 

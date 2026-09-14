@@ -1,0 +1,8 @@
+ALTER TABLE "users"
+  ADD COLUMN IF NOT EXISTS "archived_at" TIMESTAMP(3);
+
+ALTER TABLE "books"
+  ADD COLUMN IF NOT EXISTS "archived_at" TIMESTAMP(3);
+
+ALTER TABLE "ebooks"
+  ADD COLUMN IF NOT EXISTS "archived_at" TIMESTAMP(3);

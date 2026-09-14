@@ -511,9 +511,10 @@ const user = await prisma.user.create({
     if (!user) throw new NotFoundError('User');
 
     // Revoke sessions while preserving the user's history for archive/restore.
+    const archivedAt = new Date();
     await prisma.$transaction([
       prisma.refreshToken.deleteMany({ where: { userId: targetUserId } }),
-      prisma.user.update({ where: { id: targetUserId }, data: { isActive: false } }),
+      prisma.user.update({ where: { id: targetUserId }, data: { isActive: false, archivedAt } }),
     ]);
 
     await this.logActivity(adminId, 'DELETE_USER', 'User', targetUserId);
@@ -523,15 +524,15 @@ const user = await prisma.user.create({
   async listArchivedUsers() {
     return prisma.user.findMany({
       where: { isActive: false },
-      select: { id: true, libraryId: true, firstName: true, lastName: true, email: true, role: true, createdAt: true, updatedAt: true, isActive: true },
-      orderBy: { updatedAt: 'desc' },
+      select: { id: true, libraryId: true, firstName: true, lastName: true, email: true, role: true, createdAt: true, updatedAt: true, archivedAt: true, isActive: true },
+      orderBy: [{ archivedAt: 'desc' }, { updatedAt: 'desc' }],
     });
   }
 
   async restoreUser(targetUserId: string) {
     const user = await prisma.user.findUnique({ where: { id: targetUserId } });
     if (!user) throw new NotFoundError('User');
-    return prisma.user.update({ where: { id: targetUserId }, data: { isActive: true } });
+    return prisma.user.update({ where: { id: targetUserId }, data: { isActive: true, archivedAt: null } });
   }
 
   async toggleUserStatus(targetUserId: string, adminId: string) {

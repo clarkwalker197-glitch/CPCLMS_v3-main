@@ -44,9 +44,12 @@ EMAIL_PASS=your_16_digit_gmail_app_password
 Apply the database schema and generate Prisma Client:
 
 ```powershell
+npx prisma migrate status
 npx prisma migrate deploy
 npx prisma generate
 ```
+
+Before starting the backend after pulling schema changes, always run `npx prisma migrate status` and fix any pending migrations before launching the app. This catches schema drift like the missing `users.archived_at` column before it reaches runtime.
 
 For a fresh development database, seed demo users and Dewey categories:
 

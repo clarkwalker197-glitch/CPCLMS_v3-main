@@ -87,6 +87,7 @@ model User {
   avatar        String?
   notificationsEnabled Boolean @default(true) @map("notifications_enabled")
   isActive      Boolean  @default(true) @map("is_active")
+  archivedAt    DateTime? @map("archived_at")
   maxBorrowDays Int?     @map("max_borrow_days") /// Per-user override (overrides policy)
   maxBooksAllowed Int?   @map("max_books_allowed") /// Per-user override
   createdAt     DateTime @default(now()) @map("created_at")
@@ -147,6 +148,7 @@ model Book {
   availableCopies Int        @map("available_copies") /// Copies currently available for borrowing
   status          BookStatus @default(AVAILABLE)
   deletedAt       DateTime?  @map("deleted_at")
+  archivedAt      DateTime?  @map("archived_at")
   createdAt       DateTime   @default(now()) @map("created_at")
   updatedAt       DateTime   @updatedAt @map("updated_at")
 
@@ -183,6 +185,7 @@ model EBook {
   format      EBookFormat @default(PDF)
   status      BookStatus @default(AVAILABLE)
   deletedAt   DateTime? @map("deleted_at")
+  archivedAt  DateTime? @map("archived_at")
   createdAt   DateTime   @default(now()) @map("created_at")
   updatedAt   DateTime   @updatedAt @map("updated_at")
 

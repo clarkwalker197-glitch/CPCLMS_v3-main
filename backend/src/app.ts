@@ -11,6 +11,7 @@ import { env } from './config/env';
 import routes from './routes';
 import { apiLimiter } from './middlewares/rateLimiter';
 import { errorHandler } from './middlewares/errorHandler';
+import { archiveRetentionService } from './services';
 
 const app = express();
 
@@ -145,6 +146,18 @@ function startServer(port: number, maxRetries = 3): void {
 }
 
 startServer(env.PORT);
+
+const ARCHIVE_RETENTION_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+void archiveRetentionService.purgeExpiredArchives().catch((error) => {
+  console.error('Archive retention check failed at startup:', error);
+});
+
+setInterval(() => {
+  void archiveRetentionService.purgeExpiredArchives().catch((error) => {
+    console.error('Scheduled archive retention check failed:', error);
+  });
+}, ARCHIVE_RETENTION_INTERVAL_MS);
 
 export default app;
 

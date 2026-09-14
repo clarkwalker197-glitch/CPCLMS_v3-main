@@ -188,17 +188,22 @@ export class BookService {
       throw new ConflictError('Cannot delete book with active borrow transactions');
     }
 
-    await prisma.book.update({ where: { id }, data: { deletedAt: new Date() } });
+    const archivedAt = new Date();
+    await prisma.book.update({ where: { id }, data: { deletedAt: archivedAt, archivedAt } });
   }
 
   async listArchivedBooks() {
-    return prisma.book.findMany({ where: { deletedAt: { not: null } }, include: { category: true }, orderBy: { deletedAt: 'desc' } });
+    return prisma.book.findMany({
+      where: { deletedAt: { not: null } },
+      include: { category: true },
+      orderBy: [{ archivedAt: 'desc' }, { deletedAt: 'desc' }],
+    });
   }
 
   async restoreBook(id: string) {
     const book = await prisma.book.findUnique({ where: { id } });
     if (!book) throw new NotFoundError('Book');
-    return prisma.book.update({ where: { id }, data: { deletedAt: null } });
+    return prisma.book.update({ where: { id }, data: { deletedAt: null, archivedAt: null } });
   }
 
   // ============================================================

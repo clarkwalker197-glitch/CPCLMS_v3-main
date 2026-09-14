@@ -4,7 +4,22 @@
 // - Provides typed request/response methods
 // ============================================================
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+function resolveApiBaseUrl(): string {
+  const envValue = process.env.NEXT_PUBLIC_API_URL?.trim();
+  if (envValue) return envValue.replace(/\/+$/, '');
+
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname;
+    if (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0') {
+      return 'http://localhost:4000/api';
+    }
+    return '/api';
+  }
+
+  return 'http://localhost:4000/api';
+}
+
+const API_BASE_URL = resolveApiBaseUrl();
 
 export interface ApiResponse<T = unknown> {
   success: boolean;
@@ -38,6 +53,10 @@ class ApiClient {
 
   constructor(baseUrl: string) {
     this.baseUrl = baseUrl;
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.info('[API] Resolved base URL:', this.baseUrl);
+    }
   }
 
   private getToken(): string | null {
@@ -141,6 +160,14 @@ class ApiClient {
         data = { success: false, error: 'Unexpected server response' } as ApiResponse<T>;
       }
 
+      if (!response.ok) {
+        return {
+          ...data,
+          success: false,
+          error: data.error || response.statusText || 'Request failed. Please try again.',
+        } as ApiResponse<T>;
+      }
+
       // If unauthorized, try refresh token
       if (response.status === 401 && this.getRefreshToken()) {
         const refreshed = await this.refreshToken();
@@ -151,7 +178,8 @@ class ApiClient {
             headers,
           });
           try {
-            return await retryResponse.json();
+            const retryData = await retryResponse.json();
+            return retryData as ApiResponse<T>;
           } catch {
             return { success: false, error: 'Unexpected server response' } as ApiResponse<T>;
           }
@@ -164,6 +192,24 @@ class ApiClient {
       }
 
       return data;
+    } catch (error) {
+      const message = error instanceof Error && error.name === 'TypeError'
+        ? 'Unable to reach the server. Please check your connection and try again.'
+        : 'Request failed. Please try again.';
+
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn('[API] Request failed:', {
+          endpoint,
+          baseUrl: this.baseUrl,
+          message,
+          error,
+        });
+      }
+
+      return {
+        success: false,
+        error: message,
+      } as ApiResponse<T>;
     } finally {
       this.inflight.delete(cacheKey);
     }

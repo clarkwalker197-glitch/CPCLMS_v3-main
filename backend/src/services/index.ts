@@ -1,6 +1,7 @@
 export { authService } from './auth.service';
 export { bookService } from './book.service';
 export { ebookService } from './ebook.service';
+export { archiveRetentionService } from './archive-retention.service';
 export { transactionService } from './transaction.service';
 export { policyService } from './policy.service';
 export { analyticsService } from './analytics.service';

@@ -85,7 +85,7 @@ export class EBookService {
   /**
    * Create a new e-book
    */
-  async createEBook(input: {
+  async createEBook(data: {
     isbn: string;
     title: string;
     author: string;
@@ -103,7 +103,7 @@ export class EBookService {
   }) {
     // Check for duplicate ISBN
     const existing = await prisma.eBook.findFirst({
-      where: { isbn: input.isbn },
+      where: { isbn: data.isbn },
     });
     if (existing) {
       throw new ConflictError('An e-book with this ISBN already exists');
@@ -111,20 +111,20 @@ export class EBookService {
 
     const ebook = await prisma.eBook.create({
       data: {
-        isbn: input.isbn,
-        title: input.title,
-        author: input.author,
-        publisher: input.publisher,
-        publishYear: input.publishYear,
-        edition: input.edition,
-        categoryId: input.categoryId,
-        classificationNumber: input.classificationNumber ? normalizeClassificationNumber(input.classificationNumber) : null,
-        description: input.description,
-        coverImage: input.coverImage,
-        language: input.language || 'English',
-        fileUrl: input.fileUrl,
-        fileSize: input.fileSize,
-        format: (input.format as any) || 'PDF',
+        isbn: data.isbn,
+        title: data.title,
+        author: data.author,
+        publisher: data.publisher || null,
+        publishYear: data.publishYear ? Number(data.publishYear) : null,
+        edition: data.edition || null,
+        categoryId: data.categoryId,
+        classificationNumber: data.classificationNumber ? normalizeClassificationNumber(data.classificationNumber) : null,
+        description: data.description || null,
+        coverImage: data.coverImage || null,
+        language: data.language || 'English',
+        fileUrl: data.fileUrl,
+        fileSize: data.fileSize ? Number(data.fileSize) : null,
+        format: (data.format as any) || 'PDF',
       },
       include: {
         category: { select: { id: true, name: true, slug: true } },
@@ -174,6 +174,8 @@ export class EBookService {
       where: { id },
       data: {
         ...input,
+        ...(input.publishYear !== undefined && { publishYear: Number(input.publishYear) }),
+        ...(input.fileSize !== undefined && { fileSize: Number(input.fileSize) }),
         ...(input.classificationNumber !== undefined && {
           classificationNumber: normalizeClassificationNumber(input.classificationNumber),
         }),

@@ -7,7 +7,7 @@ import * as ebookController from '../controllers/ebook.controller';
 import { authenticate, authorize } from '../middlewares/auth';
 import { validate } from '../middlewares/validate';
 import { uploadEBookFiles } from '../middlewares/upload';
-import { createEBookSchema, updateEBookSchema } from '../validators/book.schema';
+import { createEBookSchema, updateEBookSchema, uploadEBookSchema } from '../validators/book.schema';
 
 const router = Router();
 
@@ -28,6 +28,7 @@ router.post(
   authenticate,
   authorize('LIBRARIAN'),
   uploadEBookFiles,
+  validate(uploadEBookSchema),
   ebookController.uploadEBook
 );
 router.put(

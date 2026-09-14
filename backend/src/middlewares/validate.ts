@@ -13,19 +13,21 @@ import { sendError } from '../utils/helpers';
 export const validate = (schema: ZodSchema) => {
   return (req: Request, res: Response, next: NextFunction): void => {
     try {
-      schema.parse({
+      const parsed = schema.parse({
         body: req.body,
         query: req.query,
         params: req.params,
       });
+      if (parsed.body !== undefined) req.body = parsed.body;
+      if (parsed.query !== undefined) req.query = parsed.query;
+      if (parsed.params !== undefined) req.params = parsed.params;
       next();
     } catch (error) {
       if (error instanceof ZodError) {
-        const formattedErrors = error.errors.map((e) => ({
-          field: e.path.join('.'),
-          message: e.message,
-        }));
-        sendError(res, JSON.stringify(formattedErrors), 400);
+        const formattedErrors = error.errors
+          .map((e) => `${e.path.join('.').replace(/^body\./, '') || 'request'}: ${e.message}`)
+          .join('; ');
+        sendError(res, formattedErrors, 400);
         return;
       }
       sendError(res, 'Validation failed', 400);

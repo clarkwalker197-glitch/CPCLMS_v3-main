@@ -4,7 +4,7 @@ import { useState, useRef } from "react";
 import { Dialog, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import api from "@/lib/api";
-import { categoryForClassification, DEWEY_MAIN_CATEGORIES, LIBRARY_CATEGORIES, normalizeClassificationNumber, sanitizeClassificationInput, subcategoriesForMain } from "@/lib/categories";
+import { categoryForClassification, DEWEY_MAIN_CATEGORIES, LIBRARY_CATEGORIES, mainCategoryForClassification, normalizeClassificationNumber, sanitizeClassificationInput, subcategoriesForMain } from "@/lib/categories";
 import { BookOpen, Upload, FileText, X } from "lucide-react";
 
 interface Category {
@@ -61,9 +61,10 @@ export function AddBookModal(props: {
   const updateClassificationNumber = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = sanitizeClassificationInput(e.target.value);
     const detected = categoryForClassification(value);
+    const mainCategory = mainCategoryForClassification(value);
     const categoryId = detected ? props.categories.find((category) => category.name === detected.name)?.id || "" : undefined;
-    if (detected) setMainCategoryCode(detected.code.slice(0, 1) + "00");
-    setForm((current) => ({ ...current, classificationNumber: value, ...(categoryId ? { categoryId } : {}) }));
+    setMainCategoryCode(mainCategory?.code || "");
+    setForm((current) => ({ ...current, classificationNumber: value, categoryId: categoryId || "" }));
   };
 
   const normalizeClassification = () => setForm((current) => ({
@@ -127,7 +128,7 @@ export function AddBookModal(props: {
         publishYear: form.publishYear ? Number(form.publishYear) : undefined,
         edition: form.edition.trim() || undefined,
         pages: form.pages ? Number(form.pages) : undefined,
-        categoryId: form.categoryId || undefined,
+        categoryId: form.categoryId,
         classificationNumber,
         description: form.description.trim() || undefined,
         language: form.language.trim() || "English",

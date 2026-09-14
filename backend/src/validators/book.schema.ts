@@ -4,22 +4,37 @@
 
 import { z } from 'zod';
 
+const isbnSchema = z
+  .string()
+  .trim()
+  .min(1, 'ISBN is required')
+  .max(32, 'ISBN must be 32 characters or fewer');
+
+const accessionNumberSchema = z
+  .string()
+  .trim()
+  .min(1, 'Accession number is required')
+  .max(100, 'Accession number must be 100 characters or fewer');
+
+const categoryIdSchema = z.string().trim().min(1, 'Sub category is required');
+
 const classificationNumberSchema = z
   .string()
+  .trim()
   .regex(/^\d{1,3}(?:\.\d{1,5})?$/, 'Classification number must contain up to 3 digits and up to 5 decimal places')
   .refine((value) => Number(value) >= 0 && Number(value) <= 999, 'Classification number must be between 000 and 999');
 
 export const createBookSchema = z.object({
   body: z.object({
-    isbn: z.string().min(1, 'ISBN is required'),
-    accessionNo: z.string().min(1, 'Accession number is required'),
+    isbn: isbnSchema,
+    accessionNo: accessionNumberSchema,
     title: z.string().min(1, 'Title is required').max(255),
     author: z.string().min(1, 'Author is required').max(255),
     publisher: z.string().optional(),
     publishYear: z.coerce.number().int().min(1000).max(9999).optional(),
     edition: z.string().optional(),
     pages: z.coerce.number().int().positive().optional(),
-    categoryId: z.string().min(1, 'Category is required'),
+    categoryId: categoryIdSchema,
     classificationNumber: classificationNumberSchema,
     description: z.string().optional(),
     coverImage: z.string().url().optional(),
@@ -27,6 +42,7 @@ export const createBookSchema = z.object({
     shelf: z.string().optional(),
     row: z.string().optional(),
     copies: z.coerce.number().int().positive().default(1),
+    availableCopies: z.coerce.number().int().nonnegative().optional(),
   }),
 });
 
@@ -70,13 +86,13 @@ export const createCategorySchema = z.object({
 
 export const createEBookSchema = z.object({
   body: z.object({
-    isbn: z.string().min(1, 'ISBN is required'),
+    isbn: isbnSchema,
     title: z.string().min(1, 'Title is required').max(255),
     author: z.string().min(1, 'Author is required').max(255),
     publisher: z.string().optional(),
     publishYear: z.coerce.number().int().min(1000).max(9999).optional(),
     edition: z.string().optional(),
-    categoryId: z.string().min(1, 'Category is required'),
+    categoryId: categoryIdSchema,
     classificationNumber: classificationNumberSchema,
     description: z.string().optional(),
     coverImage: z.string().url().optional(),
@@ -85,6 +101,10 @@ export const createEBookSchema = z.object({
     fileSize: z.coerce.number().int().positive().optional(),
     format: z.enum(['PDF', 'EPUB', 'MOBI']).default('PDF'),
   }),
+});
+
+export const uploadEBookSchema = createEBookSchema.omit({ body: true }).extend({
+  body: createEBookSchema.shape.body.omit({ fileUrl: true }),
 });
 
 export const updateEBookSchema = z.object({

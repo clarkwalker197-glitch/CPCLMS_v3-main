@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { Dialog, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import api from "@/lib/api";
-import { categoryCodeForId, categoryForClassification, DEWEY_MAIN_CATEGORIES, mainCategoryForCode, normalizeClassificationNumber, sanitizeClassificationInput, subcategoriesForMain } from "@/lib/categories";
+import { categoryCodeForId, categoryForClassification, DEWEY_MAIN_CATEGORIES, mainCategoryForClassification, mainCategoryForCode, normalizeClassificationNumber, sanitizeClassificationInput, subcategoriesForMain } from "@/lib/categories";
 import { BookOpen, Upload, X, Trash2 } from "lucide-react";
 
 interface Category {
@@ -108,9 +108,10 @@ export function EditBookModal(props: {
   const updateClassificationNumber = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = sanitizeClassificationInput(e.target.value);
     const detected = categoryForClassification(value);
+    const mainCategory = mainCategoryForClassification(value);
     const categoryId = detected ? props.categories.find((category) => category.name === detected.name)?.id || "" : undefined;
-    if (detected) setMainCategoryCode(detected.code.slice(0, 1) + "00");
-    setForm((current) => ({ ...current, classificationNumber: value, ...(categoryId ? { categoryId } : {}) }));
+    setMainCategoryCode(mainCategory?.code || "");
+    setForm((current) => ({ ...current, classificationNumber: value, categoryId: categoryId || "" }));
   };
 
   const normalizeClassification = () => setForm((current) => ({

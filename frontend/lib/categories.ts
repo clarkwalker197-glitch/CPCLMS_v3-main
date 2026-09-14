@@ -47,7 +47,13 @@ export function categoryCodeForId(categoryId: string | undefined, categories: Ar
 }
 
 export function sanitizeClassificationInput(value: string): string {
-  const [integerPart = "", decimalPart] = value.replace(/[^\d.]/g, "").split(".");
+  const cleaned = value.replace(/[^\d.-]/g, "");
+  const rangeMatch = cleaned.match(/^(\d{0,3})(-\d{0,3})?$/);
+  if (rangeMatch && rangeMatch[2] !== undefined) {
+    return `${rangeMatch[1]}-${rangeMatch[2].slice(1)}`;
+  }
+
+  const [integerPart = "", decimalPart] = cleaned.split(".");
   const integer = integerPart.slice(0, 3);
   const decimal = decimalPart?.slice(0, 5);
   return decimalPart !== undefined ? `${integer}.${decimal || ""}` : integer;
@@ -63,9 +69,14 @@ export function normalizeClassificationNumber(value: string): string | null {
 }
 
 export function categoryForClassification(value: string) {
-  if (!/^\d{3}(?:\.\d{0,5})?$/.test(value)) return null;
-  const normalized = normalizeClassificationNumber(value);
-  if (!normalized) return null;
-  const code = normalized.slice(0, 3);
+  const match = value.trim().match(/^(\d{3})(?:\.\d{0,5}|-\d{1,3})?$/);
+  if (!match) return null;
+  const code = `${match[1].slice(0, 2)}0`;
   return LIBRARY_CATEGORIES.find((category) => category.code === code) || null;
+}
+
+export function mainCategoryForClassification(value: string) {
+  const match = value.trim().match(/^(\d)/);
+  if (!match) return null;
+  return DEWEY_MAIN_CATEGORIES.find((category) => category.code === `${match[1]}00`) || null;
 }

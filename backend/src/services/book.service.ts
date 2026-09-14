@@ -100,17 +100,31 @@ export class BookService {
   /**
    * Create a new book
    */
-  async createBook(input: CreateBookInput) {
+  async createBook(data: CreateBookInput) {
     const existing = await prisma.book.findUnique({
-      where: { accessionNo: input.accessionNo },
+      where: { accessionNo: data.accessionNo },
     });
     if (existing) throw new ConflictError('Book with this accession number already exists');
 
     const book = await prisma.book.create({
       data: {
-        ...input,
-        classificationNumber: normalizeClassificationNumber(input.classificationNumber),
-        availableCopies: input.copies,
+        isbn: data.isbn,
+        accessionNo: data.accessionNo,
+        title: data.title,
+        author: data.author,
+        publisher: data.publisher || null,
+        publishYear: data.publishYear ? Number(data.publishYear) : null,
+        edition: data.edition || null,
+        pages: data.pages ? Number(data.pages) : null,
+        categoryId: data.categoryId,
+        classificationNumber: normalizeClassificationNumber(data.classificationNumber),
+        description: data.description || null,
+        coverImage: data.coverImage || null,
+        language: data.language || 'English',
+        shelf: data.shelf || null,
+        row: data.row || null,
+        copies: Number(data.copies) || 1,
+        availableCopies: Number(data.availableCopies) || 1,
       },
       include: {
         category: { select: { id: true, name: true, slug: true } },
@@ -131,13 +145,17 @@ export class BookService {
       where: { id },
       data: {
         ...input,
+        ...(input.publishYear !== undefined && { publishYear: Number(input.publishYear) }),
+        ...(input.pages !== undefined && { pages: Number(input.pages) }),
+        ...(input.copies !== undefined && { copies: Number(input.copies) }),
+        ...(input.availableCopies !== undefined && { availableCopies: Number(input.availableCopies) }),
         ...(input.classificationNumber !== undefined && {
           classificationNumber: normalizeClassificationNumber(input.classificationNumber),
         }),
         ...(input.copies !== undefined && {
-          availableCopies: input.copies - (book.copies - book.availableCopies),
+          availableCopies: Number(input.copies) - (book.copies - book.availableCopies),
         }),
-        ...(input.availableCopies !== undefined && { availableCopies: input.availableCopies }),
+        ...(input.availableCopies !== undefined && { availableCopies: Number(input.availableCopies) }),
       },
       include: {
         category: { select: { id: true, name: true, slug: true } },

@@ -1,5 +1,6 @@
 import api from './api';
-import { canUseOfflineStorage, offlineDb, type SyncMutation } from './offline-db';
+import { canUseOfflineStorage, db, setSyncMeta } from './db';
+import type { SyncMutation } from './offline-types';
 
 const SYNC_EVENT = 'cpclms-sync';
 let syncing = false;
@@ -20,7 +21,7 @@ function notifySync(): void {
 async function replaceTable(table: 'books' | 'ebooks' | 'categories' | 'users' | 'transactions' | 'borrowRequests' | 'reservations' | 'notifications', records: unknown[]): Promise<void> {
   if (!records.length) return;
   const normalized = records.filter((record): record is { id: string } => Boolean(record && typeof record === 'object' && 'id' in record));
-  if (normalized.length) await offlineDb.table(table).bulkPut(normalized);
+  if (normalized.length) await db.table(table).bulkPut(normalized);
 }
 
 async function pullLatest(): Promise<void> {
@@ -49,6 +50,25 @@ async function pullLatest(): Promise<void> {
     const notificationData = notifications.data as { notifications?: unknown[] };
     await replaceTable('notifications', notificationData.notifications || []);
   }
+  await setSyncMeta('lastFullSyncAt', Date.now());
+}
+
+export async function pullBooks(): Promise<void> {
+  const response = await api.getBooks();
+  if (response.success && response.data) await replaceTable('books', response.data);
+}
+
+export async function pullTransactions(): Promise<void> {
+  const response = await api.getTransactions({ limit: '100' });
+  if (response.success && response.data) await replaceTable('transactions', response.data);
+}
+
+export async function pullNotifications(): Promise<void> {
+  const response = await api.getNotifications({ limit: '50' });
+  if (response.success && response.data) {
+    const payload = response.data as { notifications?: unknown[] };
+    await replaceTable('notifications', payload.notifications || []);
+  }
 }
 
 async function pushMutation(mutation: SyncMutation): Promise<boolean> {
@@ -62,20 +82,20 @@ async function pushMutation(mutation: SyncMutation): Promise<boolean> {
   }
 
   if (!response.success) {
-    await offlineDb.mutations.update(mutation.id, {
+    await db.syncQueue.update(mutation.id, {
       attempts: mutation.attempts + 1,
       lastError: response.error || 'Sync failed',
     });
     return false;
   }
 
-  await offlineDb.mutations.delete(mutation.id);
+  await db.syncQueue.delete(mutation.id);
   return true;
 }
 
 export async function enqueueMutation(input: Omit<SyncMutation, 'id' | 'createdAt' | 'attempts'>): Promise<void> {
   if (!canUseOfflineStorage()) return;
-  await offlineDb.mutations.add({
+  await db.syncQueue.add({
     ...input,
     id: crypto.randomUUID(),
     createdAt: Date.now(),
@@ -97,18 +117,22 @@ export async function enqueueMutation(input: Omit<SyncMutation, 'id' | 'createdA
 
 export async function pendingMutationCount(): Promise<number> {
   if (!canUseOfflineStorage()) return 0;
-  return offlineDb.mutations.count();
+  return db.syncQueue.count();
+}
+
+export async function pushQueue(): Promise<void> {
+  if (!canUseOfflineStorage()) return;
+  const mutations = await db.syncQueue.orderBy('createdAt').toArray();
+  for (const mutation of mutations) {
+    if (!(await pushMutation(mutation))) break;
+  }
 }
 
 export async function syncNow(): Promise<void> {
   if (!canUseOfflineStorage() || typeof navigator === 'undefined' || !navigator.onLine || syncing || !currentUserId()) return;
   syncing = true;
   try {
-    const mutations = await offlineDb.mutations.orderBy('createdAt').toArray();
-    for (const mutation of mutations) {
-      const synced = await pushMutation(mutation);
-      if (!synced) break;
-    }
+    await pushQueue();
     await pullLatest();
   } catch (error) {
     if (process.env.NODE_ENV !== 'production') console.warn('[Offline] Sync paused:', error);
@@ -116,6 +140,24 @@ export async function syncNow(): Promise<void> {
     syncing = false;
     notifySync();
   }
+}
+
+export const fullSync = syncNow;
+
+export function isOnline(): boolean {
+  return typeof navigator === 'undefined' || navigator.onLine;
+}
+
+export function subscribeToConnectivity(listener: (online: boolean) => void): () => void {
+  if (typeof window === 'undefined') return () => undefined;
+  const online = () => listener(true);
+  const offline = () => listener(false);
+  window.addEventListener('online', online);
+  window.addEventListener('offline', offline);
+  return () => {
+    window.removeEventListener('online', online);
+    window.removeEventListener('offline', offline);
+  };
 }
 
 export function subscribeToSync(listener: () => void): () => void {

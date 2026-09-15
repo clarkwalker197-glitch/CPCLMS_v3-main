@@ -16,6 +16,7 @@ import {
   NotFoundError,
   BadRequestError,
   AppError,
+  ForbiddenError,
 } from '../utils/errors';
 import { RegisterInput, CreateUserInput } from '../validators';
 import { notificationService } from './notification.service';
@@ -210,6 +211,15 @@ const user = await prisma.user.create({
   //  ADMIN: Create user with any role (LIBRARIAN only)
   // ────────────────────────────────────────
   async createUser(adminId: string, input: CreateUserInput, ipAddress?: string) {
+    const actingUser = await prisma.user.findUnique({ where: { id: adminId } });
+    if (!actingUser) {
+      throw new NotFoundError('User account');
+    }
+
+    if (input.role === 'LIBRARIAN' && actingUser.role !== 'LIBRARIAN') {
+      throw new ForbiddenError('Only librarians can add new librarian accounts');
+    }
+
     const existing = await prisma.user.findUnique({
       where: { email: input.email },
     });

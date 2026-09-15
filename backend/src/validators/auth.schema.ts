@@ -10,6 +10,7 @@ const departmentCodeSchema = z.enum(DEPARTMENTS.map((department) => department.c
 // Enum values matching the Prisma Role enum
 /** @see prisma/schema.prisma Role enum */
 const RoleValues = ['STUDENT', 'FACULTY', 'LIBRARIAN'] as const;
+const PublicRegistrationRoleValues = ['STUDENT', 'FACULTY'] as const;
 
 export const loginSchema = z.object({
   body: z.object({
@@ -44,8 +45,8 @@ email: z
       .email('Invalid email address')
       .transform((email) => email.toLowerCase().trim()),
     role: z
-      .enum(RoleValues, {
-        errorMap: () => ({ message: 'Role must be STUDENT, FACULTY, or LIBRARIAN' }),
+      .enum(PublicRegistrationRoleValues, {
+        errorMap: () => ({ message: 'Role must be STUDENT or FACULTY' }),
       })
       .optional(),
     password: z

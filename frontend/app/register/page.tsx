@@ -357,7 +357,6 @@ if (result.success) {
                       >
                         <option value="STUDENT" className="bg-zinc-900 text-white">Student</option>
                         <option value="FACULTY" className="bg-zinc-900 text-white">Faculty</option>
-                        <option value="LIBRARIAN" className="bg-zinc-900 text-white">Librarian</option>
                       </select>
                       <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
                         <svg className="w-4 h-4 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">

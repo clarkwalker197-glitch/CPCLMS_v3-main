@@ -502,6 +502,11 @@ async createBorrowRequest(data: {
     return this.get(`/transactions/requests/${id}`);
   }
 
+  async getReservations(params?: Record<string, string>): Promise<ApiResponse<any[]>> {
+    const query = params ? '?' + new URLSearchParams(params).toString() : '';
+    return this.get(`/reservations${query}`);
+  }
+
   async approveRequest(id: string): Promise<ApiResponse<any>> {
     return this.put(`/transactions/requests/${id}/approve`);
   }

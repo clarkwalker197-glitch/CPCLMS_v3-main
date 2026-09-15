@@ -4,6 +4,7 @@ import "./globals.css";
 import { AuthProvider } from "@/lib/auth-context";
 import { ThemeProvider } from "@/components/theme-provider";
 import { SWSelfHeal } from "@/components/SWSelfHeal";
+import { OfflineSync } from "@/components/OfflineSync";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -80,6 +81,7 @@ export default function RootLayout({
         >
           <AuthProvider>
             <SWSelfHeal />
+            <OfflineSync />
             <main className="flex-1">{children}</main>
           </AuthProvider>
         </ThemeProvider>

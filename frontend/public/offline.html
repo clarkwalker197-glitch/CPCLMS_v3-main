@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CPCLMS Offline</title>
+    <title>CPC Library | Offline</title>
     <style>
       :root {
         --bg: #0f172a;
@@ -20,7 +20,7 @@
         margin: 0;
         min-height: 100%;
         height: 100%;
-        font-family: Arial, Helvetica, sans-serif;
+        font-family: Georgia, "Times New Roman", serif;
         background: linear-gradient(180deg, var(--bg) 0%, #111827 100%);
         color: var(--text);
       }
@@ -37,12 +37,21 @@
         border: 1px solid rgba(148, 163, 184, 0.2);
         border-radius: 18px;
         box-shadow: 0 24px 60px rgba(15, 23, 42, 0.45);
-        padding: 32px 28px;
+        padding: 36px 30px;
+      }
+
+      .eyebrow {
+        color: var(--accent);
+        font: 700 0.78rem/1.2 Arial, Helvetica, sans-serif;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        margin-bottom: 18px;
       }
 
       h1 {
         margin: 0 0 12px;
-        font-size: clamp(2rem, 4vw, 2.8rem);
+        font-size: clamp(2.2rem, 7vw, 3.5rem);
+        letter-spacing: -0.03em;
       }
 
       p {
@@ -60,6 +69,12 @@
         color: var(--accent);
         font-weight: 700;
         letter-spacing: 0.02em;
+      }
+
+      .note {
+        border-left: 3px solid var(--accent);
+        padding-left: 14px;
+        font-size: 0.95rem;
       }
 
       .actions {
@@ -84,13 +99,11 @@
   </head>
   <body>
     <main class="card" aria-live="polite">
-      <div class="status">Offline</div>
+      <div class="eyebrow">CPC Library</div>
+      <div class="status">Offline, data stays local</div>
       <h1>You're offline</h1>
-      <p>
-        The app is temporarily unavailable because your connection has dropped. Some
-        recently visited pages may still be available from the cache, and your data
-        will sync again once connectivity is restored.
-      </p>
+      <p>The connection is away for the moment. Cached catalog and personal records remain available in the app, and queued actions will sync when you reconnect.</p>
+      <p class="note">Offline mode does not support QR approval, new authentication, or e-book file downloads.</p>
       <div class="actions">
         <button type="button" onclick="window.location.reload();">Try again</button>
       </div>

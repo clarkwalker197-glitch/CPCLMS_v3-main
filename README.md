@@ -100,7 +100,34 @@ The seed script creates demo users. Use the credentials documented in `backend/p
 - Manual transaction ID fallback for QR approval
 - Gmail SMTP password-reset verification codes
 - In-app notification badge, dropdown, read state, and deep-link navigation
+- Offline-first catalog, personal records, notifications, and queued borrow requests
 - Reports, analytics, activity logs, and profile management
+
+## Offline-First Behavior
+
+The frontend uses Dexie over IndexedDB as an optional local cache. After a successful
+online session, the app stores the physical/e-book catalog, categories, current user,
+personal borrow requests and transactions, reservations, and recent notifications.
+Cached records render immediately on later visits while the API refreshes them in the
+background. The server remains authoritative whenever it is reachable.
+
+Borrow requests and notification read actions made while offline are stored in an
+ordered queue. The queue is pushed in creation order when the browser fires an
+`online` event or the app starts with a connection. A small status indicator reports
+offline mode or pending actions. Logging out clears the local database for privacy.
+
+Offline limitations for this first pass:
+
+- A user must have logged in successfully at least once on that device.
+- QR approval, librarian mutations, new authentication, and e-book file downloads
+	still require a live connection.
+- IndexedDB can be disabled or cleared by browser policy; the app then falls back to
+	its normal online API behavior.
+
+To test it, run the frontend, log in while online, open the catalog and dashboard,
+then use browser DevTools to switch Network to Offline. Reload those pages and submit
+a borrow request or mark notifications as read. Restore the connection and confirm
+the pending indicator clears and the request appears after synchronization.
 
 ## QR Approval Flow
 

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Dialog, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import api from "@/lib/api";
+import { enqueueMutation } from "@/lib/offline-sync";
 import { BookOpen, ShieldCheck } from "lucide-react";
 
 export function BookBorrowModal(props: {
@@ -24,11 +25,32 @@ export function BookBorrowModal(props: {
     setError("");
     setLoading(true);
     try {
+      if (!navigator.onLine) {
+        await enqueueMutation({
+          userId: JSON.parse(localStorage.getItem("user") || "{}").id || "unknown",
+          type: "CREATE_BORROW_REQUEST",
+          payload: { bookIds: props.books.map((b) => b.id), notes: notes || undefined },
+        });
+        props.onSuccess();
+        props.onOpenChange(false);
+        setNotes("");
+        return;
+      }
+
       const res = await api.createBorrowRequest({
         bookIds: props.books.map((b) => b.id),
         notes: notes || undefined,
       });
       if (res.success) {
+        props.onSuccess();
+        props.onOpenChange(false);
+        setNotes("");
+      } else if (res.error?.toLowerCase().includes("unable to reach") || !navigator.onLine) {
+        await enqueueMutation({
+          userId: JSON.parse(localStorage.getItem("user") || "{}").id || "unknown",
+          type: "CREATE_BORROW_REQUEST",
+          payload: { bookIds: props.books.map((b) => b.id), notes: notes || undefined },
+        });
         props.onSuccess();
         props.onOpenChange(false);
         setNotes("");

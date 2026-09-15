@@ -9,6 +9,7 @@ import ResponsiveTable from "@/components/ResponsiveTable";
 import { StatCard } from "@/components/StatCard";
 import BorrowHistoryCard from "@/components/BorrowHistoryCard";
 import api from "@/lib/api";
+import { offlineDb } from "@/lib/offline-db";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -37,12 +38,30 @@ export default function StudentDashboardPage() {
   useEffect(() => {
     async function load() {
       try {
+        const [cachedTransactions, cachedRequests] = await Promise.all([
+          offlineDb.transactions.orderBy("updatedAt").reverse().limit(5).toArray(),
+          offlineDb.borrowRequests.orderBy("updatedAt").reverse().toArray(),
+        ]);
+        if (cachedTransactions.length) setRecentTransactions(cachedTransactions);
+        if (cachedTransactions.length || cachedRequests.length) {
+          setStats({
+            myBorrowed: cachedTransactions.filter((transaction) => ["ACTIVE", "OVERDUE"].includes(String(transaction.status))).length,
+            myPendingRequests: cachedRequests.filter((request) => request.status === "PENDING").length,
+            myFines: cachedTransactions.reduce((total, transaction) => total + Number(transaction.fineAmount || 0), 0),
+          });
+          setLoading(false);
+        }
+
 const [statsRes, txRes] = await Promise.all([
           api.getMyDashboardStats(),
           api.getTransactions({ limit: "5" }),
         ]);
         if (statsRes.success) setStats(statsRes.data);
-        setRecentTransactions(txRes.success ? (txRes.data || []) : []);
+        if (txRes.success) {
+          const nextTransactions = txRes.data || [];
+          setRecentTransactions(nextTransactions);
+          await offlineDb.transactions.bulkPut(nextTransactions);
+        }
       } catch {
         // silent fail for demo
       } finally {

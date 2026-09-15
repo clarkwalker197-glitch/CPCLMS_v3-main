@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { Bell, CheckCheck, BellOff } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import api from "@/lib/api";
+import { offlineDb } from "@/lib/offline-db";
+import { enqueueMutation } from "@/lib/offline-sync";
 
 interface NotificationItem {
   id: string;
@@ -50,13 +52,20 @@ export default function NotificationBell() {
   const loadNotifications = useCallback(async () => {
     if (!user) return;
     try {
+      const cached = await offlineDb.notifications.orderBy("createdAt").reverse().limit(20).toArray();
+      if (cached.length) {
+        setNotifications(cached as unknown as NotificationItem[]);
+        setUnreadCount(cached.filter((notification) => !notification.isRead).length);
+      }
       const [listRes, countRes] = await Promise.all([
         api.getNotifications({ limit: "20" }),
         api.getUnreadCount(),
       ]);
       if (listRes.success && listRes.data) {
         const payload = listRes.data as any;
-        setNotifications(payload.notifications || []);
+        const nextNotifications = payload.notifications || [];
+        setNotifications(nextNotifications);
+        await offlineDb.notifications.bulkPut(nextNotifications);
       }
       if (countRes.success && countRes.data) {
         setUnreadCount((countRes.data as any).unreadCount ?? 0);
@@ -93,7 +102,16 @@ export default function NotificationBell() {
       await loadNotifications();
       // Mark all as read once the panel is opened
       try {
-        await api.markAllNotificationsRead();
+        if (!navigator.onLine) {
+          await enqueueMutation({
+            userId: user?.id || "unknown",
+            type: "MARK_ALL_NOTIFICATIONS_READ",
+            payload: {},
+          });
+        } else {
+          await api.markAllNotificationsRead();
+        }
+        await offlineDb.notifications.toCollection().modify({ isRead: true });
         setUnreadCount(0);
         setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
       } catch {
@@ -107,7 +125,12 @@ export default function NotificationBell() {
     // Optionally mark this notification as read when clicked
     if (!n.isRead) {
       try {
-        await api.markNotificationRead(n.id);
+        if (!navigator.onLine) {
+          await enqueueMutation({ userId: user?.id || "unknown", type: "MARK_NOTIFICATION_READ", payload: { id: n.id } });
+        } else {
+          await api.markNotificationRead(n.id);
+        }
+        await offlineDb.notifications.update(n.id, { isRead: true });
         setNotifications((prev) =>
           prev.map((item) => (item.id === n.id ? { ...item, isRead: true } : item))
         );
@@ -161,7 +184,12 @@ export default function NotificationBell() {
               <button
                 onClick={async () => {
                   try {
-                    await api.markAllNotificationsRead();
+                    if (!navigator.onLine) {
+                      await enqueueMutation({ userId: user?.id || "unknown", type: "MARK_ALL_NOTIFICATIONS_READ", payload: {} });
+                    } else {
+                      await api.markAllNotificationsRead();
+                    }
+                    await offlineDb.notifications.toCollection().modify({ isRead: true });
                     setUnreadCount(0);
                     setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
                   } catch {

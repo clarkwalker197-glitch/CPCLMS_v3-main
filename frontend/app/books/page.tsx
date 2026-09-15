@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import api from "@/lib/api";
+import { offlineDb } from "@/lib/offline-db";
 import { useDebounce } from "@/lib/useDebounce";
 import { BookBorrowModal } from "@/components/BookBorrowModal";
 import { AddBookModal } from "@/components/AddBookModal";
@@ -71,6 +72,16 @@ export default function BooksPage() {
     setLoading(true);
     setError("");
     try {
+      const cachedBooks = await offlineDb.books.toArray();
+      const cachedCategories = await offlineDb.categories.toArray();
+      if (cachedBooks.length) {
+        setBooks(cachedBooks.map((book) => ({ ...book, bookType: "physical" })));
+        setLoading(false);
+      }
+      if (cachedCategories.length) {
+        setCategories(cachedCategories.filter((category) => String(category.slug || "").startsWith("dewey-")));
+      }
+
       const params: Record<string, string> = {};
       if (debouncedSearch) params.search = debouncedSearch;
       if (debouncedCategory) params.categoryId = debouncedCategory;
@@ -82,12 +93,16 @@ export default function BooksPage() {
       ]);
       if (booksRes.success) {
         setBooks((booksRes.data || []).map((book: any) => ({ ...book, bookType: "physical" })));
+        await offlineDb.books.bulkPut(booksRes.data || []);
       } else if (booksRes.rateLimited) {
         setError("You're moving too fast. Please wait a moment and try again.");
       }
-      if (catsRes.success) setCategories((catsRes.data || []).filter((category: any) => category.slug?.startsWith("dewey-")));
+      if (catsRes.success) {
+        setCategories((catsRes.data || []).filter((category: any) => category.slug?.startsWith("dewey-")));
+        await offlineDb.categories.bulkPut(catsRes.data || []);
+      }
     } catch {
-      setError("Failed to load books");
+      if (!books.length) setError("No cached catalog is available yet. Connect once to download the catalog.");
     } finally {
       setLoading(false);
     }

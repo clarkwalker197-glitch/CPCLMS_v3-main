@@ -3,6 +3,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { User, getUser, isAuthenticated as checkAuth } from './auth';
 import api from './api';
+import { clearOfflineData } from './offline-db';
+import { syncNow } from './offline-sync';
 
 const IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 const IDLE_WARNING_MS = IDLE_TIMEOUT_MS - 60 * 1000;
@@ -96,6 +98,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (res.success && res.data) {
         setUser(res.data);
         localStorage.setItem('user', JSON.stringify(res.data));
+        void syncNow();
         return;
       }
 
@@ -146,6 +149,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (res.success && res.data) {
         const nextUser = res.data.user;
         setUser(nextUser);
+        void syncNow();
         lastActivityRef.current = Date.now();
         setStoredLastActivity(lastActivityRef.current);
         return { success: true, user: nextUser };
@@ -162,6 +166,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (res.success && res.data) {
         const nextUser = res.data.user;
         setUser(nextUser);
+        void syncNow();
         lastActivityRef.current = Date.now();
         setStoredLastActivity(lastActivityRef.current);
         return { success: true, user: nextUser };
@@ -186,6 +191,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     await api.logout();
+    await clearOfflineData();
     clearIdleTimers();
     setUser(null);
     setShowIdleWarning(false);

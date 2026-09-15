@@ -51,7 +51,7 @@ export default function Home() {
               <span className="h-1.5 w-1.5 rounded-full bg-blue-400" />
               Connected library operations
             </div>
-            <h1 className="text-4xl sm:text-6xl font-bold tracking-tight leading-tight text-white">Cordova Public College Library System</h1>
+            <h1 className="text-4xl sm:text-6xl font-bold tracking-tight leading-tight text-white">Cordova Public College <br></br> Library System</h1>
             <p className="mt-6 max-w-2xl text-base sm:text-lg leading-8 text-zinc-400">A modern library workspace for discovering books, managing borrow requests, coordinating approvals, and keeping academic resources accessible.</p>
             <div className="mt-9 flex flex-col sm:flex-row gap-3">
               <Link href="/login" className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition-colors">Sign In <ArrowRight className="w-4 h-4" /></Link>
@@ -81,6 +81,59 @@ export default function Home() {
             );
           })}
         </div>
+
+        {/* Developers Section */}
+        <section className="mt-20 sm:mt-24">
+          <div className="text-center mb-10">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-400">
+              The Team
+            </p>
+            <h2 className="mt-2 text-2xl sm:text-3xl font-bold text-white">
+              Developers behind this system
+            </h2>
+            <p className="mt-3 max-w-xl mx-auto text-sm text-zinc-500">
+              Built with care by the developers of Cordova Public College Library System.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
+            {/* Example Developer Cards - replace with real names */}
+            <div className="min-h-[260px] rounded-2xl border border-zinc-800 bg-zinc-900/70 p-8 text-center flex flex-col items-center justify-center hover:border-blue-500/40 transition-colors">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/sekey1.jpg"
+                alt="Clark Kent Periño"
+                className="w-24 h-24 rounded-full object-cover mx-auto mb-6 ring-1 ring-blue-500/20"
+              />
+              <h3 className="text-lg font-semibold text-white">Clark Kent Periño</h3>
+              <p className="text-base text-zinc-500 mt-2">Full-stack Developer / Project Manager</p>
+            </div>
+
+            <div className="min-h-[260px] rounded-2xl border border-zinc-800 bg-zinc-900/70 p-8 text-center flex flex-col items-center justify-center hover:border-blue-500/40 transition-colors">
+              <div role="img" aria-label="Developer image placeholder for Desi Marie Birondo" className="w-24 h-24 rounded-full bg-blue-500/15 text-blue-400 flex items-center justify-center mx-auto mb-6 text-2xl font-bold ring-1 ring-blue-500/20">
+                DB
+              </div>
+              <h3 className="text-lg font-semibold text-white">Desi Marie Birondo</h3>
+              <p className="text-base text-zinc-500 mt-2">Documentation Specialist</p>
+            </div>
+
+            <div className="min-h-[260px] rounded-2xl border border-zinc-800 bg-zinc-900/70 p-8 text-center flex flex-col items-center justify-center hover:border-blue-500/40 transition-colors">
+              <div role="img" aria-label="Developer image placeholder for Apple Jean Cabardo" className="w-24 h-24 rounded-full bg-blue-500/15 text-blue-400 flex items-center justify-center mx-auto mb-6 text-2xl font-bold ring-1 ring-blue-500/20">
+                AC
+              </div>
+              <h3 className="text-lg font-semibold text-white">Apple Jean Cabardo</h3>
+              <p className="text-base text-zinc-500 mt-2">Documentation Specialist</p>
+            </div>
+
+            <div className="min-h-[260px] rounded-2xl border border-zinc-800 bg-zinc-900/70 p-8 text-center flex flex-col items-center justify-center hover:border-blue-500/40 transition-colors">
+              <div role="img" aria-label="Developer image placeholder for Melecio Paes" className="w-24 h-24 rounded-full bg-blue-500/15 text-blue-400 flex items-center justify-center mx-auto mb-6 text-2xl font-bold ring-1 ring-blue-500/20">
+                MP  
+              </div>
+              <h3 className="text-lg font-semibold text-white">Melecio Paes</h3>
+              <p className="text-base text-zinc-500 mt-2">Full Developer</p>
+            </div>
+          </div>
+        </section>
       </main>
 
       <footer className="border-t border-zinc-800 py-8">

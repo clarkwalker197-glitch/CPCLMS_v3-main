@@ -82,13 +82,8 @@ const { login, googleLogin, user, isAuthenticated, loading } = useAuth();
 
               {/* Heading + Subtitle */}
               <div className="max-w-md">
-<<<<<<< HEAD
                 <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold leading-tight tracking-tight text-white mb-4">
                   Welcome to the  <span className="text-[40px] text-blue-300">Gateway of Learning </span>
-=======
-                <h1 className="text-4xl sm:text-5xl font-extrabold leading-tight tracking-tight text-white mb-4">
-                  Welcome to the <span className="text-blue-300">Gateway of Learning</span>
->>>>>>> d57772e0870970be7a100358cbffcd051faeb1b7
                 </h1>
                 <p className="text-base sm:text-lg text-zinc-300 leading-relaxed">
                   Sign in to manage books, track borrows, and keep your academic resources organized.

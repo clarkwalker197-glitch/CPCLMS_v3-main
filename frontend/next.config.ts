@@ -1,5 +1,5 @@
 import type { NextConfig } from "next";
-import withPWA from "next-pwa";
+import withPWA from "@ducanh2912/next-pwa";
 
 const nextConfig: NextConfig = {
   turbopack: {},
@@ -32,6 +32,19 @@ const nextConfig: NextConfig = {
           {
             key: "Cache-Control",
             value: "public, max-age=3600",
+          },
+        ],
+      },
+      {
+        source: "/sw.js",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "no-cache, no-store, must-revalidate",
+          },
+          {
+            key: "Content-Type",
+            value: "application/javascript; charset=utf-8",
           },
         ],
       },

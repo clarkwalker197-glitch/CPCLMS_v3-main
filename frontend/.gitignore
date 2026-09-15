@@ -41,7 +41,6 @@ yarn-error.log*
 next-env.d.ts
 
 # generated PWA files
-# Keep the root service worker available to the browser so the PWA can install cleanly.
-!/public/sw.js
-!/public/workbox-*.js
-!/public/*.js.map
+/public/sw.js
+/public/workbox-*.js
+/public/*.js.map

@@ -3,7 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth-context";
 import { ThemeProvider } from "@/components/theme-provider";
-import { PWARegister } from "@/components/PWARegister";
+import { SWSelfHeal } from "@/components/SWSelfHeal";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -79,7 +79,7 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <AuthProvider>
-            <PWARegister />
+            <SWSelfHeal />
             <main className="flex-1">{children}</main>
           </AuthProvider>
         </ThemeProvider>

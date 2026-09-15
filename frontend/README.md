@@ -34,3 +34,14 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## PWA recovery / service worker reset
+
+If an older install of the app still has a broken service worker registration, clear the PWA before reloading the app:
+
+1. Uninstall the app from the home screen.
+2. In the browser, clear site data for the CPC library site.
+3. Reload the site in a normal browser tab first to confirm the fixed worker registers successfully.
+4. Reinstall the app.
+
+This app uses the generated service worker from the production build, not a hand-written one committed to the repo. A stale committed worker file can shadow the generated Workbox worker and cause the install/launch crash.

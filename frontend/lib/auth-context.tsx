@@ -12,7 +12,7 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   isAuthenticated: boolean;
-login: (identifier: string, password: string) => Promise<{ success: boolean; error?: string; user?: User }>;
+  login: (identifier: string, password: string) => Promise<{ success: boolean; error?: string; user?: User }>;
   googleLogin: (credential: string) => Promise<{ success: boolean; error?: string; user?: User }>;
   register: (data: RegisterData) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
@@ -31,6 +31,22 @@ interface RegisterData {
   phone?: string;
 }
 
+const LAST_ACTIVITY_STORAGE_KEY = 'lastActivityAt';
+
+const getStoredLastActivity = (): number => {
+  if (typeof window === 'undefined') return Date.now();
+  const stored = Number(localStorage.getItem(LAST_ACTIVITY_STORAGE_KEY) || Date.now());
+  return Number.isFinite(stored) ? stored : Date.now();
+};
+
+const setStoredLastActivity = (timestamp = Date.now()) => {
+  if (typeof window === 'undefined') return;
+  lastActivityRefValue = timestamp;
+  localStorage.setItem(LAST_ACTIVITY_STORAGE_KEY, String(timestamp));
+};
+
+let lastActivityRefValue = Date.now();
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -39,20 +55,69 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [showIdleWarning, setShowIdleWarning] = useState(false);
   const warningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const logoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastActivityRef = useRef(0);
+  const lastActivityRef = useRef<number>(getStoredLastActivity());
+
+  const clearIdleTimers = useCallback(() => {
+    if (warningTimerRef.current) clearTimeout(warningTimerRef.current);
+    if (logoutTimerRef.current) clearTimeout(logoutTimerRef.current);
+    warningTimerRef.current = null;
+    logoutTimerRef.current = null;
+  }, []);
+
+  const handleAuthExpired = useCallback(() => {
+    if (!navigator.onLine) {
+      // Offline sessions should not be hard-cleared while the device is disconnected.
+      return;
+    }
+
+    api.clearTokens();
+    localStorage.removeItem(LAST_ACTIVITY_STORAGE_KEY);
+    lastActivityRef.current = Date.now();
+    setUser(null);
+    setShowIdleWarning(false);
+    window.location.replace('/login?reason=inactivity');
+  }, []);
 
   const refreshUser = useCallback(async () => {
+    const storedUser = getUser();
+
+    if (!checkAuth()) {
+      if (storedUser) {
+        setUser(storedUser);
+      } else {
+        setUser(null);
+      }
+      return;
+    }
+
     try {
       const res = await api.getMe();
+
       if (res.success && res.data) {
         setUser(res.data);
         localStorage.setItem('user', JSON.stringify(res.data));
-      } else {
-        setUser(null);
+        return;
+      }
+
+      const authFailure = typeof res.error === 'string' && /401|unauthorized|forbidden|token/i.test(res.error);
+      if (authFailure) {
         api.clearTokens();
+        localStorage.removeItem(LAST_ACTIVITY_STORAGE_KEY);
+        lastActivityRef.current = Date.now();
+        setUser(null);
+        return;
+      }
+
+      // Offline or transient network failures should not wipe the user session.
+      // Keep the valid stored user and tokens until the user is back online and the
+      // auth check succeeds or a real auth error occurs.
+      if (storedUser) {
+        setUser(storedUser);
       }
     } catch {
-      setUser(null);
+      if (storedUser) {
+        setUser(storedUser);
+      }
     }
   }, []);
 
@@ -60,20 +125,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const init = async () => {
       if (checkAuth()) {
         const storedUser = getUser();
-        if (storedUser) setUser(storedUser);
+        if (storedUser) {
+          setUser(storedUser);
+          lastActivityRef.current = getStoredLastActivity();
+        }
         await refreshUser();
+      } else {
+        setUser(null);
+        localStorage.removeItem(LAST_ACTIVITY_STORAGE_KEY);
       }
       setLoading(false);
     };
+
     init();
   }, [refreshUser]);
 
   const login = async (identifier: string, password: string) => {
     try {
-const res = await api.login(identifier, password);
+      const res = await api.login(identifier, password);
       if (res.success && res.data) {
-        setUser(res.data.user);
-        return { success: true, user: res.data.user };
+        const nextUser = res.data.user;
+        setUser(nextUser);
+        lastActivityRef.current = Date.now();
+        setStoredLastActivity(lastActivityRef.current);
+        return { success: true, user: nextUser };
       }
       return { success: false, error: res.error || 'Login failed' };
     } catch (err: any) {
@@ -85,8 +160,11 @@ const res = await api.login(identifier, password);
     try {
       const res = await api.googleLogin(credential);
       if (res.success && res.data) {
-        setUser(res.data.user);
-        return { success: true, user: res.data.user };
+        const nextUser = res.data.user;
+        setUser(nextUser);
+        lastActivityRef.current = Date.now();
+        setStoredLastActivity(lastActivityRef.current);
+        return { success: true, user: nextUser };
       }
       return { success: false, error: res.error || 'Google login failed' };
     } catch (err: any) {
@@ -94,12 +172,10 @@ const res = await api.login(identifier, password);
     }
   };
 
-const register = async (data: RegisterData) => {
+  const register = async (data: RegisterData) => {
     try {
       const res = await api.register(data);
       if (res.success) {
-        // Do NOT auto-login after registration.
-        // The user is redirected to the login page to sign in manually.
         return { success: true };
       }
       return { success: false, error: res.error || 'Registration failed' };
@@ -110,41 +186,86 @@ const register = async (data: RegisterData) => {
 
   const logout = useCallback(async () => {
     await api.logout();
+    clearIdleTimers();
     setUser(null);
     setShowIdleWarning(false);
+    localStorage.removeItem(LAST_ACTIVITY_STORAGE_KEY);
+    lastActivityRef.current = Date.now();
+  }, [clearIdleTimers]);
+
+  const isIdleWindowActive = useCallback(() => {
+    return navigator.onLine && document.visibilityState === 'visible';
   }, []);
 
-  useEffect(() => {
-    const clearIdleTimers = () => {
-      if (warningTimerRef.current) clearTimeout(warningTimerRef.current);
-      if (logoutTimerRef.current) clearTimeout(logoutTimerRef.current);
-      warningTimerRef.current = null;
-      logoutTimerRef.current = null;
-    };
+  const scheduleIdleTimers = useCallback(() => {
+    clearIdleTimers();
 
+    if (!user || !isIdleWindowActive()) {
+      // Idle timers must pause while offline or hidden because the user is not actively
+      // engaging with the app and we should not hard-logout a stale session in that state.
+      setShowIdleWarning(false);
+      return;
+    }
+
+    const now = Date.now();
+    const lastActivityAt = getStoredLastActivity();
+    const elapsed = now - lastActivityAt;
+
+    if (elapsed >= IDLE_TIMEOUT_MS) {
+      // If the app resumes after the timeout while still online, expire the session.
+      handleAuthExpired();
+      return;
+    }
+
+    const warningDelay = Math.max(0, IDLE_WARNING_MS - elapsed);
+    const logoutDelay = Math.max(0, IDLE_TIMEOUT_MS - elapsed);
+
+    warningTimerRef.current = setTimeout(() => {
+      if (isIdleWindowActive()) {
+        setShowIdleWarning(true);
+      }
+    }, warningDelay);
+
+    logoutTimerRef.current = setTimeout(() => {
+      if (!isIdleWindowActive()) {
+        scheduleIdleTimers();
+        return;
+      }
+      handleAuthExpired();
+    }, logoutDelay);
+  }, [clearIdleTimers, handleAuthExpired, isIdleWindowActive, user]);
+
+  useEffect(() => {
     if (!user) {
       clearIdleTimers();
       setShowIdleWarning(false);
       return;
     }
 
-    const resetIdleTimer = () => {
+    const handleActivity = () => {
+      if (!isIdleWindowActive()) {
+        // We still keep the last known activity timestamp, but do not advance the timer
+        // while the app is offline or hidden.
+        return;
+      }
+
       const now = Date.now();
       if (now - lastActivityRef.current < ACTIVITY_THROTTLE_MS) return;
+
       lastActivityRef.current = now;
-      clearIdleTimers();
-      setShowIdleWarning(false);
+      setStoredLastActivity(now);
+      scheduleIdleTimers();
+    };
 
-      warningTimerRef.current = setTimeout(() => {
-        setShowIdleWarning(true);
-      }, IDLE_WARNING_MS);
-
-      logoutTimerRef.current = setTimeout(() => {
-        api.clearTokens();
-        setUser(null);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        clearIdleTimers();
         setShowIdleWarning(false);
-        window.location.replace('/login?reason=inactivity');
-      }, IDLE_TIMEOUT_MS);
+        return;
+      }
+
+      // When visibility returns, resume based on the remembered last activity and current online state.
+      scheduleIdleTimers();
     };
 
     const activityEvents: Array<keyof WindowEventMap> = [
@@ -155,18 +276,32 @@ const register = async (data: RegisterData) => {
       'touchstart',
       'touchmove',
     ];
+
     activityEvents.forEach((eventName) => {
-      window.addEventListener(eventName, resetIdleTimer, { passive: true });
+      window.addEventListener(eventName, handleActivity, { passive: true });
     });
-    resetIdleTimer();
+    window.addEventListener('online', scheduleIdleTimers);
+    window.addEventListener('offline', () => {
+      clearIdleTimers();
+      setShowIdleWarning(false);
+    });
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    scheduleIdleTimers();
 
     return () => {
       clearIdleTimers();
       activityEvents.forEach((eventName) => {
-        window.removeEventListener(eventName, resetIdleTimer);
+        window.removeEventListener(eventName, handleActivity);
       });
+      window.removeEventListener('online', scheduleIdleTimers);
+      window.removeEventListener('offline', () => {
+        clearIdleTimers();
+        setShowIdleWarning(false);
+      });
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [user]);
+  }, [clearIdleTimers, isIdleWindowActive, scheduleIdleTimers, user]);
 
   return (
     <AuthContext.Provider
@@ -182,30 +317,36 @@ const register = async (data: RegisterData) => {
       }}
     >
       {children}
-        {user && showIdleWarning && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4">
-            <div
-              role="alertdialog"
-              aria-modal="true"
-              aria-labelledby="idle-warning-title"
-              className="w-full max-w-sm rounded-2xl border border-zinc-700 bg-zinc-900 p-6 text-center shadow-2xl"
+      {user && showIdleWarning && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4">
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="idle-warning-title"
+            className="w-full max-w-sm rounded-2xl border border-zinc-700 bg-zinc-900 p-6 text-center shadow-2xl"
+          >
+            <h2 id="idle-warning-title" className="text-lg font-semibold text-white">
+              Still there?
+            </h2>
+            <p className="mt-2 text-sm text-zinc-400">
+              You will be logged out in 1 minute due to inactivity.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                const now = Date.now();
+                lastActivityRef.current = now;
+                setStoredLastActivity(now);
+                setShowIdleWarning(false);
+                scheduleIdleTimers();
+              }}
+              className="mt-5 w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
             >
-              <h2 id="idle-warning-title" className="text-lg font-semibold text-white">
-                Still there?
-              </h2>
-              <p className="mt-2 text-sm text-zinc-400">
-                You will be logged out in 1 minute due to inactivity.
-              </p>
-              <button
-                type="button"
-                onClick={() => window.dispatchEvent(new Event('mousemove'))}
-                className="mt-5 w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
-              >
-                Continue session
-              </button>
-            </div>
+              Continue session
+            </button>
           </div>
-        )}
+        </div>
+      )}
     </AuthContext.Provider>
   );
 }

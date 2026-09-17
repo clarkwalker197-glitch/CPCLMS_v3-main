@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import api from '@/lib/api';
+import { isValidName, nameValidationMessage, sanitizeNameInput } from '@/lib/name-validation';
 
 export default function RegisterPage() {
   const { register, isAuthenticated, loading } = useAuth();
@@ -40,12 +41,24 @@ const [formData, setFormData] = useState({
   }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+    const value = e.target.name === 'firstName' || e.target.name === 'lastName'
+      ? sanitizeNameInput(e.target.value)
+      : e.target.value;
+    setFormData((prev) => ({ ...prev, [e.target.name]: value }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    if (!isValidName(formData.firstName.trim())) {
+      setError(nameValidationMessage('First name'));
+      return;
+    }
+    if (!isValidName(formData.lastName.trim())) {
+      setError(nameValidationMessage('Last name'));
+      return;
+    }
 
     if (formData.password !== formData.confirmPassword) {
       setError('Passwords do not match');
@@ -190,6 +203,8 @@ if (result.success) {
                         required
                         value={formData.firstName}
                         onChange={handleChange}
+                        onBlur={(e) => setFormData((prev) => ({ ...prev, firstName: e.target.value.trim() }))}
+                        aria-invalid={!!error && !isValidName(formData.firstName)}
                         className="w-full px-3 py-3 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
                         placeholder="First"
                       />
@@ -202,6 +217,8 @@ if (result.success) {
                         required
                         value={formData.lastName}
                         onChange={handleChange}
+                        onBlur={(e) => setFormData((prev) => ({ ...prev, lastName: e.target.value.trim() }))}
+                        aria-invalid={!!error && !isValidName(formData.lastName)}
                         className="w-full px-3 py-3 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
                         placeholder="Last"
                       />

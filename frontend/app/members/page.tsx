@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
 import api from "@/lib/api";
+import { isValidName, nameValidationMessage, sanitizeNameInput } from "@/lib/name-validation";
 import { useDebounce } from "@/lib/useDebounce";
 import Sidebar from "@/components/Sidebar";
 import ResponsiveTable from "@/components/ResponsiveTable";
@@ -143,9 +144,20 @@ const handleDelete = async (member: any) => {
   const handleAddMemberChange = (
     field: keyof AddMemberFormState
   ) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const value = event.target.value;
+    const value = field === "firstName" || field === "lastName"
+      ? sanitizeNameInput(event.target.value)
+      : event.target.value;
     setMemberForm((current) => ({ ...current, [field]: value }));
     setMemberFormError("");
+
+    if (!isValidName(memberForm.firstName.trim())) {
+      setMemberFormError(nameValidationMessage("First name"));
+      return;
+    }
+    if (!isValidName(memberForm.lastName.trim())) {
+      setMemberFormError(nameValidationMessage("Last name"));
+      return;
+    }
   };
 
   const resetAddMemberForm = () => {
@@ -343,6 +355,7 @@ const handleDelete = async (member: any) => {
                     required
                     value={memberForm.firstName}
                     onChange={handleAddMemberChange("firstName")}
+                    onBlur={(event) => setMemberForm((current) => ({ ...current, firstName: event.target.value.trim() }))}
                     className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
                     placeholder="First name"
                   />
@@ -353,6 +366,7 @@ const handleDelete = async (member: any) => {
                     required
                     value={memberForm.lastName}
                     onChange={handleAddMemberChange("lastName")}
+                    onBlur={(event) => setMemberForm((current) => ({ ...current, lastName: event.target.value.trim() }))}
                     className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
                     placeholder="Last name"
                   />

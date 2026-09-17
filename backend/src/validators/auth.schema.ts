@@ -11,6 +11,12 @@ const departmentCodeSchema = z.enum(DEPARTMENTS.map((department) => department.c
 /** @see prisma/schema.prisma Role enum */
 const RoleValues = ['STUDENT', 'FACULTY', 'LIBRARIAN'] as const;
 const PublicRegistrationRoleValues = ['STUDENT', 'FACULTY'] as const;
+const nameSchema = (label: string) => z
+  .string()
+  .min(1, `${label} is required`)
+  .max(50)
+  .trim()
+  .regex(/^\p{L}+(?:[ '\u2019-]\p{L}+)*$/u, `${label} can only contain letters, spaces, hyphens, and apostrophes`);
 
 export const loginSchema = z.object({
   body: z.object({
@@ -25,16 +31,8 @@ export const loginSchema = z.object({
 
 export const registerSchema = z.object({
   body: z.object({
-firstName: z
-      .string()
-      .min(1, 'First name is required')
-      .max(50)
-      .transform((s) => s.trim()),
-    lastName: z
-      .string()
-      .min(1, 'Last name is required')
-      .max(50)
-      .transform((s) => s.trim()),
+    firstName: nameSchema('First name'),
+    lastName: nameSchema('Last name'),
     libraryId: z
       .string()
       .min(1, 'ID Number is required')
@@ -78,16 +76,8 @@ email: z
 /** Admin-only: create user with any role */
 export const createUserSchema = z.object({
   body: z.object({
-    firstName: z
-      .string()
-      .min(1, 'First name is required')
-      .max(50)
-      .transform((s) => s.trim()),
-    lastName: z
-      .string()
-      .min(1, 'Last name is required')
-      .max(50)
-      .transform((s) => s.trim()),
+    firstName: nameSchema('First name'),
+    lastName: nameSchema('Last name'),
     email: z
       .string()
       .email('Invalid email address')
@@ -147,8 +137,8 @@ export const updateNotificationPreferencesSchema = z.object({
 
 export const updateProfileSchema = z.object({
   body: z.object({
-    firstName: z.string().min(1, 'First name is required').max(50).transform((s) => s.trim()),
-    lastName: z.string().min(1, 'Last name is required').max(50).transform((s) => s.trim()),
+    firstName: nameSchema('First name'),
+    lastName: nameSchema('Last name'),
     email: z.string().email('Invalid email address').transform((email) => email.toLowerCase().trim()),
     phone: z.string().regex(/^\+?[\d\s-]{7,15}$/, 'Invalid phone number format').optional().or(z.literal('')),
     department: z.string().max(100).optional(),

@@ -5,6 +5,7 @@ import { AlertCircle, CheckCircle2, ImagePlus, Loader2, Trash2, X } from "lucide
 import { useAuth } from "@/lib/auth-context";
 import api from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/api";
+import { isValidName, nameValidationMessage, sanitizeNameInput } from "@/lib/name-validation";
 
 type EditProfileModalProps = {
   onClose: () => void;
@@ -62,6 +63,8 @@ export default function EditProfileModal({ onClose, onSaved }: EditProfileModalP
     const nameParts = fullName.trim().split(/\s+/);
     const phonePattern = /^\+?[\d\s-]{7,15}$/;
     if (nameParts.length < 2) return setError("Enter your first and last name.");
+    if (!isValidName(nameParts[0])) return setError(nameValidationMessage("First name"));
+    if (!isValidName(nameParts.slice(1).join(" "))) return setError(nameValidationMessage("Last name"));
     if (!/^\S+@\S+\.\S+$/.test(email.trim())) return setError("Enter a valid email address.");
     if (phone && !phonePattern.test(phone)) return setError("Enter a valid phone number.");
     if (user?.role === "STUDENT" && !yearSection.trim()) {
@@ -128,7 +131,7 @@ export default function EditProfileModal({ onClose, onSaved }: EditProfileModalP
             </div>
           </div>
 
-          <Field label="Full Name" value={fullName} onChange={setFullName} required />
+          <Field label="Full Name" value={fullName} onChange={(value) => setFullName(sanitizeNameInput(value))} onBlur={() => setFullName((value) => value.trim())} required />
           <Field label="Email" type="email" value={email} onChange={setEmail} required />
           <Field label="Phone Number" value={phone} onChange={setPhone} placeholder="+63 912 345 6789" />
           <Field label="ID Number" value={user?.libraryId || ""} onChange={() => {}} disabled />
@@ -158,11 +161,11 @@ export default function EditProfileModal({ onClose, onSaved }: EditProfileModalP
   );
 }
 
-function Field({ label, value, onChange, type = "text", placeholder, required, disabled }: { label: string; value: string; onChange: (value: string) => void; type?: string; placeholder?: string; required?: boolean; disabled?: boolean }) {
+function Field({ label, value, onChange, onBlur, type = "text", placeholder, required, disabled }: { label: string; value: string; onChange: (value: string) => void; onBlur?: () => void; type?: string; placeholder?: string; required?: boolean; disabled?: boolean }) {
   return (
     <label className="block space-y-1.5 text-sm font-medium text-zinc-300">
       {label}
-      <input type={type} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} required={required} disabled={disabled} className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-white outline-none placeholder:text-zinc-600 focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-60" />
+      <input type={type} value={value} onChange={(event) => onChange(event.target.value)} onBlur={onBlur} placeholder={placeholder} required={required} disabled={disabled} className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-white outline-none placeholder:text-zinc-600 focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-60" />
     </label>
   );
 }

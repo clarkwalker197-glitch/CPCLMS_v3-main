@@ -19,6 +19,20 @@ function resolveApiBaseUrl(): string {
   return 'http://localhost:4000/api';
 }
 
+export function resolveMediaUrl(value?: string | null): string {
+  if (!value) return '';
+  if (/^(https?:|data:|blob:)/i.test(value)) return value;
+  if (typeof window !== 'undefined' && value.startsWith('/uploads/')) {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
+    if (apiUrl) return `${apiUrl.replace(/\/api\/?$/, '').replace(/\/+$/, '')}${value}`;
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      return `http://${window.location.hostname}:4000${value}`;
+    }
+    return value;
+  }
+  return value;
+}
+
 const API_BASE_URL = resolveApiBaseUrl();
 
 export interface ApiResponse<T = unknown> {

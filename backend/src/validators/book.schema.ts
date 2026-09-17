@@ -24,6 +24,11 @@ const classificationNumberSchema = z
   .regex(/^\d{1,3}(?:\.\d{1,5})?$/, 'Classification number must contain up to 3 digits and up to 5 decimal places')
   .refine((value) => Number(value) >= 0 && Number(value) <= 999, 'Classification number must be between 000 and 999');
 
+const imagePathSchema = z.string().refine(
+  (value) => value.startsWith('/uploads/') || z.string().url().safeParse(value).success,
+  'Cover image must be a valid URL or uploaded path'
+);
+
 export const createBookSchema = z.object({
   body: z.object({
     isbn: isbnSchema,
@@ -37,7 +42,7 @@ export const createBookSchema = z.object({
     categoryId: categoryIdSchema,
     classificationNumber: classificationNumberSchema,
     description: z.string().optional(),
-    coverImage: z.string().url().optional(),
+    coverImage: imagePathSchema.optional(),
     language: z.string().default('English'),
     shelf: z.string().optional(),
     row: z.string().optional(),
@@ -58,7 +63,7 @@ export const updateBookSchema = z.object({
     categoryId: z.string().optional(),
     classificationNumber: classificationNumberSchema.optional(),
     description: z.string().optional(),
-    coverImage: z.string().url().optional(),
+    coverImage: imagePathSchema.optional(),
     language: z.string().optional(),
     shelf: z.string().optional(),
     row: z.string().optional(),

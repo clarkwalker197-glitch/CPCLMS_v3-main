@@ -80,6 +80,7 @@ export default function RequestsPage() {
 
   const [successMsg, setSuccessMsg] = useState("");
   const [error, setError] = useState("");
+  const [selectedNote, setSelectedNote] = useState<string | null>(null);
 
   // Debounced search/filter values (300ms) to avoid per-keystroke API spam
   const debouncedReqSearch = useDebounce(reqSearch, 300);
@@ -530,8 +531,17 @@ export default function RequestsPage() {
                             <p className="text-xs text-zinc-500">{req.user?.libraryId || ""}</p>
                           </td>
                           <td className="px-6 py-4 text-zinc-400 hidden sm:table-cell">{formatDate(req.requestDate)}</td>
-                          <td className="px-6 py-4 text-zinc-400 max-w-[180px] truncate">
-                            {req.notes || "—"}
+                          <td className="px-6 py-4 text-zinc-400 max-w-[180px]">
+                            {req.notes ? (
+                              <button
+                                type="button"
+                                onClick={() => setSelectedNote(req.notes)}
+                                className="block max-w-[180px] truncate text-left hover:text-blue-300"
+                                title="View full note"
+                              >
+                                {req.notes}
+                              </button>
+                            ) : "—"}
                           </td>
                           <td className="px-6 py-4">
                             <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${reqStatusBadge[req.status] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>
@@ -579,7 +589,7 @@ export default function RequestsPage() {
                 records.map((req: any) => (
                   <article key={req.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-lg shadow-black/10">
                     <div className="border-b border-zinc-800/80 pb-3"><p className="font-semibold text-zinc-100 break-words">{req.book?.title || "Unknown"}</p><p className="mt-1 text-sm text-zinc-500">{req.book?.accessionNo || ""}</p></div>
-                    <div className="grid grid-cols-2 gap-3 py-4 text-sm"><div><p className="text-xs text-zinc-500">Member</p><p className="mt-1 break-words text-zinc-300">{req.user?.firstName} {req.user?.lastName}</p></div><div><p className="text-xs text-zinc-500">Request Date</p><p className="mt-1 text-zinc-300">{formatDate(req.requestDate)}</p></div><div className="col-span-2"><p className="text-xs text-zinc-500">Notes</p><p className="mt-1 break-words text-zinc-300">{req.notes || "—"}</p></div></div>
+                    <div className="grid grid-cols-2 gap-3 py-4 text-sm"><div><p className="text-xs text-zinc-500">Member</p><p className="mt-1 break-words text-zinc-300">{req.user?.firstName} {req.user?.lastName}</p></div><div><p className="text-xs text-zinc-500">Request Date</p><p className="mt-1 text-zinc-300">{formatDate(req.requestDate)}</p></div><div className="col-span-2"><p className="text-xs text-zinc-500">Notes</p><p className="mt-1 whitespace-pre-wrap break-words text-zinc-300">{req.notes || "—"}</p></div></div>
                     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-800/80 pt-3"><span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${reqStatusBadge[req.status] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>{reqStatusLabel[req.status] || req.status}</span><div className="flex flex-wrap gap-2">{isLibrarian && req.status === "PENDING" && <><button onClick={() => handleApprove(req)} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-medium text-white">Approve via QR</button><button onClick={() => openRejectModal(req)} className="rounded-lg bg-red-500/15 px-3 py-2 text-xs font-medium text-red-400">Reject</button></>}{!isLibrarian && req.status === "PENDING" && <button onClick={() => openQRScanner(req)} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white">Scan QR</button>}</div></div>
                   </article>
                 ))
@@ -851,6 +861,19 @@ export default function RequestsPage() {
           onClose={() => setQrScannerRequest(null)}
           loading={qrScannerLoading}
         />
+      )}
+
+      {selectedNote !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setSelectedNote(null)} />
+          <div className="relative z-50 w-full max-w-lg rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl shadow-black/50">
+            <h3 className="text-lg font-semibold text-white">Borrower Note</h3>
+            <p className="mt-4 whitespace-pre-wrap break-words text-sm leading-6 text-zinc-300">{selectedNote}</p>
+            <div className="mt-6 flex justify-end">
+              <button type="button" onClick={() => setSelectedNote(null)} className="rounded-xl bg-zinc-800 px-4 py-2.5 text-sm font-medium text-zinc-200 hover:bg-zinc-700">Close</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import api from "@/lib/api";
+import { resolveMediaUrl } from "@/lib/api";
 import { offlineDb } from "@/lib/offline-db";
 import { useDebounce } from "@/lib/useDebounce";
 import { BookBorrowModal } from "@/components/BookBorrowModal";
@@ -421,7 +422,7 @@ export default function BooksPage() {
                     <div className="aspect-[3/4] bg-zinc-800 relative">
                       {book.coverImage ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={book.coverImage} alt={book.title} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                        <img src={resolveMediaUrl(book.coverImage)} alt={book.title} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
                       ) : (
                         fallbackCover
                       )}
@@ -523,7 +524,7 @@ export default function BooksPage() {
                             <div className="w-11 h-14 rounded-lg overflow-hidden bg-zinc-800 shrink-0">
                               {book.coverImage ? (
                                 // eslint-disable-next-line @next/next/no-img-element
-                                <img src={book.coverImage} alt={book.title} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                                <img src={resolveMediaUrl(book.coverImage)} alt={book.title} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
                               ) : (
                                 <div className="w-full h-full flex items-center justify-center">
                                   <ImageIcon className="w-5 h-5 text-zinc-600" />
@@ -605,7 +606,7 @@ export default function BooksPage() {
                 paginatedBooks.map((book: any) => (
                   <article key={book.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-lg shadow-black/10">
                     <div className="flex items-start gap-3 border-b border-zinc-800/80 pb-3">
-                      <div className="h-14 w-11 shrink-0 overflow-hidden rounded-lg bg-zinc-800">{book.coverImage ? <img src={book.coverImage} alt={book.title} className="h-full w-full object-cover" /> : <ImageIcon className="m-3 h-5 w-5 text-zinc-600" />}</div>
+                      <div className="h-14 w-11 shrink-0 overflow-hidden rounded-lg bg-zinc-800">{book.coverImage ? <img src={resolveMediaUrl(book.coverImage)} alt={book.title} className="h-full w-full object-cover" /> : <ImageIcon className="m-3 h-5 w-5 text-zinc-600" />}</div>
                       <div className="min-w-0"><p className="font-semibold text-zinc-100 break-words">{book.title}</p><p className="mt-1 text-sm text-zinc-500 break-words">{book.author}</p></div>
                     </div>
                     <div className="grid grid-cols-2 gap-3 py-4 text-sm"><div><p className="text-xs text-zinc-500">Type</p><span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${typeBadge(book)}`}>{typeLabel(book)}</span></div><div><p className="text-xs text-zinc-500">Genre</p><p className="mt-1 text-zinc-300">{book.category?.name || "General"}</p></div><div><p className="text-xs text-zinc-500">Year</p><p className="mt-1 text-zinc-300">{book.publishYear || "—"}</p></div><div><p className="text-xs text-zinc-500">{book.bookType === "ebook" ? "Access" : "Copies"}</p><p className="mt-1 text-zinc-300">{book.bookType === "ebook" ? "Digital reader" : `${book.availableCopies ?? 0}/${book.copies ?? 0} available`}</p></div></div>

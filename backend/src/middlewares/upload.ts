@@ -102,8 +102,7 @@ export const uploadProfilePicture = multer({
  */
 export function attachUploadedCoverUrl(req: any, _res: any, next: any) {
   if (req.file) {
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
-    req.body.coverImage = `${baseUrl}/uploads/covers/${req.file.filename}`;
+    req.body.coverImage = `/uploads/covers/${req.file.filename}`;
   }
   next();
 }

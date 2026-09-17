@@ -1,5 +1,5 @@
 // ============================================================
-// Policy Configuration Routes (LIBRARIAN only)
+// Policy configuration is readable by authenticated members; only librarians may edit it.
 // ============================================================
 
 import { Router } from 'express';
@@ -9,12 +9,11 @@ import { authenticate, authorize } from '../middlewares/auth';
 const router = Router();
 
 router.use(authenticate);
-router.use(authorize('LIBRARIAN'));
 
 router.get('/', policyController.listPolicies);
 router.get('/:key', policyController.getPolicy);
-router.put('/', policyController.upsertPolicy);
-router.delete('/:key', policyController.deletePolicy);
+router.put('/', authorize('LIBRARIAN'), policyController.upsertPolicy);
+router.delete('/:key', authorize('LIBRARIAN'), policyController.deletePolicy);
 
 export default router;
 

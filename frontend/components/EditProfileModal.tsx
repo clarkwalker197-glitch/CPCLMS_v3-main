@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { AlertCircle, CheckCircle2, ImagePlus, Loader2, Trash2, X } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import api from "@/lib/api";
+import { resolveMediaUrl } from "@/lib/api";
 
 type EditProfileModalProps = {
   onClose: () => void;
@@ -19,7 +20,7 @@ export default function EditProfileModal({ onClose, onSaved }: EditProfileModalP
   const [departments, setDepartments] = useState<Array<{ code: string; name: string }>>([]);
   const [yearSection, setYearSection] = useState(user?.yearSection || "");
   const [picture, setPicture] = useState<File | null>(null);
-  const [preview, setPreview] = useState(user?.avatar || "");
+  const [preview, setPreview] = useState(resolveMediaUrl(user?.avatar));
   const [removePicture, setRemovePicture] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);

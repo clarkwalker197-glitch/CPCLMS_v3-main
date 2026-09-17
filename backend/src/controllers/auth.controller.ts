@@ -99,9 +99,8 @@ export const getProfile = asyncHandler(async (req: AuthenticatedRequest, res: Re
 });
 
 export const updateProfile = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const baseUrl = `${req.protocol}://${req.get('host')}`;
   const avatar = req.file
-    ? `${baseUrl}/uploads/profiles/${req.file.filename}`
+    ? `/uploads/profiles/${req.file.filename}`
     : req.body.removeProfilePicture === 'true'
       ? null
       : undefined;

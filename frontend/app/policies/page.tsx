@@ -3,6 +3,7 @@
   import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
 import Sidebar from "@/components/Sidebar";
+import api from "@/lib/api";
 import {
   MapPin,
   Clock,
@@ -76,18 +77,24 @@ export default function PoliciesPage() {
   const canViewPage = user?.role === "STUDENT" || user?.role === "FACULTY" || user?.role === "LIBRARIAN";
 
   useEffect(() => {
-    // Load from localStorage or use defaults
-    const saved = localStorage.getItem("libraryInfo");
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        setLibraryInfo(parsed);
-        setEditData(parsed);
-      } catch {
-        setLibraryInfo(DEFAULT_LIBRARY_INFO);
-        setEditData(DEFAULT_LIBRARY_INFO);
+    const loadLibraryInfo = async () => {
+      const saved = localStorage.getItem("libraryInfo");
+      let cached: LibraryInfo | null = null;
+      if (saved) {
+        try { cached = JSON.parse(saved) as LibraryInfo; } catch { cached = null; }
       }
-    }
+
+      const response = await api.get<{ value?: string }>("/policies/LIBRARY_INFO");
+      let serverValue: LibraryInfo | null = null;
+      if (response.success && response.data?.value) {
+        try { serverValue = JSON.parse(response.data.value) as LibraryInfo; } catch { serverValue = null; }
+      }
+      const next = serverValue || cached || DEFAULT_LIBRARY_INFO;
+      setLibraryInfo(next);
+      setEditData(next);
+      if (serverValue) localStorage.setItem("libraryInfo", JSON.stringify(serverValue));
+    };
+    void loadLibraryInfo();
   }, []);
 
   const handleEditStart = () => {
@@ -127,7 +134,16 @@ export default function PoliciesPage() {
     }));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    const response = await api.put("/policies", {
+      key: "LIBRARY_INFO",
+      value: JSON.stringify(editData),
+      description: "Public library and head librarian information",
+    });
+    if (!response.success) {
+      setSuccessMsg(response.error || "Unable to update library information");
+      return;
+    }
     setLibraryInfo(editData);
     localStorage.setItem("libraryInfo", JSON.stringify(editData));
     setIsEditing(false);

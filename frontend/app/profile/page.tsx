@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useTheme } from "next-themes";
 import api from "@/lib/api";
+import { resolveMediaUrl } from "@/lib/api";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Sidebar from "@/components/Sidebar";
 import EditProfileModal from "@/components/EditProfileModal";
@@ -72,12 +73,17 @@ export default function ProfilePage() {
   const [notifications, setNotifications] = useState(user?.notificationsEnabled ?? true);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
+  const [avatarFailed, setAvatarFailed] = useState(false);
   const [notificationSaving, setNotificationSaving] = useState(false);
   const themeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setNotifications(user?.notificationsEnabled ?? true);
   }, [user?.notificationsEnabled]);
+
+  useEffect(() => {
+    setAvatarFailed(false);
+  }, [user?.avatar]);
 
   useEffect(() => {
     const closeThemeMenu = (event: MouseEvent) => {
@@ -133,7 +139,7 @@ export default function ProfilePage() {
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-6 sm:p-8 mb-6">
               <div className="flex flex-col sm:flex-row sm:items-center gap-5">
                 <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-2xl font-bold text-white shadow-lg shadow-blue-600/30 shrink-0 overflow-hidden">
-                  {user?.avatar ? <img src={user.avatar} alt="Profile" className="h-full w-full object-cover" /> : initials.toUpperCase()}
+                  {user?.avatar && !avatarFailed ? <img src={resolveMediaUrl(user.avatar)} alt="Profile" className="h-full w-full object-cover" onError={() => setAvatarFailed(true)} /> : initials.toUpperCase()}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center flex-wrap gap-3">

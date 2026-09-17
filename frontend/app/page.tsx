@@ -43,7 +43,6 @@ export default function Home() {
                 <p className="text-xs text-blue-300">Library Management System</p>
               </div>
             </div>
-            <Link href="/login" className="text-sm font-medium text-zinc-300 hover:text-white transition-colors">Sign In</Link>
           </nav>
 
           <div className="max-w-4xl py-24 sm:py-32">

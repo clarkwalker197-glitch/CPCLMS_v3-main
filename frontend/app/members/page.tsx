@@ -6,6 +6,7 @@ import api from "@/lib/api";
 import { useDebounce } from "@/lib/useDebounce";
 import Sidebar from "@/components/Sidebar";
 import ResponsiveTable from "@/components/ResponsiveTable";
+import { Dialog, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
   Plus,
   Search,
@@ -19,6 +20,32 @@ Phone,
 
 const PAGE_SIZE = 10;
 
+type AddMemberFormState = {
+  firstName: string;
+  lastName: string;
+  email: string;
+  libraryId: string;
+  password: string;
+  confirmPassword: string;
+  role: "STUDENT" | "FACULTY" | "LIBRARIAN";
+  department: string;
+  yearSection: string;
+  phone: string;
+};
+
+const emptyAddMemberForm: AddMemberFormState = {
+  firstName: "",
+  lastName: "",
+  email: "",
+  libraryId: "",
+  password: "",
+  confirmPassword: "",
+  role: "STUDENT",
+  department: "",
+  yearSection: "",
+  phone: "",
+};
+
 export default function MembersPage() {
   const { user } = useAuth();
   const [members, setMembers] = useState<any[]>([]);
@@ -31,6 +58,10 @@ export default function MembersPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [successMsg, setSuccessMsg] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [showAddMemberModal, setShowAddMemberModal] = useState(false);
+  const [memberForm, setMemberForm] = useState<AddMemberFormState>(emptyAddMemberForm);
+  const [submittingMember, setSubmittingMember] = useState(false);
+  const [memberFormError, setMemberFormError] = useState("");
 
   const debouncedSearch = useDebounce(search, 300);
   const debouncedStatus = useDebounce(statusFilter, 300);
@@ -109,6 +140,82 @@ const handleDelete = async (member: any) => {
     }
   };
 
+  const handleAddMemberChange = (
+    field: keyof AddMemberFormState
+  ) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const value = event.target.value;
+    setMemberForm((current) => ({ ...current, [field]: value }));
+    setMemberFormError("");
+  };
+
+  const resetAddMemberForm = () => {
+    setMemberForm(emptyAddMemberForm);
+    setMemberFormError("");
+  };
+
+  const handleAddMember = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setMemberFormError("");
+
+    if (memberForm.password !== memberForm.confirmPassword) {
+      setMemberFormError("Passwords do not match.");
+      return;
+    }
+
+    if (memberForm.password.length < 8) {
+      setMemberFormError("Password must be at least 8 characters long.");
+      return;
+    }
+
+    if (memberForm.role === "LIBRARIAN" && !memberForm.libraryId.trim()) {
+      setMemberFormError("ID Number is required for Librarian accounts.");
+      return;
+    }
+
+    if ((memberForm.role === "STUDENT" || memberForm.role === "FACULTY") && !memberForm.department.trim()) {
+      setMemberFormError("Department is required for Student and Faculty accounts.");
+      return;
+    }
+
+    if (memberForm.role === "STUDENT" && !memberForm.yearSection.trim()) {
+      setMemberFormError("Year & Section is required for Student accounts.");
+      return;
+    }
+
+    setSubmittingMember(true);
+    try {
+      const payload = {
+        firstName: memberForm.firstName.trim(),
+        lastName: memberForm.lastName.trim(),
+        email: memberForm.email.trim().toLowerCase(),
+        libraryId: memberForm.libraryId.trim() || undefined,
+        password: memberForm.password,
+        role: memberForm.role,
+        department: memberForm.department.trim() || undefined,
+        yearSection: memberForm.yearSection.trim() || undefined,
+        phone: memberForm.phone.trim() || undefined,
+      };
+
+      const res = await api.post<{ firstName?: string; lastName?: string }>("/auth/admin/users", payload);
+      if (res.success) {
+        const createdName = `${res.data?.firstName || memberForm.firstName} ${res.data?.lastName || memberForm.lastName}`.trim();
+        setSuccessMsg(createdName ? `User created successfully: ${createdName}` : "User created successfully");
+        setShowAddMemberModal(false);
+        resetAddMemberForm();
+        await loadData();
+        setTimeout(() => setSuccessMsg(""), 4000);
+      } else if (res.rateLimited) {
+        setMemberFormError("You're moving too fast. Please wait a moment and try again.");
+      } else {
+        setMemberFormError(res.error || "Failed to create member.");
+      }
+    } catch {
+      setMemberFormError("Failed to create member. Please try again.");
+    } finally {
+      setSubmittingMember(false);
+    }
+  };
+
   const getFullName = (m: any) => `${m?.firstName || ""} ${m?.lastName || ""}`.trim() || "—";
   const formatDate = (d?: string) =>
     d ? new Date(d).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" }) : "—";
@@ -147,7 +254,13 @@ const handleDelete = async (member: any) => {
               </p>
             </div>
             {isLibrarian && (
-              <button className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl shadow-lg shadow-blue-600/30 transition-colors">
+              <button
+                onClick={() => {
+                  resetAddMemberForm();
+                  setShowAddMemberModal(true);
+                }}
+                className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl shadow-lg shadow-blue-600/30 transition-colors"
+              >
                 <Plus className="w-4 h-4" />
                 Add Member
               </button>
@@ -202,6 +315,172 @@ const handleDelete = async (member: any) => {
           )}
 
           {/* Table */}
+          <Dialog open={showAddMemberModal} onOpenChange={(open) => {
+            setShowAddMemberModal(open);
+            if (!open) resetAddMemberForm();
+          }}>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Plus className="w-4 h-4 text-blue-400" />
+                Add Member
+              </DialogTitle>
+              <DialogDescription>
+                Create a new student, faculty, or librarian account. Librarian accounts can only be created by librarians.
+              </DialogDescription>
+            </DialogHeader>
+
+            {memberFormError && (
+              <div className="p-3 mb-4 bg-red-500/10 border border-red-500/30 rounded-xl text-sm text-red-400">
+                {memberFormError}
+              </div>
+            )}
+
+            <form onSubmit={handleAddMember} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-1.5">First Name *</label>
+                  <input
+                    required
+                    value={memberForm.firstName}
+                    onChange={handleAddMemberChange("firstName")}
+                    className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
+                    placeholder="First name"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-1.5">Last Name *</label>
+                  <input
+                    required
+                    value={memberForm.lastName}
+                    onChange={handleAddMemberChange("lastName")}
+                    className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
+                    placeholder="Last name"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-1.5">Email *</label>
+                <input
+                  type="email"
+                  required
+                  value={memberForm.email}
+                  onChange={handleAddMemberChange("email")}
+                  className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
+                  placeholder="member@example.com"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-1.5">Role *</label>
+                  <select
+                    value={memberForm.role}
+                    onChange={handleAddMemberChange("role")}
+                    className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
+                  >
+                    <option value="STUDENT">Student</option>
+                    <option value="FACULTY">Faculty</option>
+                    <option value="LIBRARIAN">Librarian</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-1.5">Phone</label>
+                  <input
+                    value={memberForm.phone}
+                    onChange={handleAddMemberChange("phone")}
+                    className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
+                    placeholder="09XXXXXXXXX"
+                  />
+                </div>
+              </div>
+
+              {memberForm.role === "LIBRARIAN" && (
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-1.5">ID Number *</label>
+                  <input
+                    required
+                    value={memberForm.libraryId}
+                    onChange={handleAddMemberChange("libraryId")}
+                    className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
+                    placeholder="e.g., LIB-2026-0001"
+                  />
+                </div>
+              )}
+
+              {(memberForm.role === "STUDENT" || memberForm.role === "FACULTY") && (
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-1.5">Department *</label>
+                  <input
+                    required
+                    value={memberForm.department}
+                    onChange={handleAddMemberChange("department")}
+                    className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
+                    placeholder="e.g., BSIT"
+                  />
+                </div>
+              )}
+
+              {memberForm.role === "STUDENT" && (
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-1.5">Year & Section *</label>
+                  <input
+                    required
+                    value={memberForm.yearSection}
+                    onChange={handleAddMemberChange("yearSection")}
+                    className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
+                    placeholder="e.g., 2-A"
+                  />
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-1.5">Password *</label>
+                  <input
+                    type="password"
+                    required
+                    value={memberForm.password}
+                    onChange={handleAddMemberChange("password")}
+                    className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
+                    placeholder="At least 8 characters"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-1.5">Confirm Password *</label>
+                  <input
+                    type="password"
+                    required
+                    value={memberForm.confirmPassword}
+                    onChange={handleAddMemberChange("confirmPassword")}
+                    className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
+                    placeholder="Re-enter password"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddMemberModal(false);
+                    resetAddMemberForm();
+                  }}
+                  className="px-4 py-2 rounded-xl border border-zinc-700 text-zinc-300 hover:bg-zinc-800 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingMember}
+                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                >
+                  {submittingMember ? "Creating..." : "Create Member"}
+                </button>
+              </div>
+            </form>
+          </Dialog>
+
           {!loading && members.length > 0 && (
             <>
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">

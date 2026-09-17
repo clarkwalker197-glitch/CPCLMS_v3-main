@@ -220,14 +220,23 @@ const user = await prisma.user.create({
       throw new ForbiddenError('Only librarians can add new librarian accounts');
     }
 
-    const existing = await prisma.user.findUnique({
-      where: { email: input.email },
+    const normalizedLibraryId = input.libraryId?.trim();
+    const existing = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: input.email },
+          ...(normalizedLibraryId ? [{ libraryId: normalizedLibraryId }] : []),
+        ],
+      },
     });
     if (existing) {
-      throw new ConflictError('A user with this email already exists');
+      if (existing.email === input.email) {
+        throw new ConflictError('A user with this email already exists');
+      }
+      throw new ConflictError('A user with this ID Number already exists');
     }
 
-    const libraryId = await this.generateLibraryId();
+    const libraryId = normalizedLibraryId || await this.generateLibraryId();
     if ((input.role === 'STUDENT' || input.role === 'FACULTY') && input.department && !isDepartmentCode(input.department)) {
       throw new BadRequestError('Department must be one of the official programs');
     }

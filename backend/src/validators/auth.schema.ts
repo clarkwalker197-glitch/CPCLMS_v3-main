@@ -92,6 +92,11 @@ export const createUserSchema = z.object({
       .string()
       .email('Invalid email address')
       .transform((email) => email.toLowerCase().trim()),
+    libraryId: z
+      .string()
+      .max(20)
+      .trim()
+      .optional(),
     password: z
       .string()
       .min(8, 'Password must be at least 8 characters')
@@ -106,6 +111,14 @@ export const createUserSchema = z.object({
       .regex(/^\+?[\d\s-]{7,15}$/, 'Invalid phone number format')
       .optional(),
   }).superRefine((data, ctx) => {
+    if (data.role === 'LIBRARIAN' && !data.libraryId?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['libraryId'],
+        message: 'ID Number is required for Librarian accounts',
+      });
+    }
+
     if ((data.role === 'STUDENT' || data.role === 'FACULTY') && !data.department) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

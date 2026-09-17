@@ -1,0 +1,1 @@
+CREATE INDEX "books_classification_number_idx" ON "books"("classification_number");

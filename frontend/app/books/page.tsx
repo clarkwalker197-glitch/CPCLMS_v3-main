@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import api from "@/lib/api";
@@ -65,17 +65,17 @@ export default function BooksPage() {
 
   // Debounced search/filter values (300ms) to avoid per-keystroke API spam
   const debouncedSearch = useDebounce(search, 300);
-  const debouncedCategory = useDebounce(categoryFilter, 300);
-  const debouncedMainCategory = useDebounce(mainCategoryFilter, 300);
-  const debouncedClassification = useDebounce(classificationFilter, 300);
+  const requestSequence = useRef(0);
 
   const loadData = useCallback(async () => {
+    const requestId = ++requestSequence.current;
     setLoading(true);
     setError("");
     try {
       const cachedBooks = await offlineDb.books.toArray();
       const cachedCategories = await offlineDb.categories.toArray();
-      if (cachedBooks.length) {
+      const hasServerFilters = Boolean(debouncedSearch || categoryFilter || mainCategoryFilter || classificationFilter);
+      if (cachedBooks.length && !hasServerFilters) {
         setBooks(cachedBooks.map((book) => ({ ...book, bookType: "physical" })));
         setLoading(false);
       }
@@ -84,30 +84,25 @@ export default function BooksPage() {
       }
 
       const params: Record<string, string> = {};
+      params.limit = "100";
       if (debouncedSearch) params.search = debouncedSearch;
-      if (debouncedCategory) params.categoryId = debouncedCategory;
-      else if (debouncedMainCategory) params.categoryMain = debouncedMainCategory;
-      if (debouncedClassification) params.classificationNumber = debouncedClassification;
-      const [booksRes, catsRes] = await Promise.all([
-        api.getBooks(params),
-        api.getCategories(),
-      ]);
+      if (categoryFilter) params.categoryId = categoryFilter;
+      else if (mainCategoryFilter) params.categoryMain = mainCategoryFilter;
+      if (classificationFilter) params.classificationNumber = classificationFilter;
+      const booksRes = await api.getBooks(params);
+      if (requestId !== requestSequence.current) return;
       if (booksRes.success) {
         setBooks((booksRes.data || []).map((book: any) => ({ ...book, bookType: "physical" })));
-        await offlineDb.books.bulkPut(booksRes.data || []);
+        if (!hasServerFilters) await offlineDb.books.bulkPut(booksRes.data || []);
       } else if (booksRes.rateLimited) {
         setError("You're moving too fast. Please wait a moment and try again.");
       }
-      if (catsRes.success) {
-        setCategories((catsRes.data || []).filter((category: any) => category.slug?.startsWith("dewey-")));
-        await offlineDb.categories.bulkPut(catsRes.data || []);
-      }
     } catch {
-      if (!books.length) setError("No cached catalog is available yet. Connect once to download the catalog.");
+      if (requestId === requestSequence.current) setError("Unable to load the catalog. Connect once to download the catalog.");
     } finally {
-      setLoading(false);
+      if (requestId === requestSequence.current) setLoading(false);
     }
-  }, [debouncedSearch, debouncedCategory, debouncedMainCategory, debouncedClassification]);
+  }, [categoryFilter, classificationFilter, debouncedSearch, mainCategoryFilter]);
 
   const visibleBooks = books;
 
@@ -116,8 +111,17 @@ export default function BooksPage() {
   }, [loadData]);
 
   useEffect(() => {
+    api.getCategories().then(async (response) => {
+      if (!response.success || !response.data) return;
+      const deweyCategories = response.data.filter((category: any) => category.slug?.startsWith("dewey-"));
+      setCategories(deweyCategories);
+      await offlineDb.categories.bulkPut(response.data);
+    });
+  }, []);
+
+  useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearch, debouncedCategory, debouncedClassification, visibleBooks.length]);
+  }, [debouncedSearch, categoryFilter, mainCategoryFilter, classificationFilter, visibleBooks.length]);
 
   const inCart = (id: string) => cart.some((b) => b.id === id);
 

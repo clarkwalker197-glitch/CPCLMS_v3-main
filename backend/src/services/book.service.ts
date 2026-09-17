@@ -39,11 +39,18 @@ export class BookService {
       where.status = query.status as BookStatus;
     }
 
-    // Filter by category
+    // Filter by category. Expand a selected parent to its descendants before
+    // querying books so the indexed categoryId column does the actual filtering.
     if (query.categoryId) {
-      where.categoryId = query.categoryId as string;
+      const categoryIds = await this.getCategoryAndDescendantIds(String(query.categoryId));
+      where.categoryId = { in: categoryIds };
     } else if (query.categoryMain) {
-      where.category = { slug: { startsWith: `dewey-${String(query.categoryMain).slice(0, 1)}` } };
+      const mainCode = String(query.categoryMain).padStart(3, '0').slice(0, 1);
+      const mainCategories = await prisma.category.findMany({
+        where: { slug: { startsWith: `dewey-${mainCode}` } },
+        select: { id: true },
+      });
+      where.categoryId = { in: mainCategories.map((category) => category.id) };
     }
 
     if (query.classificationNumber) {
@@ -67,6 +74,23 @@ export class BookService {
       books,
       meta: buildPaginationMeta(total, { page, limit, skip, take }),
     };
+  }
+
+  private async getCategoryAndDescendantIds(categoryId: string): Promise<string[]> {
+    const ids = [categoryId];
+    let parentIds = [categoryId];
+
+    while (parentIds.length > 0) {
+      const children = await prisma.category.findMany({
+        where: { parentId: { in: parentIds } },
+        select: { id: true },
+      });
+      const childIds = children.map((child) => child.id).filter((id) => !ids.includes(id));
+      ids.push(...childIds);
+      parentIds = childIds;
+    }
+
+    return ids;
   }
 
   /**

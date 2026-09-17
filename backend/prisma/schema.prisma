@@ -160,6 +160,7 @@ model Book {
   @@index([isbn])
   @@index([title])
   @@index([author])
+  @@index([classificationNumber])
   @@index([status])
   @@index([categoryId])
   @@map("books")

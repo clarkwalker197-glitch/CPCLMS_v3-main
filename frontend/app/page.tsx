@@ -110,25 +110,31 @@ export default function Home() {
             </div>
 
             <div className="min-h-[260px] rounded-2xl border border-zinc-800 bg-zinc-900/70 p-8 text-center flex flex-col items-center justify-center hover:border-blue-500/40 transition-colors">
-              <div role="img" aria-label="Developer image placeholder for Desi Marie Birondo" className="w-24 h-24 rounded-full bg-blue-500/15 text-blue-400 flex items-center justify-center mx-auto mb-6 text-2xl font-bold ring-1 ring-blue-500/20">
-                DB
-              </div>
+              <img
+                src="/desay.jpg"
+                alt="Desi Marie Birondo"
+                className="w-24 h-24 rounded-full object-cover mx-auto mb-6 ring-1 ring-blue-500/20"
+              />
               <h3 className="text-lg font-semibold text-white">Desi Marie Birondo</h3>
               <p className="text-base text-zinc-500 mt-2">Documentation Specialist</p>
             </div>
 
             <div className="min-h-[260px] rounded-2xl border border-zinc-800 bg-zinc-900/70 p-8 text-center flex flex-col items-center justify-center hover:border-blue-500/40 transition-colors">
-              <div role="img" aria-label="Developer image placeholder for Apple Jean Cabardo" className="w-24 h-24 rounded-full bg-blue-500/15 text-blue-400 flex items-center justify-center mx-auto mb-6 text-2xl font-bold ring-1 ring-blue-500/20">
-                AC
-              </div>
+              <img
+                src="/aple.jpg"
+                alt="Apple Jean Cabardo"
+                className="w-24 h-24 rounded-full object-cover mx-auto mb-6 ring-1 ring-blue-500/20"
+              />
               <h3 className="text-lg font-semibold text-white">Apple Jean Cabardo</h3>
               <p className="text-base text-zinc-500 mt-2">Documentation Specialist</p>
             </div>
 
             <div className="min-h-[260px] rounded-2xl border border-zinc-800 bg-zinc-900/70 p-8 text-center flex flex-col items-center justify-center hover:border-blue-500/40 transition-colors">
-              <div role="img" aria-label="Developer image placeholder for Melecio Paes" className="w-24 h-24 rounded-full bg-blue-500/15 text-blue-400 flex items-center justify-center mx-auto mb-6 text-2xl font-bold ring-1 ring-blue-500/20">
-                MP  
-              </div>
+              <img
+                src="/mel.jpg"
+                alt="Melecio Paes"
+                className="w-24 h-24 rounded-full object-cover mx-auto mb-6 ring-1 ring-blue-500/20"
+              />
               <h3 className="text-lg font-semibold text-white">Melecio Paes</h3>
               <p className="text-base text-zinc-500 mt-2">Full Developer</p>
             </div>

@@ -597,7 +597,7 @@ export default function BooksPage() {
                                   : "bg-blue-600 hover:bg-blue-700"
                                 } disabled:opacity-40 disabled:cursor-not-allowed`}
                             >
-                              {!isPhysicalBookAvailable(book) ? "Unavailable" : inCart(book.id) ? "Remove" : "Add to Cart"}
+                              {!isPhysicalBookAvailable(book) ? "Unavailable" : inCart(book.id) ? "Remove" : "Borrow"}
                             </button>
                           )}
                         </td>

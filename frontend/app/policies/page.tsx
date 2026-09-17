@@ -227,9 +227,7 @@ export default function PoliciesPage() {
                   <p className="text-zinc-300 font-medium mb-2">Monday - Friday</p>
                   <p className="text-zinc-400 text-sm">{libraryInfo.openingHours} - {libraryInfo.closingHours}</p>
                   <p className="text-zinc-300 font-medium mt-3 mb-2">Saturday</p>
-                  <p className="text-zinc-400 text-sm">8:00 AM - 12:00 PM</p>
-                  <p className="text-zinc-300 font-medium mt-3 mb-2">Sunday</p>
-                  <p className="text-zinc-400 text-sm">Closed</p>
+                  <p className="text-zinc-400 text-sm">8:00 AM - 12:00 NN</p>
                 </div>
               </div>
 
@@ -271,9 +269,6 @@ export default function PoliciesPage() {
                         {libraryInfo.librarianEmail}
                       </a>
                     </p>
-
-                    <p className="text-sm text-zinc-500 uppercase tracking-wide mb-1">Extension</p>
-                    <p className="text-zinc-300">{libraryInfo.librarianExtension}</p>
                   </div>
                 </div>
                 <p className="text-sm text-zinc-500 uppercase tracking-wide mb-1 mt-6">Office</p>

@@ -71,7 +71,7 @@ export class AuthService {
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
     await prisma.passwordResetToken.create({ data: { userId: user.id, tokenHash, expiresAt } });
 
-    const frontendUrl = (env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
+    const frontendUrl = (Array.isArray(env.FRONTEND_URL) ? env.FRONTEND_URL[0] : env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
     await notificationService.sendEmail({
       to: user.email,
       userId: user.id,

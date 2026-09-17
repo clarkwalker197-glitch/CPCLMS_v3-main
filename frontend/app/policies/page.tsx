@@ -210,7 +210,9 @@ export default function PoliciesPage() {
                   </div>
                   <p className="text-zinc-300 font-medium mb-2">Monday - Friday</p>
                   <p className="text-zinc-400 text-sm">{libraryInfo.openingHours} - {libraryInfo.closingHours}</p>
-                  <p className="text-zinc-300 font-medium mt-3 mb-2">Saturday - Sunday</p>
+                  <p className="text-zinc-300 font-medium mt-3 mb-2">Saturday</p>
+                  <p className="text-zinc-400 text-sm">8:00 AM - 12:00 PM</p>
+                  <p className="text-zinc-300 font-medium mt-3 mb-2">Sunday</p>
                   <p className="text-zinc-400 text-sm">Closed</p>
                 </div>
               </div>

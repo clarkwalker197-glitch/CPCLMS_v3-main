@@ -14,13 +14,23 @@ import { errorHandler } from './middlewares/errorHandler';
 import { archiveRetentionService } from './services';
 
 const app = express();
+const allowedOrigins = Array.isArray(env.FRONTEND_URL)
+  ? env.FRONTEND_URL
+  : [env.FRONTEND_URL];
 
 // ============================================================
 // Security Middleware
 // ============================================================
 app.use(helmet());
 app.use(cors({
-  origin: env.FRONTEND_URL,
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+
+    callback(new Error('Not allowed by CORS'));
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],

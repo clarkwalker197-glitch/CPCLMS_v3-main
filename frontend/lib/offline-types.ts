@@ -42,4 +42,5 @@ export type SyncMeta = {
 export type BorrowRequestMutation = {
   bookIds: string[];
   notes?: string;
+  localRequestIds?: string[];
 };

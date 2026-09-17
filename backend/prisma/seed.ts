@@ -33,7 +33,7 @@ async function main() {
   // ── Demo Librarian (ID: 2025-0001 / librarian123) ──────────
   const librarian1 = await prisma.user.create({
     data: {
-      libraryId: '2025-0001',
+      libraryId: '20250001',
       firstName: 'Maria',
       lastName: 'Santos',
       email: 'maria.santos@library.edu',
@@ -439,7 +439,7 @@ async function main() {
     },
     {
       key: 'FINE_PER_DAY',
-      value: '10.00',
+      value: '5.00',
       description: 'Daily fine amount for overdue books (in PHP)',
     },
     {

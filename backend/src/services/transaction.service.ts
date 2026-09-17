@@ -87,130 +87,134 @@ export class TransactionService {
       throw new BadRequestError('Your account is deactivated. Contact a librarian.');
     }
 
-    // Validate each book and check availability
-    const books = await prisma.book.findMany({
-      where: { id: { in: uniqueBookIds } },
-    });
-    if (books.length !== uniqueBookIds.length) {
-      throw new NotFoundError('One or more books');
-    }
+    const created = await prisma.$transaction(async (tx) => {
+      const books = await tx.$queryRaw<Array<{ id: string; title: string; status: string; availableCopies: number }>>`
+        SELECT id, title, status, available_copies AS "availableCopies"
+        FROM books
+        WHERE id = ANY (${uniqueBookIds})
+        FOR UPDATE
+      `;
 
-    for (const book of books) {
-      if (book.status === 'LOST') {
-        throw new BadRequestError(`"${book.title}" is marked as lost and cannot be borrowed`);
+      if (books.length !== uniqueBookIds.length) {
+        throw new NotFoundError('One or more books');
       }
-      if (book.status === 'MAINTENANCE') {
-        throw new BadRequestError(`"${book.title}" is under maintenance`);
+
+      const bookMap = new Map(books.map((book) => [book.id, book]));
+      for (const bookId of uniqueBookIds) {
+        const book = bookMap.get(bookId);
+        if (!book) throw new NotFoundError('One or more books');
+        if (book.status === 'LOST') {
+          throw new BadRequestError(`"${book.title}" is marked as lost and cannot be borrowed`);
+        }
+        if (book.status === 'MAINTENANCE') {
+          throw new BadRequestError(`"${book.title}" is under maintenance`);
+        }
+        if (book.availableCopies < 1) {
+          throw new BadRequestError(
+            `No copies of "${book.title}" are currently available. You can reserve it instead.`
+          );
+        }
       }
-      if (book.availableCopies < 1) {
-        throw new BadRequestError(
-          `No copies of "${book.title}" are currently available. You can reserve it instead.`
-        );
-      }
-    }
 
-    // Check existing pending/approved requests for these books.
-    // IMPORTANT: Only block on a request that is GENUINELY still outstanding.
-    // - PENDING requests always block (not yet processed by a librarian).
-    // - APPROVED requests only block if the user STILL has the book, i.e.,
-    //   there is an ACTIVE or OVERDUE transaction for that book. Approving a
-    //   request always creates a transaction, and when the book is returned
-    //   the transaction becomes RETURNED — but the request row stays APPROVED
-    //   forever. That stale APPROVED row must NOT block the user from
-    //   requesting the same book again.
-    const existingRequests = await prisma.borrowRequest.findMany({
-      where: {
-        userId,
-        bookId: { in: uniqueBookIds },
-        status: { in: ['PENDING', 'APPROVED'] },
-      },
-    });
-
-    const pendingRequests = existingRequests.filter((r) => r.status === 'PENDING');
-
-    let approvedStillBlocking = false;
-    const approvedRequests = existingRequests.filter((r) => r.status === 'APPROVED');
-    if (approvedRequests.length > 0) {
-      const approvedBookIds = approvedRequests.map((r) => r.bookId);
-      const activeTxns = await prisma.borrowTransaction.count({
+      const existingRequests = await tx.borrowRequest.findMany({
         where: {
           userId,
-          bookId: { in: approvedBookIds },
-          status: { in: ['ACTIVE', 'OVERDUE'] },
+          bookId: { in: uniqueBookIds },
+          status: { in: ['PENDING', 'APPROVED'] },
         },
       });
-      approvedStillBlocking = activeTxns > 0;
-    }
 
-    if (pendingRequests.length > 0 || approvedStillBlocking) {
-      const blocking = [
-        ...pendingRequests,
-        ...(approvedStillBlocking ? approvedRequests : []),
-      ];
-      const titles = blocking.map((r) => r.bookId).join(', ');
-      throw new ConflictError(
-        `You already have a pending or approved request for one of these books (${titles}).`
-      );
-    }
+      const pendingRequests = existingRequests.filter((r) => r.status === 'PENDING');
+      let approvedStillBlocking = false;
+      const approvedRequests = existingRequests.filter((r) => r.status === 'APPROVED');
+      if (approvedRequests.length > 0) {
+        const approvedBookIds = approvedRequests.map((r) => r.bookId);
+        const activeTxns = await tx.borrowTransaction.count({
+          where: {
+            userId,
+            bookId: { in: approvedBookIds },
+            status: { in: ['ACTIVE', 'OVERDUE'] },
+          },
+        });
+        approvedStillBlocking = activeTxns > 0;
+      }
 
-    // Check existing active transactions for these books
-    const existingActive = await prisma.borrowTransaction.findFirst({
-      where: { userId, bookId: { in: uniqueBookIds }, status: 'ACTIVE' },
+      if (pendingRequests.length > 0 || approvedStillBlocking) {
+        const blocking = [
+          ...pendingRequests,
+          ...(approvedStillBlocking ? approvedRequests : []),
+        ];
+        const titles = blocking.map((r) => r.bookId).join(', ');
+        throw new ConflictError(
+          `You already have a pending or approved request for one of these books (${titles}).`
+        );
+      }
+
+      const existingActive = await tx.borrowTransaction.findFirst({
+        where: { userId, bookId: { in: uniqueBookIds }, status: 'ACTIVE' },
+      });
+      if (existingActive) {
+        throw new ConflictError('You already have one of these books borrowed');
+      }
+
+      const activeCount = await tx.borrowTransaction.count({
+        where: { userId, status: 'ACTIVE' },
+      });
+
+      let maxBooks: number;
+      if (user.role === Role.STUDENT) {
+        maxBooks = user.maxBooksAllowed ?? (await policyService.getNumber('MAX_BOOKS_PER_USER', 3));
+      } else if (user.role === Role.FACULTY) {
+        maxBooks = user.maxBooksAllowed ?? (await policyService.getNumber('FACULTY_MAX_BOOKS', 10));
+      } else {
+        maxBooks = 999;
+      }
+
+      if (activeCount + uniqueBookIds.length > maxBooks) {
+        throw new BadRequestError(
+          `You have reached the maximum limit of ${maxBooks} active borrows. Return a book first.`
+        );
+      }
+
+      const created: any[] = [];
+      for (const bookId of uniqueBookIds) {
+        const request = await tx.borrowRequest.create({
+          data: { userId, bookId, notes },
+          include: {
+            book: { select: { id: true, title: true, author: true, accessionNo: true, isbn: true } },
+            user: { select: { firstName: true, lastName: true, libraryId: true, role: true } },
+          },
+        });
+
+        created.push(request);
+      }
+
+      return created;
+    }, {
+      timeout: 20000,
+      maxWait: 20000,
     });
-    if (existingActive) {
-      throw new ConflictError('You already have one of these books borrowed');
-    }
 
-    // Enforce max books limit based on role
-    const activeCount = await prisma.borrowTransaction.count({
-      where: { userId, status: 'ACTIVE' },
-    });
-
-    let maxBooks: number;
-    if (user.role === Role.STUDENT) {
-      maxBooks = user.maxBooksAllowed ?? (await policyService.getNumber('MAX_BOOKS_PER_USER', 3));
-    } else if (user.role === Role.FACULTY) {
-      maxBooks = user.maxBooksAllowed ?? (await policyService.getNumber('FACULTY_MAX_BOOKS', 10));
-    } else {
-      maxBooks = 999; // Librarians have no practical limit
-    }
-
-    if (activeCount + uniqueBookIds.length > maxBooks) {
-      throw new BadRequestError(
-        `You have reached the maximum limit of ${maxBooks} active borrows. Return a book first.`
-      );
-    }
-
-    // Create a request per book
-    const created: any[] = [];
-    for (const bookId of uniqueBookIds) {
-      const book = books.find((b) => b.id === bookId)!;
-      const request = await prisma.borrowRequest.create({
-        data: { userId, bookId, notes },
-        include: {
-          book: { select: { id: true, title: true, author: true, accessionNo: true, isbn: true } },
-          user: { select: { firstName: true, lastName: true, libraryId: true, role: true } },
-        },
-      });
-
-      // Activity log
-      await prisma.activityLog.create({
-        data: {
-          userId,
-          action: 'BORROW_REQUEST',
-          entity: 'BorrowRequest',
-          entityId: request.id,
-          details: { bookTitle: book.title, bookId },
-        },
-      });
-
-      created.push(request);
-    }
-
-    // Notify all librarians about the new borrow request(s)
     const requesterName = `${user.firstName} ${user.lastName}`;
     const bookCount = uniqueBookIds.length;
-    const bookTitles = books.map((b) => b.title).join(', ');
+    const bookTitles = created
+      .map((request) => request.book.title)
+      .join(', ');
+
+    await Promise.all(
+      created.map((request) =>
+        prisma.activityLog.create({
+          data: {
+            userId,
+            action: 'BORROW_REQUEST',
+            entity: 'BorrowRequest',
+            entityId: request.id,
+            details: { bookTitle: request.book.title, bookId: request.bookId },
+          },
+        })
+      )
+    );
+
     await notificationService.notifyAllLibrarians(
       'BORROW_CONFIRMATION',
       'New Borrow Request',
@@ -817,7 +821,7 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
         approvalTokenIssuedById: librarianId,
       },
     });
-    const frontendUrl = (env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
+    const frontendUrl = (Array.isArray(env.FRONTEND_URL) ? env.FRONTEND_URL[0] : env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
 
     // The deep link the borrower opens on their phone to confirm approval.
     // Include approval code as parameter for manual entry fallback

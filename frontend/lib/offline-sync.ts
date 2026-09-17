@@ -3,6 +3,8 @@ import { canUseOfflineStorage, db, setSyncMeta } from './db';
 import type { SyncMutation } from './offline-types';
 
 const SYNC_EVENT = 'cpclms-sync';
+const SYNC_BATCH_SIZE = 2;
+const SYNC_BATCH_DELAY_MS = 150;
 let syncing = false;
 
 function currentUserId(): string | null {
@@ -18,38 +20,57 @@ function notifySync(): void {
   if (typeof window !== 'undefined') window.dispatchEvent(new Event(SYNC_EVENT));
 }
 
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 async function replaceTable(table: 'books' | 'ebooks' | 'categories' | 'users' | 'transactions' | 'borrowRequests' | 'reservations' | 'notifications', records: unknown[]): Promise<void> {
-  if (!records.length) return;
-  const normalized = records.filter((record): record is { id: string } => Boolean(record && typeof record === 'object' && 'id' in record));
-  if (normalized.length) await db.table(table).bulkPut(normalized);
+  const normalized = records.filter((record): record is { id: string; _pending?: boolean } => Boolean(record && typeof record === 'object' && 'id' in record));
+  const tableRef = db.table(table);
+  const allIds = (await tableRef.toCollection().primaryKeys()) as string[];
+  const pendingIds = new Set((await tableRef.filter((record: any) => Boolean(record?._pending)).primaryKeys()) as string[]);
+  const serverIds = new Set(normalized.map((record) => record.id));
+  const staleIds = allIds.filter((id: string) => !serverIds.has(id) && !pendingIds.has(id));
+
+  if (staleIds.length) {
+    await tableRef.bulkDelete(staleIds);
+  }
+
+  const rowsToPut = normalized.filter((record) => !pendingIds.has(record.id));
+  if (rowsToPut.length) {
+    await tableRef.bulkPut(rowsToPut);
+  }
 }
 
 async function pullLatest(): Promise<void> {
   const userId = currentUserId();
   if (!userId) return;
 
-  const [books, ebooks, categories, me, requests, transactions, reservations, notifications] = await Promise.all([
-    api.getBooks(),
-    api.getEBooks(),
-    api.getCategories(),
-    api.getMe(),
-    api.getBorrowRequests({ limit: '100' }),
-    api.getTransactions({ limit: '100' }),
-    api.getReservations({ limit: '100' }),
-    api.getNotifications({ limit: '50' }),
-  ]);
+  const jobs = [
+    { table: 'books' as const, fetch: () => api.getBooks(), transform: (payload: unknown) => payload as any[] },
+    { table: 'ebooks' as const, fetch: () => api.getEBooks(), transform: (payload: unknown) => payload as any[] },
+    { table: 'categories' as const, fetch: () => api.getCategories(), transform: (payload: unknown) => payload as any[] },
+    { table: 'users' as const, fetch: () => api.getMe(), transform: (payload: unknown) => (payload ? [payload] : []) },
+    { table: 'borrowRequests' as const, fetch: () => api.getBorrowRequests({ limit: '100' }), transform: (payload: unknown) => (payload as any[] | undefined) ?? [] },
+    { table: 'transactions' as const, fetch: () => api.getTransactions({ limit: '100' }), transform: (payload: unknown) => (payload as any[] | undefined) ?? [] },
+    { table: 'reservations' as const, fetch: () => api.getReservations({ limit: '100' }), transform: (payload: unknown) => (payload as any[] | undefined) ?? [] },
+    { table: 'notifications' as const, fetch: () => api.getNotifications({ limit: '50' }), transform: (payload: unknown) => { const notificationData = payload as { notifications?: unknown[] } | undefined; return notificationData?.notifications ?? []; } },
+  ];
 
-  if (books.success && books.data) await replaceTable('books', books.data);
-  if (ebooks.success && ebooks.data) await replaceTable('ebooks', ebooks.data);
-  if (categories.success && categories.data) await replaceTable('categories', categories.data);
-  if (me.success && me.data) await replaceTable('users', [me.data]);
-  if (requests.success && requests.data) await replaceTable('borrowRequests', requests.data);
-  if (transactions.success && transactions.data) await replaceTable('transactions', transactions.data);
-  if (reservations.success && reservations.data) await replaceTable('reservations', reservations.data);
-  if (notifications.success && notifications.data) {
-    const notificationData = notifications.data as { notifications?: unknown[] };
-    await replaceTable('notifications', notificationData.notifications || []);
+  for (let i = 0; i < jobs.length; i += SYNC_BATCH_SIZE) {
+    const batch = jobs.slice(i, i + SYNC_BATCH_SIZE);
+    await Promise.all(
+      batch.map(async (job) => {
+        const response = await job.fetch();
+        if (response.success && response.data) {
+          await replaceTable(job.table, job.transform(response.data));
+        }
+      })
+    );
+
+    if (i + SYNC_BATCH_SIZE < jobs.length) {
+      await delay(SYNC_BATCH_DELAY_MS);
+    }
   }
+
   await setSyncMeta('lastFullSyncAt', Date.now());
 }
 
@@ -74,7 +95,7 @@ export async function pullNotifications(): Promise<void> {
 async function pushMutation(mutation: SyncMutation): Promise<boolean> {
   let response;
   if (mutation.type === 'CREATE_BORROW_REQUEST') {
-    response = await api.createBorrowRequest(mutation.payload as { bookIds: string[]; notes?: string });
+    response = await api.createBorrowRequest(mutation.payload as { bookIds: string[]; notes?: string; localRequestIds?: string[] });
   } else if (mutation.type === 'MARK_NOTIFICATION_READ') {
     response = await api.markNotificationRead(String(mutation.payload.id));
   } else {
@@ -87,6 +108,22 @@ async function pushMutation(mutation: SyncMutation): Promise<boolean> {
       lastError: response.error || 'Sync failed',
     });
     return false;
+  }
+
+  if (mutation.type === 'CREATE_BORROW_REQUEST') {
+    const localIds = Array.isArray(mutation.payload.localRequestIds)
+      ? (mutation.payload.localRequestIds as string[])
+      : [];
+    const created = Array.isArray(response.data) ? response.data : response.data ? [response.data] : [];
+
+    await Promise.all(localIds.map((id) => db.borrowRequests.delete(id)));
+    if (created.length) {
+      await db.borrowRequests.bulkPut(created.map((record: any) => ({ ...record, _pending: false })));
+    }
+  }
+
+  if (mutation.type === 'MARK_NOTIFICATION_READ') {
+    await db.notifications.update(String(mutation.payload.id), { _pending: false });
   }
 
   await db.syncQueue.delete(mutation.id);

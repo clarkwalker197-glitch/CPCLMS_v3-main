@@ -34,18 +34,6 @@ export class CpclmsDatabase extends Dexie {
       syncQueue: 'id, userId, createdAt, type',
       meta: 'key, updatedAt',
     });
-    this.version(2).stores({
-      books: 'id, updatedAt, title, author, categoryId',
-      ebooks: 'id, updatedAt, title, author, categoryId',
-      categories: 'id, updatedAt, slug',
-      users: 'id, updatedAt, libraryId',
-      transactions: 'id, updatedAt, userId, status',
-      borrowRequests: 'id, updatedAt, userId, status',
-      reservations: 'id, updatedAt, userId, status',
-      notifications: 'id, createdAt, isRead',
-      syncQueue: 'id, userId, createdAt, type',
-      meta: 'key, updatedAt',
-    });
   }
 }
 

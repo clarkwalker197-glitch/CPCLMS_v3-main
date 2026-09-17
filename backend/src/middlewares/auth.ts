@@ -4,10 +4,9 @@
 
 import { Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { env } from '../config/env';
 import { AuthenticatedRequest, JwtPayload } from '../types';
 import { sendError } from '../utils/helpers';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-change-me';
 
 /**
  * Verify JWT token and attach user payload to request
@@ -25,7 +24,7 @@ export const authenticate = (
     }
 
     const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET) as JwtPayload;
+    const decoded = jwt.verify(token, env.JWT_SECRET) as JwtPayload;
     req.user = decoded;
     next();
   } catch (error) {

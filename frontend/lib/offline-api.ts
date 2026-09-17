@@ -3,6 +3,34 @@ import { canUseOfflineStorage, db } from './db';
 import { enqueueMutation } from './offline-sync';
 import type { BorrowRequestMutation, LocalBook } from './offline-types';
 
+async function createPendingBorrowRecords(userId: string, data: BorrowRequestMutation): Promise<string[]> {
+  if (!canUseOfflineStorage() || !data.bookIds.length) return [];
+
+  const localIds = data.bookIds.map((bookId) => `local-borrow-${crypto.randomUUID()}-${bookId}`);
+  const now = Date.now();
+
+  const pendingRecords = await Promise.all(
+    data.bookIds.map(async (bookId, index) => {
+      const book = await db.books.get(bookId);
+      return {
+        id: localIds[index],
+        userId,
+        bookId,
+        status: 'PENDING',
+        notes: data.notes ?? '',
+        requestDate: new Date(now).toISOString(),
+        createdAt: now,
+        updatedAt: new Date(now).toISOString(),
+        _pending: true,
+        ...(book ? { book: { id: book.id, title: book.title, author: book.author } } : {}),
+      };
+    })
+  );
+
+  await db.borrowRequests.bulkPut(pendingRecords);
+  return localIds;
+}
+
 export async function getBooksLocalFirst(
   params?: Record<string, string>
 ): Promise<{ cached: LocalBook[]; response: ApiResponse<any[]> }> {
@@ -22,7 +50,13 @@ export async function createBorrowRequestLocalFirst(
     if (!canUseOfflineStorage()) {
       return { success: false, error: 'Offline storage is unavailable on this device.' };
     }
-    await enqueueMutation({ userId, type: 'CREATE_BORROW_REQUEST', payload: data });
+
+    const localRequestIds = await createPendingBorrowRecords(userId, data);
+    await enqueueMutation({
+      userId,
+      type: 'CREATE_BORROW_REQUEST',
+      payload: { ...data, localRequestIds },
+    });
     return { success: true, queued: true, message: 'Borrow request queued for sync.' };
   }
 

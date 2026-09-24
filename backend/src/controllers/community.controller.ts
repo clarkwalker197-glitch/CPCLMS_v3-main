@@ -4,7 +4,7 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { sendSuccess } from '../utils/helpers';
 import { AuthenticatedRequest } from '../types';
 
-export const listFaqs = asyncHandler(async (req: Request, res: Response) => sendSuccess(res, await communityService.listFaqs(req.user?.role === 'LIBRARIAN')));
+export const listFaqs = asyncHandler(async (req: AuthenticatedRequest, res: Response) => sendSuccess(res, await communityService.listFaqs(req.user?.role === 'LIBRARIAN')));
 export const createFaq = asyncHandler(async (req: AuthenticatedRequest, res: Response) => sendSuccess(res, await communityService.createFaq({ ...req.body, createdById: req.user!.userId }), 'FAQ created'));
 export const updateFaq = asyncHandler(async (req: Request, res: Response) => sendSuccess(res, await communityService.updateFaq(req.params.id, req.body), 'FAQ updated'));
 export const deleteFaq = asyncHandler(async (req: Request, res: Response) => { await communityService.deleteFaq(req.params.id); sendSuccess(res, null, 'FAQ deleted'); });

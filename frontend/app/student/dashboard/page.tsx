@@ -33,6 +33,7 @@ export default function StudentDashboardPage() {
   const router = useRouter();
   const [stats, setStats] = useState<any>(null);
   const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
+  const [dueSoon, setDueSoon] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -47,7 +48,7 @@ export default function StudentDashboardPage() {
           setStats({
             myBorrowed: cachedTransactions.filter((transaction) => ["ACTIVE", "OVERDUE"].includes(String(transaction.status))).length,
             myPendingRequests: cachedRequests.filter((request) => request.status === "PENDING").length,
-            myFines: cachedTransactions.reduce((total, transaction) => total + Number(transaction.fineAmount || 0), 0),
+            myFines: cachedTransactions.reduce((total, transaction) => total + (!transaction.finePaid && Number(transaction.fineAmount || 0) > 0 ? Number(transaction.fineAmount || 0) : 0), 0),
           });
           setLoading(false);
         }
@@ -57,6 +58,7 @@ const [statsRes, txRes] = await Promise.all([
           api.getTransactions({ limit: "5" }),
         ]);
         if (statsRes.success) setStats(statsRes.data);
+        if (statsRes.success) setDueSoon(statsRes.data?.dueSoon || []);
         if (txRes.success) {
           const nextTransactions = txRes.data || [];
           setRecentTransactions(nextTransactions);
@@ -82,6 +84,7 @@ const statsCards = [
 
 const formatDate = (d?: string) =>
     d ? new Date(d).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" }) : "—";
+  const displayStatus = (tx: any) => tx.status === "ACTIVE" && tx.dueDate && new Date(tx.dueDate) < new Date(new Date().setHours(0, 0, 0, 0)) ? "OVERDUE" : tx.status;
 
   return (
     <ProtectedRoute roles={["STUDENT", "FACULTY"]}>
@@ -167,8 +170,8 @@ const formatDate = (d?: string) =>
                             <td className="px-6 py-4 text-zinc-400">{formatDate(tx.borrowDate)}</td>
                             <td className="px-6 py-4 text-zinc-400">{formatDate(tx.dueDate)}</td>
                             <td className="px-6 py-4">
-                              <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${statusBadge[tx.status] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>
-                                {tx.status}
+                              <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${statusBadge[displayStatus(tx)] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>
+                                {displayStatus(tx)}
                               </span>
                             </td>
                           </tr>
@@ -181,9 +184,13 @@ const formatDate = (d?: string) =>
                   recentTransactions.length === 0 ? (
                     <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 px-4 py-10 text-center text-zinc-500">No recent transactions</div>
                   ) : recentTransactions.map((tx: any) => (
-                    <BorrowHistoryCard key={tx.id} transaction={tx} formatDate={formatDate} statusBadge={statusBadge} statusLabel={{}} />
+                    <BorrowHistoryCard key={tx.id} transaction={{ ...tx, status: displayStatus(tx) }} formatDate={formatDate} statusBadge={statusBadge} statusLabel={{}} />
                   ))
                 } />
+              </div>
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
+                <div className="px-6 py-5 border-b border-zinc-800"><h2 className="text-base font-semibold text-white">Due Soon</h2><p className="text-xs text-zinc-500 mt-0.5">Books due within the next 3 days</p></div>
+                {dueSoon.length === 0 ? <p className="px-6 py-6 text-sm text-zinc-500">Nothing due in the next 3 days.</p> : <div className="divide-y divide-zinc-800/60">{dueSoon.map((transaction) => <div key={transaction.id} className="flex items-center justify-between gap-4 px-6 py-4"><div className="min-w-0"><p className="truncate text-sm font-medium text-zinc-100">{transaction.book?.title || "Unknown book"}</p><p className="text-xs text-zinc-500">{transaction.book?.author || ""}</p></div><span className="shrink-0 text-sm text-amber-400">Due {formatDate(transaction.dueDate)}</span></div>)}</div>}
               </div>
             </div>
           </div>

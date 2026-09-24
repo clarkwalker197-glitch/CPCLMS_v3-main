@@ -4,6 +4,30 @@
 
 import { prisma } from '../config';
 import { DEPARTMENTS } from '../constants/departments';
+import { transactionService } from './transaction.service';
+
+type AnalyticsRange = '7d' | '30d' | '90d' | 'semester' | 'all';
+
+function getRangeStart(range: string = 'all'): Date | undefined {
+  const selectedRange = range as AnalyticsRange;
+  if (selectedRange === 'all') return undefined;
+
+  const now = new Date();
+  const start = new Date(now);
+  if (selectedRange === '7d') start.setDate(start.getDate() - 7);
+  else if (selectedRange === '30d') start.setDate(start.getDate() - 30);
+  else if (selectedRange === '90d') start.setDate(start.getDate() - 90);
+  else if (selectedRange === 'semester') start.setMonth(now.getMonth() < 6 ? 0 : 6, 1);
+  else return undefined;
+  start.setHours(0, 0, 0, 0);
+  return start;
+}
+
+function normalizeRange(range?: string): AnalyticsRange {
+  return ['7d', '30d', '90d', 'semester', 'all'].includes(range || '')
+    ? range as AnalyticsRange
+    : 'all';
+}
 
 export interface DashboardStats {
   overview: {
@@ -51,6 +75,7 @@ export interface DashboardStats {
 
 export class AnalyticsService {
   async getDashboardStats(): Promise<DashboardStats> {
+    await transactionService.synchronizeOverdueTransactions();
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
@@ -238,6 +263,11 @@ interface TopBookRaw { bookId: string; _count: { bookId: number } }
    * - Overdue Fines: total unpaid fines (in peso)
    */
   async getMyDashboardStats(userId: string) {
+    await transactionService.synchronizeOverdueTransactions();
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const dueSoonEnd = new Date(todayStart);
+    dueSoonEnd.setDate(dueSoonEnd.getDate() + 4);
     const [myBorrowed, myPendingRequests, myReservations, overdueTxns] =
       await Promise.all([
         prisma.borrowTransaction.count({
@@ -250,10 +280,25 @@ interface TopBookRaw { bookId: string; _count: { bookId: number } }
           where: { userId, status: 'ACTIVE' },
         }),
         prisma.borrowTransaction.findMany({
-          where: { userId, status: 'OVERDUE', finePaid: false },
+          where: { userId, fineAmount: { gt: 0 }, finePaid: false },
           select: { fineAmount: true },
         }),
       ]);
+
+    const dueSoon = await prisma.borrowTransaction.findMany({
+      where: {
+        userId,
+        status: 'ACTIVE',
+        dueDate: { gte: todayStart, lt: dueSoonEnd },
+        returnDate: null,
+      },
+      select: {
+        id: true,
+        dueDate: true,
+        book: { select: { id: true, title: true, author: true } },
+      },
+      orderBy: { dueDate: 'asc' },
+    });
 
     const myFines = overdueTxns.reduce(
       (sum, txn) => sum + (txn.fineAmount || 0),
@@ -265,15 +310,18 @@ interface TopBookRaw { bookId: string; _count: { bookId: number } }
       myPendingRequests,
       myReservations,
       myFines,
+      dueSoon,
     };
   }
 
   /**
    * Get monthly borrow trends for charts
    */
-  async getMonthlyTrends(months: number = 6) {
+  async getMonthlyTrends(months: number = 6, range: string = 'all') {
     const since = new Date();
     since.setMonth(since.getMonth() - months);
+    const rangeStart = getRangeStart(normalizeRange(range));
+    if (rangeStart && rangeStart > since) since.setTime(rangeStart.getTime());
 
     const transactions = await prisma.borrowTransaction.findMany({
       where: { borrowDate: { gte: since } },
@@ -320,15 +368,7 @@ interface TopBookRaw { bookId: string; _count: { bookId: number } }
     const where: { borrowDate?: { gte: Date } } = {};
 
     if (selectedRange !== 'all') {
-      const since = new Date();
-      if (selectedRange === '30d') since.setDate(since.getDate() - 30);
-      if (selectedRange === '90d') since.setDate(since.getDate() - 90);
-      if (selectedRange === 'semester') {
-        const semesterStartMonth = since.getMonth() < 6 ? 0 : 6;
-        since.setMonth(semesterStartMonth, 1);
-      }
-      since.setHours(0, 0, 0, 0);
-      where.borrowDate = { gte: since };
+      where.borrowDate = { gte: getRangeStart(selectedRange)! };
     }
 
     const transactions = await prisma.borrowTransaction.findMany({
@@ -373,9 +413,11 @@ interface TopBookRaw { bookId: string; _count: { bookId: number } }
   /**
    * Get department-wise borrowing distribution
    */
-  async getDepartmentDistribution() {
+  async getDepartmentDistribution(range: string = 'all') {
+    const rangeStart = getRangeStart(normalizeRange(range));
     const departments = await prisma.borrowTransaction.findMany({
       where: {
+        ...(rangeStart ? { borrowDate: { gte: rangeStart } } : {}),
         user: { archivedAt: null, isActive: true },
         book: { archivedAt: null, deletedAt: null },
       },
@@ -408,6 +450,147 @@ interface TopBookRaw { bookId: string; _count: { bookId: number } }
     })).sort((a, b) => (b.value || 0) - (a.value || 0));
 
     return result;
+  }
+
+  async getOverdueFinesSummary(range: string = 'all') {
+    await transactionService.synchronizeOverdueTransactions();
+    const rangeStart = getRangeStart(normalizeRange(range));
+    const transactions = await prisma.borrowTransaction.findMany({
+      where: {
+        fineAmount: { gt: 0 },
+        ...(rangeStart ? { borrowDate: { gte: rangeStart } } : {}),
+      },
+      select: { fineAmount: true, finePaid: true, borrowDate: true },
+      orderBy: { borrowDate: 'asc' },
+    });
+    const monthly = new Map<string, { paid: number; unpaid: number }>();
+    let paid = 0;
+    let unpaid = 0;
+    for (const transaction of transactions) {
+      const amount = transaction.fineAmount || 0;
+      if (transaction.finePaid) paid += amount;
+      else unpaid += amount;
+      const month = `${transaction.borrowDate.getFullYear()}-${String(transaction.borrowDate.getMonth() + 1).padStart(2, '0')}`;
+      const entry = monthly.get(month) || { paid: 0, unpaid: 0 };
+      entry[transaction.finePaid ? 'paid' : 'unpaid'] += amount;
+      monthly.set(month, entry);
+    }
+    return {
+      range: normalizeRange(range),
+      paid,
+      unpaid,
+      total: paid + unpaid,
+      monthly: Array.from(monthly.entries()).map(([month, values]) => ({ month, ...values })),
+    };
+  }
+
+  async getTopBorrowedBooks(range: string = 'all', limit = 10) {
+    const rangeStart = getRangeStart(normalizeRange(range));
+    const grouped = await prisma.borrowTransaction.groupBy({
+      by: ['bookId'],
+      where: {
+        ...(rangeStart ? { borrowDate: { gte: rangeStart } } : {}),
+        user: { archivedAt: null, isActive: true },
+        book: { archivedAt: null, deletedAt: null },
+      },
+      _count: { bookId: true },
+      orderBy: { _count: { bookId: 'desc' } },
+      take: Math.min(10, Math.max(1, limit)),
+    });
+    const books = await prisma.book.findMany({
+      where: { id: { in: grouped.map((item) => item.bookId) } },
+      select: { id: true, title: true, author: true },
+    });
+    const bookMap = new Map(books.map((book) => [book.id, book]));
+    return grouped.map((item) => ({
+      ...(bookMap.get(item.bookId) || { id: item.bookId, title: 'Unknown', author: 'Unknown' }),
+      borrowCount: item._count.bookId,
+    }));
+  }
+
+  async getReturnPerformance(range: string = 'all') {
+    const rangeStart = getRangeStart(normalizeRange(range));
+    const returned = await prisma.borrowTransaction.findMany({
+      where: {
+        status: 'RETURNED',
+        ...(rangeStart ? { returnDate: { gte: rangeStart } } : {}),
+      },
+      select: { dueDate: true, returnDate: true },
+    });
+    const onTime = returned.filter((item) => item.returnDate && item.returnDate <= item.dueDate).length;
+    const late = returned.length - onTime;
+    return {
+      totalReturned: returned.length,
+      onTime,
+      late,
+      onTimeRate: returned.length ? (onTime / returned.length) * 100 : 0,
+    };
+  }
+
+  async getRequestPipelineStats(range: string = 'all') {
+    const rangeStart = getRangeStart(normalizeRange(range));
+    const requests = await prisma.borrowRequest.findMany({
+      where: rangeStart ? { requestDate: { gte: rangeStart } } : {},
+      select: { status: true, requestDate: true, processedAt: true },
+    });
+    const approved = requests.filter((request) => request.status === 'APPROVED').length;
+    const rejected = requests.filter((request) => request.status === 'REJECTED').length;
+    const processed = requests.filter((request) => request.processedAt && ['APPROVED', 'REJECTED'].includes(request.status));
+    const averageApprovalHours = processed.length
+      ? processed.reduce((sum, request) => sum + (request.processedAt!.getTime() - request.requestDate.getTime()) / 3600000, 0) / processed.length
+      : 0;
+    return {
+      pending: requests.filter((request) => request.status === 'PENDING').length,
+      approved,
+      rejected,
+      approvalRate: approved + rejected ? (approved / (approved + rejected)) * 100 : 0,
+      averageApprovalHours,
+    };
+  }
+
+  async getInventoryHealth() {
+    const books = await prisma.book.findMany({
+      where: { archivedAt: null, deletedAt: null },
+      select: {
+        id: true, title: true, author: true, copies: true, availableCopies: true, status: true,
+        borrowTransactions: { select: { id: true }, take: 1 },
+      },
+      orderBy: { availableCopies: 'asc' },
+    });
+    const lowStock = books.filter((book) => book.availableCopies <= 1);
+    return {
+      lowStockCount: lowStock.length,
+      unavailableCount: books.filter((book) => book.availableCopies === 0).length,
+      neverBorrowedCount: books.filter((book) => book.borrowTransactions.length === 0).length,
+      lowStock: lowStock.slice(0, 20).map(({ borrowTransactions, ...book }) => book),
+      neverBorrowed: books.filter((book) => book.borrowTransactions.length === 0).slice(0, 20).map(({ borrowTransactions, ...book }) => book),
+    };
+  }
+
+  async getMemberEngagement(range: string = 'all') {
+    const rangeStart = getRangeStart(normalizeRange(range));
+    const grouped = await prisma.borrowTransaction.groupBy({
+      by: ['userId'],
+      where: rangeStart ? { borrowDate: { gte: rangeStart } } : {},
+      _count: { userId: true },
+      orderBy: { _count: { userId: 'desc' } },
+      take: 10,
+    });
+    const users = await prisma.user.findMany({
+      where: { id: { in: grouped.map((item) => item.userId) } },
+      select: { id: true, firstName: true, lastName: true, department: true, role: true },
+    });
+    const userMap = new Map(users.map((user) => [user.id, user]));
+    const activeMembers = await prisma.user.count({ where: { role: { in: ['STUDENT', 'FACULTY'] }, isActive: true, archivedAt: null } });
+    const inactiveMembers = await prisma.user.count({ where: { role: { in: ['STUDENT', 'FACULTY'] }, OR: [{ isActive: false }, { archivedAt: { not: null } }] } });
+    return {
+      activeMembers,
+      inactiveMembers,
+      topBorrowers: grouped.map((item) => ({
+        ...(userMap.get(item.userId) || { id: item.userId, firstName: 'Unknown', lastName: 'member', department: null, role: null }),
+        borrowCount: item._count.userId,
+      })),
+    };
   }
 }
 

@@ -13,26 +13,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Users,
-  Search,
   Library,
   BookMarked,
-  Clock,
   AlertTriangle,
 } from "lucide-react";
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  Cell,
-  LabelList,
-} from "recharts";
-import { getDepartmentColor } from "@/lib/department-colors";
 
 const statusBadge: Record<string, string> = {
   ACTIVE: "bg-blue-500/15 text-blue-400 ring-blue-500/30",
@@ -48,11 +32,6 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const router = useRouter();
   const [stats, setStats] = useState<any>(null);
-  const [trends, setTrends] = useState<any[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
-  const [categoryRange, setCategoryRange] = useState("all");
-  const [categoryLoading, setCategoryLoading] = useState(true);
-  const [departments, setDepartments] = useState<any[]>([]);
   const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -63,33 +42,23 @@ export default function DashboardPage() {
     }
 
     async function load() {
-      setCategoryLoading(true);
       try {
-        const [statsRes, trendRes, catRes, deptRes, txRes] = await Promise.all([
+        const [statsRes, txRes] = await Promise.all([
           api.getDashboardStats(),
-          api.getMonthlyTrends(6),
-          api.getMostBorrowedCategories(categoryRange),
-          api.getDepartmentDistribution(),
           api.getTransactions({ limit: "5" }),
         ]);
         if (statsRes.success) setStats(statsRes.data);
-        if (trendRes.success && Array.isArray(trendRes.data)) setTrends(trendRes.data);
-        if (catRes.success && catRes.data) setCategories((catRes.data as any).data || []);
-        if (deptRes.success && Array.isArray(deptRes.data)) setDepartments(deptRes.data);
         setRecentTransactions(txRes.success ? (txRes.data || []) : []);
       } catch {
         // silent fail for demo
       } finally {
         setLoading(false);
-        setCategoryLoading(false);
       }
     }
     load();
-  }, [user, router, categoryRange]);
+  }, [user, router]);
 
   const ov = stats?.overview || {};
-  const activity = stats?.recentActivity || {};
-
   const statsCards = [
     { title: "Total Books", value: ov.totalBooks ?? 0, icon: Library, accent: "bg-blue-500/15 text-blue-400" },
     { title: "Active Members", value: ov.totalUsers ?? 0, icon: Users, accent: "bg-violet-500/15 text-violet-400" },
@@ -138,103 +107,12 @@ export default function DashboardPage() {
                 ))}
             </div>
 
-            {/* Charts */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-              {/* Most Active Departments in Borrowing */}
-              <div className="lg:col-span-2 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-6">
-                <h2 className="text-base font-semibold text-white mb-6">Most Active Departments in Borrowing</h2>
-                <div className="h-72">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={departments.length ? departments : [{ code: "No data", name: "No data", value: 0 }]}
-                      margin={{ top: 8, right: 12, left: 12, bottom: 28 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
-                      <XAxis
-                        dataKey="code"
-                        stroke="#71717a"
-                        fontSize={12}
-                        tickLine={false}
-                        axisLine={false}
-                        interval={0}
-                        minTickGap={12}
-                        height={40}
-                        tick={{ fill: "#a1a1aa" }}
-                      />
-                      <YAxis stroke="#71717a" fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} />
-                      <Tooltip
-                        contentStyle={{ background: "#18181b", border: "1px solid #27272a", borderRadius: "12px", color: "#fff" }}
-                        labelStyle={{ color: "#a1a1aa" }}
-                        labelFormatter={(_, payload) => payload?.[0]?.payload?.name || payload?.[0]?.payload?.code || "Department"}
-                        formatter={(value) => [`${value} borrows`, "Total Borrows"]}
-                      />
-                      <Bar dataKey="value" radius={[8, 8, 0, 0]} name="Total Borrows">
-                        {departments.length > 0 ? (
-                          departments.map((entry) => (
-                            <Cell key={entry.code || entry.name} fill={getDepartmentColor(entry.code || entry.shortName)} />
-                          ))
-                        ) : (
-                          <Cell fill="#3b82f6" />
-                        )}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
+            <div className="mb-8 flex items-center justify-between rounded-2xl border border-blue-500/20 bg-blue-500/10 p-5">
+              <div>
+                <h2 className="font-semibold text-white">Detailed library analytics</h2>
+                <p className="mt-1 text-sm text-zinc-400">Explore trends, fines, requests, inventory, and borrowing comparisons.</p>
               </div>
-
-              {/* Most Borrowed Categories */}
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-6">
-                <div className="flex items-center justify-between gap-3 mb-5">
-                  <h2 className="text-base font-semibold text-white">Most Borrowed Categories</h2>
-                  <select
-                    value={categoryRange}
-                    onChange={(e) => setCategoryRange(e.target.value)}
-                    aria-label="Borrow category range"
-                    className="rounded-lg border border-zinc-700 bg-zinc-950 px-2.5 py-1.5 text-xs text-zinc-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="all">All time</option>
-                    <option value="30d">Last 30 days</option>
-                    <option value="90d">Last 90 days</option>
-                    <option value="semester">This semester</option>
-                  </select>
-                </div>
-                {categoryLoading ? (
-                  <div className="h-72 space-y-4 pt-3">
-                    {Array.from({ length: 5 }).map((_, index) => (
-                      <div key={index} className="h-8 rounded-lg bg-zinc-800 animate-pulse" />
-                    ))}
-                  </div>
-                ) : categories.length === 0 ? (
-                  <div className="flex h-72 items-center justify-center text-sm text-zinc-500">No borrow data yet</div>
-                ) : (
-                  <div className="h-72">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={categories} layout="vertical" margin={{ left: 8, right: 28, top: 4, bottom: 4 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#27272a" horizontal={false} />
-                        <XAxis type="number" allowDecimals={false} stroke="#71717a" fontSize={11} tickLine={false} axisLine={false} />
-                        <YAxis
-                          type="category"
-                          dataKey="name"
-                          width={105}
-                          stroke="#a1a1aa"
-                          fontSize={11}
-                          tickLine={false}
-                          axisLine={false}
-                          tickFormatter={(value) => value.length > 16 ? `${value.slice(0, 16)}...` : value}
-                        />
-                        <Tooltip
-                          contentStyle={{ background: "#18181b", border: "1px solid #27272a", borderRadius: "12px", color: "#fff" }}
-                          formatter={(value) => [`${value} borrows`, "Borrow count"]}
-                          labelFormatter={(label) => String(label)}
-                        />
-                        <Bar dataKey="borrowCount" fill="#10b981" radius={[0, 6, 6, 0]} name="Borrow count">
-                          <LabelList dataKey="borrowCount" position="right" fill="#a1a1aa" fontSize={11} />
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                )}
-              </div>
+              <Link href="/analytics" className="shrink-0 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700">View full analytics</Link>
             </div>
 
             {/* Recent Borrow Activity */}

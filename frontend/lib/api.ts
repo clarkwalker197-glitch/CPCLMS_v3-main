@@ -570,24 +570,47 @@ async payFine(id: string, amount: number): Promise<ApiResponse<any>> {
   }
 
 // Analytics
-  async getDashboardStats(): Promise<ApiResponse<any>> {
-    return this.get('/analytics/dashboard');
+  async getDashboardStats(range = 'all'): Promise<ApiResponse<any>> {
+    return this.get(`/analytics/dashboard?range=${encodeURIComponent(range)}`);
   }
 
-  async getMyDashboardStats(): Promise<ApiResponse<any>> {
-    return this.get('/analytics/my-dashboard');
+  async getMonthlyTrends(months?: number, range = 'all'): Promise<ApiResponse<any>> {
+    const query = new URLSearchParams();
+    if (months) query.set('months', String(months));
+    query.set('range', range);
+    return this.get(`/analytics/monthly-trends?${query.toString()}`);
   }
 
-  async getMonthlyTrends(months?: number): Promise<ApiResponse<any>> {
-    return this.get(`/analytics/monthly-trends?months=${months || 6}`);
+  async getDepartmentDistribution(range = 'all'): Promise<ApiResponse<any>> {
+    return this.get(`/analytics/department-distribution?range=${encodeURIComponent(range)}`);
   }
 
-  async getDepartmentDistribution(): Promise<ApiResponse<any>> {
-    return this.get('/analytics/department-distribution');
-  }
-
-  async getMostBorrowedCategories(range: string = 'all', limit = 10): Promise<ApiResponse<any>> {
+  async getMostBorrowedCategories(range = 'all', limit = 10): Promise<ApiResponse<any>> {
     return this.get(`/analytics/most-borrowed-categories?range=${encodeURIComponent(range)}&limit=${limit}`);
+  }
+
+  async getOverdueFinesSummary(range = 'all'): Promise<ApiResponse<any>> {
+    return this.get(`/analytics/overdue-fines?range=${encodeURIComponent(range)}`);
+  }
+
+  async getTopBorrowedBooks(range = 'all', limit = 10): Promise<ApiResponse<any>> {
+    return this.get(`/analytics/top-borrowed-books?range=${encodeURIComponent(range)}&limit=${limit}`);
+  }
+
+  async getReturnPerformance(range = 'all'): Promise<ApiResponse<any>> {
+    return this.get(`/analytics/return-performance?range=${encodeURIComponent(range)}`);
+  }
+
+  async getRequestPipeline(range = 'all'): Promise<ApiResponse<any>> {
+    return this.get(`/analytics/request-pipeline?range=${encodeURIComponent(range)}`);
+  }
+
+  async getInventoryHealth(): Promise<ApiResponse<any>> {
+    return this.get('/analytics/inventory-health');
+  }
+
+  async getMemberEngagement(range = 'all'): Promise<ApiResponse<any>> {
+    return this.get(`/analytics/member-engagement?range=${encodeURIComponent(range)}`);
   }
 
   // Policies

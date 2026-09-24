@@ -43,7 +43,7 @@ const DEFAULT_LIBRARY_INFO: LibraryInfo = {
     "Maintain silence and use library materials responsibly",
     "Maximum of 5 books per student per borrowing period",
     "Borrowing period is 14 days for students, 30 days for faculty",
-    "Overdue fines: ₱25 per day per book",
+    "Overdue fines: ₱5 per day per book",
     "Damaged or lost books must be replaced or payment made",
     "No food or drinks allowed in the library",
     "All materials must be returned before graduation",

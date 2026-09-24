@@ -11,7 +11,6 @@ import { Dialog, DialogHeader, DialogTitle, DialogDescription } from "@/componen
 import {
   Plus,
   Search,
-  Pencil,
   Trash2,
   Users,
   ChevronLeft,
@@ -497,7 +496,7 @@ const handleDelete = async (member: any) => {
 
           {!loading && members.length > 0 && (
             <>
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
+            <div className="hidden sm:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -549,9 +548,6 @@ const handleDelete = async (member: any) => {
                         </td>
                         <td className="px-6 py-4 text-right">
                           <div className="inline-flex items-center gap-1">
-                            <button className="p-2 rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors" aria-label="Edit">
-                              <Pencil className="w-4 h-4" />
-                            </button>
                             <button
                               onClick={() => handleDelete(m)}
                               disabled={deletingId !== null}
@@ -568,7 +564,7 @@ const handleDelete = async (member: any) => {
                 </table>
               </div>
             </div>
-            <ResponsiveTable mobile={
+            <ResponsiveTable desktop={null} mobile={
               members.map((m: any) => (
                 <article key={m.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-lg shadow-black/10">
                   <div className="flex items-center gap-3 border-b border-zinc-800/80 pb-3">
@@ -584,7 +580,6 @@ const handleDelete = async (member: any) => {
                   <div className="flex items-center justify-between gap-3 border-t border-zinc-800/80 pt-3">
                     <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${m.isActive ? "bg-emerald-500/15 text-emerald-400 ring-emerald-500/30" : "bg-red-500/15 text-red-400 ring-red-500/30"}`}>{m.isActive ? "Active" : "Inactive"}</span>
                     <div className="flex items-center gap-2">
-                      <button className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-800 hover:text-white" aria-label="Edit"><Pencil className="h-4 w-4" /></button>
                       <button onClick={() => handleDelete(m)} disabled={deletingId !== null} className="rounded-lg p-2 text-zinc-400 hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40" aria-label="Delete"><Trash2 className={`h-4 w-4 ${deletingId === m.id ? "animate-spin" : ""}`} /></button>
                     </div>
                   </div>

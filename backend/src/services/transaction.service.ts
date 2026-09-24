@@ -461,6 +461,7 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
    * - Notifies next in reservation queue
    */
   async returnBook(transactionIdOrQr: string) {
+    await this.synchronizeOverdueTransactions();
     let transaction;
 
     // First, try to find by ID
@@ -489,7 +490,7 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
         transaction = await prisma.borrowTransaction.findFirst({
           where: {
             book: { accessionNo: transactionIdOrQr },
-            status: 'ACTIVE',
+            status: { in: ['ACTIVE', 'OVERDUE'] },
           },
           include: { book: true, user: { select: { id: true, firstName: true, lastName: true } } },
           orderBy: { borrowDate: 'desc' },
@@ -501,13 +502,15 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
     if (transaction.returnDate) throw new BadRequestError('Book already returned');
 
     const now = new Date();
-    const isOverdue = now > transaction.dueDate;
+    const isOverdue = now >= new Date(transaction.dueDate.getFullYear(), transaction.dueDate.getMonth(), transaction.dueDate.getDate() + 1);
 
     // Calculate fine
     let fineAmount = 0;
     if (isOverdue) {
-      const finePerDay = await policyService.getFloat('FINE_PER_DAY', 10);
-      const diffDays = Math.ceil((now.getTime() - transaction.dueDate.getTime()) / (1000 * 60 * 60 * 24));
+      const finePerDay = await policyService.getFloat('FINE_PER_DAY', 5);
+      const dueStart = new Date(transaction.dueDate.getFullYear(), transaction.dueDate.getMonth(), transaction.dueDate.getDate());
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const diffDays = Math.floor((todayStart.getTime() - dueStart.getTime()) / (1000 * 60 * 60 * 24));
       fineAmount = diffDays * finePerDay;
     }
 
@@ -516,7 +519,7 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
         where: { id: transaction.id },
         data: {
           returnDate: now,
-          status: isOverdue ? 'OVERDUE' : 'RETURNED',
+          status: 'RETURNED',
           fineAmount,
           qrScanned: true,
         },
@@ -561,7 +564,7 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
           userId: transaction.userId,
           type: 'OVERDUE_FINE',
           title: 'Overdue Fine Incurred',
-          message: `Your borrowed book "${transaction.book.title}" was returned ${Math.ceil((now.getTime() - transaction.dueDate.getTime()) / (1000 * 60 * 60 * 24))} days late. Fine: ₱${fineAmount.toFixed(2)}.`,
+          message: `Your borrowed book "${transaction.book.title}" was returned late. Fine: ₱${fineAmount.toFixed(2)}.`,
           link: `/transactions/${transaction.id}`,
         },
       });
@@ -660,6 +663,7 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
    * List transactions with filters
    */
 async listTransactions(query: Record<string, unknown>, userId?: string) {
+    await this.synchronizeOverdueTransactions();
     const { page, limit, skip, take } = getPaginationParams(query);
     const where: any = {};
     if (userId) where.userId = userId;
@@ -707,6 +711,7 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
    * Get single transaction details
    */
   async getTransaction(transactionId: string) {
+    await this.synchronizeOverdueTransactions();
     const transaction = await prisma.borrowTransaction.findUnique({
       where: { id: transactionId },
       include: {
@@ -716,6 +721,21 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
     });
     if (!transaction) throw new NotFoundError('Transaction');
     return transaction;
+  }
+
+  /** Mark active transactions past their due date and calculate current fines. */
+  async synchronizeOverdueTransactions() {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const finePerDay = await policyService.getFloat('FINE_PER_DAY', 5);
+    return prisma.$executeRaw`
+      UPDATE borrow_transactions
+      SET status = 'OVERDUE',
+          fine_amount = GREATEST(0, (${todayStart}::date - due_date::date)) * ${finePerDay}
+      WHERE status = 'ACTIVE'
+        AND due_date < ${todayStart}
+        AND return_date IS NULL
+    `;
   }
 
   /**
@@ -1062,10 +1082,11 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
    */
   async checkOverdueTransactions() {
     const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const overdueTransactions = await prisma.borrowTransaction.findMany({
       where: {
         status: 'ACTIVE',
-        dueDate: { lt: now },
+        dueDate: { lt: todayStart },
       },
       include: {
         book: { select: { title: true } },
@@ -1074,9 +1095,10 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
     });
 
     for (const txn of overdueTransactions) {
-      const diffDays = Math.ceil((now.getTime() - txn.dueDate.getTime()) / (1000 * 60 * 60 * 24));
-      const finePerDay = await policyService.getFloat('FINE_PER_DAY', 10);
-      const fine = diffDays * finePerDay;
+      const finePerDay = await policyService.getFloat('FINE_PER_DAY', 5);
+      const dueStart = new Date(txn.dueDate.getFullYear(), txn.dueDate.getMonth(), txn.dueDate.getDate());
+      const diffDays = Math.floor((todayStart.getTime() - dueStart.getTime()) / (1000 * 60 * 60 * 24));
+      const fine = Math.max(0, diffDays) * finePerDay;
 
       await prisma.$transaction([
         prisma.borrowTransaction.update({

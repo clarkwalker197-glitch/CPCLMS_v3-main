@@ -13,6 +13,7 @@ import {
   ScrollText,
   Shield,
   Archive,
+  BarChart3,
   ChevronDown,
   UserRound,
   MoreHorizontal,
@@ -21,6 +22,7 @@ import {
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/analytics", label: "Analytics", icon: BarChart3, librarianOnly: true },
   {
     label: "Books",
     icon: BookOpen,
@@ -55,6 +57,7 @@ export default function Sidebar() {
   };
 
   const visibleNavItems = navItems.filter((item) => {
+    if (item.librarianOnly && user?.role !== "LIBRARIAN") return false;
     if (user?.role === "LIBRARIAN") return true;
     return !["Members", "Activity Logs", "Archive"].includes(item.label);
   });
@@ -152,11 +155,11 @@ export default function Sidebar() {
           onClick={() => setMoreOpen(true)}
           aria-expanded={moreOpen}
           aria-controls="mobile-more-menu"
-          className={`relative flex min-w-0 flex-1 flex-col items-center justify-start gap-1 rounded-xl px-0.5 py-2 text-[10px] font-medium leading-3 transition-colors ${moreOpen || ["/members", "/archive", "/activities", "/policies", "/profile"].some((href) => pathname === href || pathname.startsWith(href + "/")) ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}
+          className={`relative flex min-w-0 flex-1 flex-col items-center justify-start gap-1 rounded-xl px-0.5 py-2 text-[10px] font-medium leading-3 transition-colors ${moreOpen || ["/analytics", "/members", "/archive", "/activities", "/policies", "/profile"].some((href) => pathname === href || pathname.startsWith(href + "/")) ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}
         >
           <MoreHorizontal className="h-5 w-5 shrink-0" />
           <span className="flex min-h-6 w-full items-start justify-center whitespace-normal text-center">More</span>
-          {!moreOpen && ["/members", "/archive", "/activities", "/policies", "/profile"].some((href) => pathname === href || pathname.startsWith(href + "/")) && (
+          {!moreOpen && ["/analytics", "/members", "/archive", "/activities", "/policies", "/profile"].some((href) => pathname === href || pathname.startsWith(href + "/")) && (
             <span className="absolute right-2 top-1 h-1.5 w-1.5 rounded-full bg-white" aria-hidden="true" />
           )}
         </button>
@@ -188,6 +191,7 @@ export default function Sidebar() {
             <div className="space-y-1">
               {(user?.role === "LIBRARIAN"
                 ? [
+                  { href: "/analytics", label: "Analytics", icon: BarChart3 },
                     { href: "/members", label: "Members", icon: Users },
                     { href: "/archive", label: "Archive", icon: Archive },
                     { href: "/activities", label: "Activity Logs", icon: ScrollText },

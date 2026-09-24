@@ -574,6 +574,10 @@ async payFine(id: string, amount: number): Promise<ApiResponse<any>> {
     return this.get(`/analytics/dashboard?range=${encodeURIComponent(range)}`);
   }
 
+  async getMyDashboardStats(): Promise<ApiResponse<any>> {
+    return this.get('/analytics/my-dashboard');
+  }
+
   async getMonthlyTrends(months?: number, range = 'all'): Promise<ApiResponse<any>> {
     const query = new URLSearchParams();
     if (months) query.set('months', String(months));
@@ -612,6 +616,27 @@ async payFine(id: string, amount: number): Promise<ApiResponse<any>> {
   async getMemberEngagement(range = 'all'): Promise<ApiResponse<any>> {
     return this.get(`/analytics/member-engagement?range=${encodeURIComponent(range)}`);
   }
+
+  async getMostBorrowedByDepartment(range = 'all', department = '', limit = 10): Promise<ApiResponse<any>> {
+    const query = new URLSearchParams({ range, limit: String(limit) });
+    if (department) query.set('department', department);
+    return this.get(`/analytics/most-borrowed-by-department?${query.toString()}`);
+  }
+
+  async getFaqs(): Promise<ApiResponse<any[]>> { return this.get('/faqs'); }
+  async createFaq(data: Record<string, unknown>): Promise<ApiResponse<any>> { return this.post('/faqs', data); }
+  async updateFaq(id: string, data: Record<string, unknown>): Promise<ApiResponse<any>> { return this.put(`/faqs/${id}`, data); }
+  async deleteFaq(id: string): Promise<ApiResponse<any>> { return this.delete(`/faqs/${id}`); }
+
+  async createSuggestion(data: { subject: string; message: string }): Promise<ApiResponse<any>> { return this.post('/suggestions', data); }
+  async getMySuggestions(): Promise<ApiResponse<any[]>> { return this.get('/suggestions/mine'); }
+  async getSuggestions(status = ''): Promise<ApiResponse<any[]>> { return this.get(`/suggestions${status ? `?status=${encodeURIComponent(status)}` : ''}`); }
+  async updateSuggestion(id: string, data: Record<string, unknown>): Promise<ApiResponse<any>> { return this.patch(`/suggestions/${id}`, data); }
+
+  async createAcquisitionRequest(data: Record<string, unknown>): Promise<ApiResponse<any>> { return this.post('/acquisition-requests', data); }
+  async getMyAcquisitionRequests(): Promise<ApiResponse<any[]>> { return this.get('/acquisition-requests/mine'); }
+  async getAcquisitionRequests(status = ''): Promise<ApiResponse<any[]>> { return this.get(`/acquisition-requests${status ? `?status=${encodeURIComponent(status)}` : ''}`); }
+  async updateAcquisitionRequest(id: string, data: Record<string, unknown>): Promise<ApiResponse<any>> { return this.patch(`/acquisition-requests/${id}`, data); }
 
   // Policies
   async getPolicies(): Promise<ApiResponse<any[]>> {

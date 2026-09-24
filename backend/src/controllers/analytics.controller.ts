@@ -63,3 +63,8 @@ export const getMemberEngagement = asyncHandler(async (req: Request, res: Respon
   sendSuccess(res, await analyticsService.getMemberEngagement(req.query.range as string | undefined));
 });
 
+export const getMostBorrowedByDepartment = asyncHandler(async (req: Request, res: Response) => {
+  const limit = req.query.limit ? Number(req.query.limit) : 10;
+  sendSuccess(res, await analyticsService.getMostBorrowedByDepartment(req.query.range as string | undefined, req.query.department as string | undefined, limit));
+});
+

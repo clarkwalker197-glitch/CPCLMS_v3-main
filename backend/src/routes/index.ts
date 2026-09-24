@@ -15,6 +15,9 @@ import reportRoutes from './report.routes';
 import activityRoutes from './activity.routes';
 import notificationRoutes from './notification.routes';
 import archiveRoutes from './archive.routes';
+import faqRoutes from './faq.routes';
+import suggestionRoutes from './suggestion.routes';
+import acquisitionRoutes from './acquisition.routes';
 
 const router = Router();
 
@@ -36,6 +39,9 @@ router.use('/reports', reportRoutes);
 router.use('/activities', activityRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/archive', archiveRoutes);
+router.use('/faqs', faqRoutes);
+router.use('/suggestions', suggestionRoutes);
+router.use('/acquisition-requests', acquisitionRoutes);
 
 export default router;
 

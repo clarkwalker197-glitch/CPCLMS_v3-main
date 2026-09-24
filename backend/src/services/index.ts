@@ -7,5 +7,6 @@ export { policyService } from './policy.service';
 export { analyticsService } from './analytics.service';
 export { reportService } from './report.service';
 export { notificationService } from './notification.service';
+export { communityService } from './community.service';
 
 

@@ -592,6 +592,51 @@ interface TopBookRaw { bookId: string; _count: { bookId: number } }
       })),
     };
   }
+
+  async getMostBorrowedByDepartment(range: string = 'all', department?: string, limit = 10) {
+    const rangeStart = getRangeStart(normalizeRange(range));
+    const transactions = await prisma.borrowTransaction.findMany({
+      where: {
+        ...(rangeStart ? { borrowDate: { gte: rangeStart } } : {}),
+        user: {
+          archivedAt: null,
+          isActive: true,
+          role: { in: ['STUDENT', 'FACULTY'] },
+          ...(department ? { department } : {}),
+        },
+        book: { archivedAt: null, deletedAt: null },
+      },
+      select: {
+        user: { select: { department: true } },
+        book: { select: { id: true, title: true, author: true, category: { select: { name: true } } } },
+      },
+    });
+    const groups = new Map<string, Map<string, { title: string; author: string; borrowCount: number; category: string | null }>>();
+    for (const transaction of transactions) {
+      const groupName = transaction.user.department || 'Unassigned';
+      const books = groups.get(groupName) || new Map();
+      const existing = books.get(transaction.book.id) || {
+        title: transaction.book.title,
+        author: transaction.book.author,
+        borrowCount: 0,
+        category: transaction.book.category?.name || null,
+      };
+      existing.borrowCount += 1;
+      books.set(transaction.book.id, existing);
+      groups.set(groupName, books);
+    }
+    return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([name, books]) => ({
+      department: name,
+      topBooks: Array.from(books.values()).sort((a, b) => b.borrowCount - a.borrowCount).slice(0, Math.min(50, Math.max(1, limit))),
+      topCategories: Array.from(books.values()).reduce((result, book) => {
+        if (book.category) result.set(book.category, (result.get(book.category) || 0) + book.borrowCount);
+        return result;
+      }, new Map<string, number>()),
+    })).map((group) => ({
+      ...group,
+      topCategories: Array.from(group.topCategories.entries()).map(([category, borrowCount]) => ({ category, borrowCount })).sort((a, b) => b.borrowCount - a.borrowCount),
+    }));
+  }
 }
 
 export const analyticsService = new AnalyticsService();

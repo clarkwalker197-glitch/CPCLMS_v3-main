@@ -102,6 +102,9 @@ model User {
   processedBorrowRequests BorrowRequest[] @relation("ProcessedBy")
   refreshTokens       RefreshToken[]
   passwordResetTokens PasswordResetToken[]
+  faqsCreated         Faq[] @relation("FaqCreatedBy")
+  suggestions         Suggestion[]
+  acquisitionRequests AcquisitionRequest[]
 
   @@map("users")
 }
@@ -351,5 +354,55 @@ model Policy {
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   @@map("policies")
+}
+
+model Faq {
+  id          String   @id @default(cuid())
+  question    String
+  answer      String
+  category    String?
+  sortOrder   Int      @default(0) @map("sort_order")
+  isPublished Boolean  @default(true) @map("is_published")
+  createdById String?  @map("created_by_id")
+  createdBy   User?    @relation("FaqCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([isPublished, sortOrder])
+  @@map("faqs")
+}
+
+model Suggestion {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id])
+  subject   String
+  message   String
+  status    String   @default("PENDING")
+  adminNote String?  @map("admin_note")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([status])
+  @@map("suggestions")
+}
+
+model AcquisitionRequest {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id])
+  title     String
+  author    String?
+  isbn      String?
+  details   String?
+  status    String   @default("PENDING")
+  adminNote String?  @map("admin_note")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([status])
+  @@map("acquisition_requests")
 }
 

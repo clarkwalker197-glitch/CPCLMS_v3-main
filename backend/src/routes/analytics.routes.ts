@@ -21,6 +21,7 @@ router.get('/return-performance', authorize('LIBRARIAN'), analyticsController.ge
 router.get('/request-pipeline', authorize('LIBRARIAN'), analyticsController.getRequestPipelineStats);
 router.get('/inventory-health', authorize('LIBRARIAN'), analyticsController.getInventoryHealth);
 router.get('/member-engagement', authorize('LIBRARIAN'), analyticsController.getMemberEngagement);
+router.get('/most-borrowed-by-department', authorize('LIBRARIAN'), analyticsController.getMostBorrowedByDepartment);
 
 export default router;
 

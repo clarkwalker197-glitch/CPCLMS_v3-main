@@ -63,6 +63,8 @@ export default function AnalyticsPage() {
   const [returns, setReturns] = useState<any>({ onTimeRate: 0 });
   const [requests, setRequests] = useState<any>({});
   const [inventory, setInventory] = useState<any>({ lowStock: [], neverBorrowed: [] });
+  const [departmentFilter, setDepartmentFilter] = useState("");
+  const [departmentBooks, setDepartmentBooks] = useState<any[]>([]);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -85,9 +87,10 @@ export default function AnalyticsPage() {
           api.getReturnPerformance(range),
           api.getRequestPipeline(range),
           api.getInventoryHealth(),
+          api.getMostBorrowedByDepartment(range, departmentFilter, 10),
         ]);
-        const [dashboard, trend, category, department, books, fine, performance, pipeline, health] = results;
-        if (!dashboard.success || !trend.success || !category.success || !department.success || !books.success || !fine.success || !performance.success || !pipeline.success || !health.success) {
+        const [dashboard, trend, category, department, books, fine, performance, pipeline, health, departmentBooksResponse] = results;
+        if (!dashboard.success || !trend.success || !category.success || !department.success || !books.success || !fine.success || !performance.success || !pipeline.success || !health.success || !departmentBooksResponse.success) {
           setError("Some analytics could not be loaded. Try refreshing the page.");
         }
         if (dashboard.success) setStats(dashboard.data);
@@ -99,6 +102,7 @@ export default function AnalyticsPage() {
         if (performance.success) setReturns(performance.data || {});
         if (pipeline.success) setRequests(pipeline.data || {});
         if (health.success) setInventory(health.data || {});
+        if (departmentBooksResponse.success) setDepartmentBooks(Array.isArray(departmentBooksResponse.data) ? departmentBooksResponse.data : []);
       } catch {
         setError("Unable to load analytics right now.");
       } finally {
@@ -106,7 +110,7 @@ export default function AnalyticsPage() {
       }
     }
     loadAnalytics();
-  }, [range, router, user]);
+  }, [departmentFilter, range, router, user]);
 
   const overview = stats?.overview || {};
   const overdueRate = overview.activeBorrows + overview.overdueBooks
@@ -165,6 +169,16 @@ export default function AnalyticsPage() {
                 {categories.length === 0 ? <p className="text-sm text-zinc-500">No category data for this range</p> : <div className="h-72"><ResponsiveContainer width="100%" height="100%"><BarChart data={categories} layout="vertical" margin={{ left: 8, right: 28 }}><CartesianGrid strokeDasharray="3 3" stroke="#27272a" horizontal={false} /><XAxis type="number" allowDecimals={false} stroke="#71717a" fontSize={11} tickLine={false} axisLine={false} /><YAxis type="category" dataKey="name" width={110} stroke="#a1a1aa" fontSize={11} tickLine={false} axisLine={false} /><Tooltip contentStyle={chartStyle} /><Bar dataKey="borrowCount" fill="#10b981" radius={[0, 6, 6, 0]}><LabelList dataKey="borrowCount" position="right" fill="#a1a1aa" fontSize={11} /></Bar></BarChart></ResponsiveContainer></div>}
               </Panel>
             </div>
+
+            <Panel title="Most Borrowed Books by Department" className="mb-6">
+              <div className="mb-5 flex justify-end">
+                <select value={departmentFilter} onChange={(event) => setDepartmentFilter(event.target.value)} aria-label="Department filter" className="rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-xs text-zinc-300">
+                  <option value="">All departments</option>
+                  {departments.map((department) => <option key={department.code} value={department.code}>{department.name}</option>)}
+                </select>
+              </div>
+              {departmentBooks.length === 0 ? <p className="text-sm text-zinc-500">No department borrowing data for this range.</p> : <div className="grid grid-cols-1 gap-5 md:grid-cols-2">{departmentBooks.map((group) => <div key={group.department} className="rounded-xl border border-zinc-800 p-4"><h3 className="mb-3 font-medium text-white">{group.department}</h3><div className="space-y-2">{group.topBooks.map((book: any) => <div key={`${group.department}-${book.title}`} className="flex items-center justify-between gap-3 text-sm"><span className="truncate text-zinc-300">{book.title}</span><span className="shrink-0 text-blue-400">{book.borrowCount}</span></div>)}</div></div>)}</div>}
+            </Panel>
 
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
               <Panel title="Request Pipeline"><div className="grid grid-cols-2 gap-4 text-sm"><div><p className="text-zinc-500">Pending</p><p className="text-xl font-semibold text-amber-400">{requests.pending ?? 0}</p></div><div><p className="text-zinc-500">Approved</p><p className="text-xl font-semibold text-emerald-400">{requests.approved ?? 0}</p></div><div><p className="text-zinc-500">Rejected</p><p className="text-xl font-semibold text-red-400">{requests.rejected ?? 0}</p></div><div><p className="text-zinc-500">Approval rate</p><p className="text-xl font-semibold text-blue-400">{Number(requests.approvalRate || 0).toFixed(1)}%</p></div></div><p className="mt-4 text-xs text-zinc-500">Average processing time: {Number(requests.averageApprovalHours || 0).toFixed(1)} hours</p></Panel>

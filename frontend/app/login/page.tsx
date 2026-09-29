@@ -6,6 +6,13 @@ import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import { GoogleLogin, GoogleOAuthProvider } from '@react-oauth/google';
 
+function getPostLoginPath(role?: string, returnTo?: string | null) {
+  if (returnTo?.startsWith('/') && !returnTo.startsWith('//') && !returnTo.includes('\\')) {
+    return returnTo;
+  }
+  return role === 'LIBRARIAN' ? '/dashboard' : '/student/dashboard';
+}
+
 export default function LoginPage() {
   const { login, googleLogin, user, isAuthenticated, loading } = useAuth();
   const router = useRouter();
@@ -17,15 +24,16 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [searchParams] = useState(() => new URLSearchParams(typeof window !== 'undefined' ? window.location.search : ''));
+  const returnTo = searchParams.get('returnTo');
   const resetMessage = searchParams.get('reset') === 'success' ? 'Password reset successfully. You can now sign in.' : '';
   const inactivityMessage = searchParams.get('reason') === 'inactivity' ? 'You have been logged out due to inactivity.' : '';
 
   useEffect(() => {
     if (!loading && isAuthenticated) {
-      const target = user?.role === 'LIBRARIAN' ? '/dashboard' : '/student/dashboard';
+      const target = getPostLoginPath(user?.role, returnTo);
       router.replace(target);
     }
-  }, [loading, isAuthenticated, router, user]);
+  }, [loading, isAuthenticated, router, user, returnTo]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,7 +43,7 @@ export default function LoginPage() {
     try {
       const result = await login(identifier.trim(), password);
       if (result.success) {
-        const target = result.user?.role === 'LIBRARIAN' ? '/dashboard' : '/student/dashboard';
+        const target = getPostLoginPath(result.user?.role, returnTo);
         router.push(target);
       } else {
         setError(result.error || 'Invalid ID Number or password');
@@ -234,7 +242,7 @@ export default function LoginPage() {
                       if (!credential) return setError('Google did not return a valid credential');
                       setError('');
                       const result = await googleLogin(credential);
-                      if (result.success) router.push(result.user?.role === 'LIBRARIAN' ? '/dashboard' : '/student/dashboard');
+                      if (result.success) router.push(getPostLoginPath(result.user?.role, returnTo));
                       else setError(result.error || 'Google login failed');
                     }}
                     onError={() => setError('Google login failed. Please try again.')}

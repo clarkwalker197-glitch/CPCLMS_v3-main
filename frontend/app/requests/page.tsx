@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
+import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { useDebounce } from "@/lib/useDebounce";
 import Sidebar from "@/components/Sidebar";
@@ -9,9 +10,8 @@ import ResponsiveTable from "@/components/ResponsiveTable";
 import UserAvatar from "@/components/UserAvatar";
 import { SortHeader, SortSelect, nextSortOrder, type SortOption } from "@/components/SortControls";
 import BorrowHistoryCard from "@/components/BorrowHistoryCard";
-import { QRApprovalModal } from "@/components/QRApprovalModal";
+import { QRDisplayModal } from "@/components/QRDisplayModal";
 import { QRScanner } from "@/components/QRScanner";
-import { parseApprovalInput } from "@/lib/qr-approval";
 import {
   Search,
   BookOpen,
@@ -51,6 +51,7 @@ const reqStatusLabel: Record<string, string> = {
 
 export default function RequestsPage() {
   const { user } = useAuth();
+  const router = useRouter();
   const isLibrarian = user?.role === "LIBRARIAN";
 
   // Borrowed books remain available to students and faculty only.
@@ -106,18 +107,10 @@ export default function RequestsPage() {
   const [rejectLoading, setRejectLoading] = useState(false);
   const [rejectError, setRejectError] = useState("");
 
-  // QR Approval modal state (librarian only)
-  const [qrApprovalTarget, setQrApprovalTarget] = useState<any>(null);
-
-  // QR Scanner modal state (student/faculty - to scan librarian's QR code)
-  const [qrScannerRequest, setQrScannerRequest] = useState<any>(null);
-  const [qrScannerLoading, setQrScannerLoading] = useState(false);
-  const [qrScannerError, setQrScannerError] = useState("");
-  const [batchScannerOpen, setBatchScannerOpen] = useState(false);
-  const [batchLookupTarget, setBatchLookupTarget] = useState<any>(null);
-  const [batchLookupLoading, setBatchLookupLoading] = useState(false);
-  const [batchLookupError, setBatchLookupError] = useState("");
-  const [batchApprovalLoading, setBatchApprovalLoading] = useState(false);
+  const [approvalReceipt, setApprovalReceipt] = useState<any | null>(null);
+  const [transactionLookupId, setTransactionLookupId] = useState("");
+  const [transactionScannerOpen, setTransactionScannerOpen] = useState(false);
+  const [transactionLookupError, setTransactionLookupError] = useState("");
 
   const loadTransactions = useCallback(async () => {
     if (isLibrarian) return;
@@ -308,55 +301,21 @@ export default function RequestsPage() {
   };
 
 // ── Borrow requests actions ──
-  // The Approve action now opens a QR approval modal instead of approving
-  // directly. The request only becomes APPROVED once the borrower scans the
-  // QR (deep link) on their phone.
-  const handleApprove = (request: any) => {
-    setQrApprovalTarget(request);
-  };
-
-  const handleQRApproved = (request: any) => {
-    setSuccessMsg(
-      `Borrow request for "${request?.book?.title || "this book"}" approved`
-    );
-    setQrApprovalTarget(null);
-    loadRequests();
-    setTimeout(() => setSuccessMsg(""), 4000);
-  };
-
-  const handleBatchLookup = async (rawTransactionId: string) => {
-    const transactionId = rawTransactionId.trim().toUpperCase();
-    if (!transactionId) return;
-    setBatchLookupLoading(true);
-    setBatchLookupError("");
-    try {
-      const response = await api.getBorrowRequestBatch(transactionId);
-      if (!response.success || !response.data) {
-        setBatchLookupError(response.error || "No borrow transaction found for that ID.");
-        return;
-      }
-      setBatchLookupTarget(response.data);
-      setBatchScannerOpen(false);
-    } catch {
-      setBatchLookupError("Unable to look up this transaction.");
-    } finally {
-      setBatchLookupLoading(false);
-    }
-  };
-
   const approveListedBatch = async (request: any) => {
-    if (!request.transactionId) {
-      handleApprove(request);
+    const requestBatchId = request.requestBatchId || request.transactionId;
+    if (!requestBatchId) {
+      setError("This request is missing its batch ID. Apply the latest database migration and refresh.");
       return;
     }
     setActionLoadingId(request.id);
     try {
-      const response = await api.approveBorrowRequestBatch(request.transactionId);
+      const response = await api.approveBorrowRequestBatch(requestBatchId);
       if (!response.success) {
         setError(response.error || "Failed to approve borrow transaction");
         return;
       }
-      setSuccessMsg(`${request.transactionId}: ${response.data?.transactions?.length || request.books.length} book(s) marked as borrowed`);
+      setApprovalReceipt(response.data);
+      setSuccessMsg(`${response.data?.transactionId}: ${response.data?.transactions?.length || request.books.length} book(s) approved`);
       loadRequests();
       loadActiveTransactions();
       setTimeout(() => setSuccessMsg(""), 4000);
@@ -367,69 +326,39 @@ export default function RequestsPage() {
     }
   };
 
-  const approveLookedUpBatch = async () => {
-    if (!batchLookupTarget?.transactionId) return;
-    setBatchApprovalLoading(true);
-    setBatchLookupError("");
-    try {
-      const response = await api.approveBorrowRequestBatch(batchLookupTarget.transactionId);
-      if (!response.success) {
-        setBatchLookupError(response.error || "Failed to approve this transaction.");
-        return;
-      }
-      const count = response.data?.transactions?.length || batchLookupTarget.books.length;
-      setBatchLookupTarget(null);
-      setSuccessMsg(`${batchLookupTarget.transactionId}: ${count} book(s) marked as borrowed`);
-      loadRequests();
-      loadActiveTransactions();
-      setTimeout(() => setSuccessMsg(""), 4000);
-    } catch {
-      setBatchLookupError("Failed to approve this transaction.");
-    } finally {
-      setBatchApprovalLoading(false);
-    }
-  };
-
-  // Handle QR code scan for student/faculty (scan librarian's approval QR)
-  const openQRScanner = (request: any) => {
-    setQrScannerRequest(request);
-    setQrScannerError("");
-  };
-
-  const handleQRScan = async (qrData: string) => {
-    if (!qrScannerRequest) return;
-    setQrScannerLoading(true);
-    setQrScannerError("");
-
-    try {
-      const parsed = parseApprovalInput(qrData);
-      if (parsed.error) {
-        setQrScannerError(parsed.error);
-        return;
-      }
-
-      const { approvalCode, token } = parsed;
-      const res = await api.approveByQRCode(qrScannerRequest.id, token || "", approvalCode);
-
-      if (res.success) {
-        setSuccessMsg(`Borrow request for "${qrScannerRequest.book?.title || "this book"}" approved`);
-        setQrScannerRequest(null);
-        loadRequests();
-        setTimeout(() => setSuccessMsg(""), 4000);
-      } else {
-        setQrScannerError(res.error || "Failed to process QR code");
-      }
-    } catch (err: any) {
-      setQrScannerError(err?.message || "Failed to process QR code");
-    } finally {
-      setQrScannerLoading(false);
-    }
-  };
-
   const openRejectModal = (request: any) => {
     setRejectTarget(request);
     setRejectReason("");
     setRejectError("");
+  };
+
+  const handleTransactionLookup = (event: React.FormEvent) => {
+    event.preventDefault();
+    const transactionId = transactionLookupId.trim();
+    if (/^\d{8}$/.test(transactionId)) {
+      router.push(`/transactions/lookup?transactionId=${encodeURIComponent(transactionId)}`);
+    } else {
+      setTransactionLookupError("Enter the 8-digit Transaction ID.");
+    }
+  };
+
+  const handleTransactionScan = async (value: string) => {
+    let transactionId = value.trim();
+    let scannedLookupUrl = false;
+    try {
+      const urlTransactionId = new URL(value).searchParams.get("transactionId");
+      if (urlTransactionId) {
+        transactionId = urlTransactionId;
+        scannedLookupUrl = true;
+      }
+    } catch {}
+    if (!scannedLookupUrl && !/^\d{8}$/.test(transactionId)) {
+      setTransactionLookupError("Scan a valid transaction QR or enter the 8-digit ID.");
+      return;
+    }
+    setTransactionLookupError("");
+    setTransactionScannerOpen(false);
+    router.push(`/transactions/lookup?transactionId=${encodeURIComponent(transactionId)}`);
   };
 
   const handleReject = async () => {
@@ -576,16 +505,34 @@ export default function RequestsPage() {
                   Review and manage borrowing transactions · {reqTotal} total
                 </p>
               </div>
-              {isLibrarian && (
-                <button
-                  type="button"
-                  onClick={() => { setBatchLookupError(""); setBatchScannerOpen(true); }}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
-                >
-                  <QrCode className="h-4 w-4" /> Scan / Find Transaction
-                </button>
-              )}
             </div>
+
+            {!isLibrarian && (
+              <div className="mb-4 border-b border-zinc-800 pb-4">
+                <form onSubmit={handleTransactionLookup} className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <div className="min-w-0 flex-1">
+                    <label htmlFor="request-transaction-lookup" className="mb-2 block text-sm font-medium text-zinc-200">Scan / Find Transaction</label>
+                    <input
+                      id="request-transaction-lookup"
+                      value={transactionLookupId}
+                      onChange={(event) => setTransactionLookupId(event.target.value.replace(/\D/g, "").slice(0, 8))}
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={8}
+                      placeholder="12345678"
+                      className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2.5 font-mono text-sm text-white placeholder:font-sans placeholder:text-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                    />
+                  </div>
+                  <button type="submit" disabled={!/^\d{8}$/.test(transactionLookupId.trim())} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
+                    <Search className="h-4 w-4" /> Find
+                  </button>
+                  <button type="button" onClick={() => { setTransactionLookupError(""); setTransactionScannerOpen(true); }} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-zinc-200 hover:border-blue-500 hover:text-white">
+                    <QrCode className="h-4 w-4" /> Scan QR
+                  </button>
+                </form>
+                {transactionLookupError && <p role="alert" className="mt-2 text-sm text-amber-300">{transactionLookupError}</p>}
+              </div>
+            )}
 
             {/* Toolbar */}
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 mb-4">
@@ -653,7 +600,7 @@ export default function RequestsPage() {
                       {records.map((req: any) => (
                         <tr key={req.id} className="border-t border-zinc-800/60 hover:bg-zinc-800/40 transition-colors">
                           <td className="px-6 py-4">
-                            {req.transactionId && <p className="mb-1 font-mono text-xs text-blue-300">{req.transactionId}</p>}
+                            {isLibrarian && req.transactionId && <p className="mb-1 font-mono text-xs text-blue-300">{req.transactionId}</p>}
                             <div className="space-y-1">
                               {(req.books || []).map((book: any) => (
                                 <div key={book.requestId || book.id}>
@@ -693,7 +640,7 @@ export default function RequestsPage() {
                                     disabled={actionLoadingId === req.id}
                                     className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
                                   >
-                                    <CheckCircle2 className="w-3.5 h-3.5" /> {actionLoadingId === req.id ? "Approving..." : req.transactionId ? "Approve & Mark Borrowed" : "Approve via QR"}
+                                    <CheckCircle2 className="w-3.5 h-3.5" /> {actionLoadingId === req.id ? "Approving..." : req.requestBatchId || req.transactionId ? "Approve & Generate QR" : "Approve via QR"}
                                   </button>
                                   <button
                                     onClick={() => openRejectModal(req)}
@@ -703,15 +650,7 @@ export default function RequestsPage() {
                                   </button>
                                 </>
                               )}
-                              {!isLibrarian && req.status === "PENDING" && !req.transactionId && (
-                                <button
-                                  onClick={() => openQRScanner(req)}
-                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors"
-                                >
-                                  <QrCode className="w-3.5 h-3.5" /> Scan QR
-                                </button>
-                              )}
-                              {!isLibrarian && req.status !== "PENDING" && (
+                              {!isLibrarian && (
                                 <span className="text-xs text-zinc-500">—</span>
                               )}
                             </div>
@@ -726,11 +665,11 @@ export default function RequestsPage() {
                 records.map((req: any) => (
                   <article key={req.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-lg shadow-black/10">
                     <div className="border-b border-zinc-800/80 pb-3">
-                      {req.transactionId && <p className="mb-2 break-all font-mono text-xs text-blue-300">{req.transactionId}</p>}
+                      {isLibrarian && req.transactionId && <p className="mb-2 break-all font-mono text-xs text-blue-300">{req.transactionId}</p>}
                       {(req.books || []).map((book: any) => <div key={book.requestId || book.id} className="mb-2 last:mb-0"><p className="font-semibold text-zinc-100 break-words">{book.title || "Unknown"}</p><p className="mt-1 text-sm text-zinc-500">{book.accessionNo || ""}</p></div>)}
                     </div>
                     <div className="grid grid-cols-2 gap-3 py-4 text-sm"><div><p className="text-xs text-zinc-500">Member</p><p className="mt-1 break-words text-zinc-300">{req.user?.firstName} {req.user?.lastName}</p><p className="text-xs text-zinc-500">{req.user?.libraryId || ""}</p></div><div><p className="text-xs text-zinc-500">Request Date</p><p className="mt-1 text-zinc-300">{formatDate(req.requestDate)}</p></div><div className="col-span-2"><p className="text-xs text-zinc-500">Notes</p><p className="mt-1 whitespace-pre-wrap break-words text-zinc-300">{req.notes || "—"}</p></div></div>
-                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-800/80 pt-3"><span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${reqStatusBadge[req.status] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>{reqStatusLabel[req.status] || req.status}</span><div className="flex flex-wrap gap-2">{isLibrarian && req.status === "PENDING" && <><button disabled={actionLoadingId === req.id} onClick={() => approveListedBatch(req)} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-50">{actionLoadingId === req.id ? "Approving..." : req.transactionId ? "Approve & Mark Borrowed" : "Approve via QR"}</button><button onClick={() => openRejectModal(req)} className="rounded-lg bg-red-500/15 px-3 py-2 text-xs font-medium text-red-400">Reject</button></>}{!isLibrarian && req.status === "PENDING" && !req.transactionId && <button onClick={() => openQRScanner(req)} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white">Scan QR</button>}</div></div>
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-800/80 pt-3"><span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${reqStatusBadge[req.status] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>{reqStatusLabel[req.status] || req.status}</span><div className="flex flex-wrap gap-2">{isLibrarian && req.status === "PENDING" && <><button disabled={actionLoadingId === req.id} onClick={() => approveListedBatch(req)} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-50">{actionLoadingId === req.id ? "Approving..." : req.requestBatchId || req.transactionId ? "Approve & Generate QR" : "Approve via QR"}</button><button onClick={() => openRejectModal(req)} className="rounded-lg bg-red-500/15 px-3 py-2 text-xs font-medium text-red-400">Reject</button></>}</div></div>
                   </article>
                 ))
               } />
@@ -1003,71 +942,27 @@ export default function RequestsPage() {
         </div>
       )}
 
-      {/* QR Approval modal (librarian only) — shows a unique QR the borrower
-          scans with their phone to confirm and approve the request. */}
-      {qrApprovalTarget && (
-        <QRApprovalModal
-          request={qrApprovalTarget}
-          onClose={() => setQrApprovalTarget(null)}
-          onApproved={() => handleQRApproved(qrApprovalTarget)}
+      {approvalReceipt && (
+        <QRDisplayModal
+          open={Boolean(approvalReceipt)}
+          onClose={() => setApprovalReceipt(null)}
+          qrCodeDataUrl={approvalReceipt.qrCode || ""}
+          transactionId={approvalReceipt.transactionId}
+          title="Transaction Approved"
+          description="Share or print this QR code for the member. Scanning it opens their read-only transaction details."
         />
       )}
 
-      {/* QRScanner owns the camera viewport and manual transaction fallback. */}
-      {qrScannerRequest && (
+      {!isLibrarian && transactionScannerOpen && (
         <QRScanner
-          onScan={handleQRScan}
-          onClose={() => setQrScannerRequest(null)}
-          loading={qrScannerLoading}
-        />
-      )}
-
-      {batchScannerOpen && (
-        <QRScanner
-          onScan={handleBatchLookup}
-          onClose={() => setBatchScannerOpen(false)}
-          loading={batchLookupLoading}
-          title="Find Borrow Transaction"
-          entryHint="Scan the member's QR or enter the TXN ID printed beneath it."
-          placeholder="TXN-2026-..."
+          onScan={handleTransactionScan}
+          onClose={() => setTransactionScannerOpen(false)}
+          title="Scan / Find Transaction"
+          entryHint="Scan the librarian-issued QR code or enter the Transaction ID printed below it."
+          placeholder="12345678"
           submitLabel="Find"
-          externalError={batchLookupError}
+          externalError={transactionLookupError}
         />
-      )}
-
-      {batchLookupTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setBatchLookupTarget(null)} />
-          <div className="relative z-50 w-full max-w-xl rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl shadow-black/50">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3 className="text-lg font-semibold text-white">Borrow Transaction</h3>
-                <p className="mt-1 break-all font-mono text-sm text-blue-300">{batchLookupTarget.transactionId}</p>
-              </div>
-              <button type="button" onClick={() => setBatchLookupTarget(null)} className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-800 hover:text-white" aria-label="Close transaction details">×</button>
-            </div>
-            <div className="mt-5 grid grid-cols-2 gap-3 border-y border-zinc-800 py-4 text-sm">
-              <div><p className="text-xs text-zinc-500">Member</p><p className="mt-1 font-medium text-zinc-100">{batchLookupTarget.user?.firstName} {batchLookupTarget.user?.lastName}</p></div>
-              <div><p className="text-xs text-zinc-500">Library ID</p><p className="mt-1 text-zinc-200">{batchLookupTarget.user?.libraryId || "—"}</p></div>
-              <div className="col-span-2"><p className="text-xs text-zinc-500">Status</p><p className="mt-1 text-zinc-200">{reqStatusLabel[batchLookupTarget.status] || batchLookupTarget.status}</p></div>
-            </div>
-            <div className="max-h-64 divide-y divide-zinc-800 overflow-y-auto">
-              {(batchLookupTarget.books || []).map((book: any) => (
-                <div key={book.requestId || book.bookId} className="flex items-start justify-between gap-4 py-3">
-                  <div className="min-w-0"><p className="font-medium text-zinc-100">{book.title}</p><p className="mt-1 text-xs text-zinc-500">Accession: {book.accessionNo || "—"}</p></div>
-                  <div className="shrink-0 text-right"><p className="text-xs text-zinc-500">Due date</p><p className="mt-1 text-sm text-zinc-200">{formatDate(book.dueDate)}</p></div>
-                </div>
-              ))}
-            </div>
-            {batchLookupError && <p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{batchLookupError}</p>}
-            <div className="mt-5 flex justify-end gap-3">
-              <button type="button" onClick={() => setBatchLookupTarget(null)} className="rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2.5 text-sm font-medium text-zinc-200 hover:bg-zinc-700">Close</button>
-              <button type="button" onClick={approveLookedUpBatch} disabled={batchLookupTarget.status !== "PENDING" || batchApprovalLoading} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50">
-                <CheckCircle2 className="h-4 w-4" /> {batchApprovalLoading ? "Confirming..." : "Confirm Pickup & Mark Borrowed"}
-              </button>
-            </div>
-          </div>
-        </div>
       )}
 
       {selectedNote !== null && (

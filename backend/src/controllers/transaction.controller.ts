@@ -73,7 +73,8 @@ export const getBorrowRequest = asyncHandler(
 
 export const getBorrowRequestBatch = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
-    const transaction = await transactionService.getBorrowRequestBatch(req.params.transactionId);
+    const userId = req.user!.role === 'LIBRARIAN' ? undefined : req.user!.userId;
+    const transaction = await transactionService.getBorrowRequestBatch(req.params.transactionId, userId);
     sendSuccess(res, transaction);
   }
 );
@@ -81,7 +82,7 @@ export const getBorrowRequestBatch = asyncHandler(
 export const approveBorrowRequestBatch = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const result = await transactionService.approveTransactionBatch(
-      req.params.transactionId,
+      req.params.batchId,
       req.user!.userId
     );
     sendSuccess(res, result, 'Borrow transaction approved');

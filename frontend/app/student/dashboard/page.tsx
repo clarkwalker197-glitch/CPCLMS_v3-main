@@ -12,7 +12,6 @@ import BorrowHistoryCard from "@/components/BorrowHistoryCard";
 import api from "@/lib/api";
 import { offlineDb } from "@/lib/offline-db";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   BookMarked,
   Clock,
@@ -31,7 +30,6 @@ const statusBadge: Record<string, string> = {
 
 export default function StudentDashboardPage() {
   const { user } = useAuth();
-  const router = useRouter();
   const [stats, setStats] = useState<any>(null);
   const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
   const [dueSoon, setDueSoon] = useState<any[]>([]);
@@ -121,7 +119,7 @@ const formatDate = (d?: string) =>
             </div>
 
             {/* Stats */}
-            <div className="grid grid-cols-2 gap-4 mb-8 md:grid-cols-3">
+            <div className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-3">
               {loading
                 ? Array.from({ length: 3 }).map((_, i) => (
                     <div key={i} className="h-32 rounded-2xl bg-zinc-900 animate-pulse" />

@@ -30,7 +30,7 @@ function generateApprovalCode(): string {
 }
 
 function generateTransactionId(): string {
-  return `TXN-${new Date().getFullYear()}-${crypto.randomUUID().toUpperCase()}`;
+  return crypto.randomInt(0, 100_000_000).toString().padStart(8, '0');
 }
 
 function hashQrToken(token: string): string {
@@ -59,6 +59,19 @@ export class TransactionService {
     const dueDate = new Date(borrowDate);
     dueDate.setDate(dueDate.getDate() + borrowDays);
     return dueDate;
+  }
+
+  private async generateUniqueTransactionId(tx: Prisma.TransactionClient): Promise<string> {
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(2026093001::bigint)`;
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const candidate = generateTransactionId();
+      const [existingRequest, existingTransaction] = await Promise.all([
+        tx.borrowRequest.findFirst({ where: { transactionId: candidate }, select: { id: true } }),
+        tx.borrowTransaction.findFirst({ where: { transactionId: candidate }, select: { id: true } }),
+      ]);
+      if (!existingRequest && !existingTransaction) return candidate;
+    }
+    throw new ConflictError('Could not allocate a unique transaction ID. Please retry approval.');
   }
 
   /**
@@ -93,8 +106,7 @@ export class TransactionService {
       throw new BadRequestError('Your account is deactivated. Contact a librarian.');
     }
 
-    const transactionId = generateTransactionId();
-    const qrCode = await generateQRFromText(transactionId);
+    const requestBatchId = crypto.randomUUID();
     const created = await prisma.$transaction(async (tx) => {
       const books = await tx.$queryRaw<Array<{ id: string; title: string; status: string; availableCopies: number }>>`
         SELECT id, title, status, available_copies AS "availableCopies"
@@ -187,7 +199,7 @@ export class TransactionService {
       const created: any[] = [];
       for (const bookId of uniqueBookIds) {
         const request = await tx.borrowRequest.create({
-          data: { userId, bookId, notes, transactionId },
+          data: { userId, bookId, notes, requestBatchId },
           include: {
             book: { select: { id: true, title: true, author: true, accessionNo: true, isbn: true } },
             user: { select: { firstName: true, lastName: true, libraryId: true, role: true } },
@@ -217,7 +229,7 @@ export class TransactionService {
             action: 'BORROW_REQUEST',
             entity: 'BorrowRequest',
             entityId: request.id,
-            details: { bookTitle: request.book.title, bookId: request.bookId, transactionId },
+            details: { bookTitle: request.book.title, bookId: request.bookId, requestBatchId },
           },
         })
       )
@@ -230,7 +242,9 @@ export class TransactionService {
       '/requests'
     );
 
-    return { transactionId, qrCode, requests: created };
+    return {
+      requests: created.map(({ requestBatchId: _requestBatchId, transactionId: _transactionId, ...request }) => request),
+    };
   }
 
   /**
@@ -252,8 +266,8 @@ export class TransactionService {
     if (request.status !== 'PENDING') {
       throw new BadRequestError('Request has already been processed');
     }
-    if (request.transactionId) {
-      return this.approveTransactionBatch(request.transactionId, librarianId);
+    if (request.requestBatchId || request.transactionId) {
+      return this.approveTransactionBatch(request.requestBatchId || request.transactionId!, librarianId);
     }
     if (request.book.availableCopies < 1) {
       throw new BadRequestError('No copies available for this book');
@@ -367,9 +381,15 @@ export class TransactionService {
     return { ...transaction, qrCode: qrCodeDataUrl, approvalCode };
   }
 
-  async approveTransactionBatch(transactionId: string, librarianId: string) {
+  async approveTransactionBatch(requestBatchId: string, librarianId: string) {
+    const requestBatchWhere = {
+      OR: [
+        { requestBatchId },
+        { transactionId: requestBatchId },
+      ],
+    };
     const requests = await prisma.borrowRequest.findMany({
-      where: { transactionId },
+      where: requestBatchWhere,
       include: {
         book: true,
         user: true,
@@ -389,6 +409,8 @@ export class TransactionService {
       throw new BadRequestError('Transaction request contains multiple members');
     }
     const bookIds = requests.map((request) => request.bookId);
+    let transactionId = '';
+    let qrCode = '';
     const borrowDate = new Date();
     const dueDate = await this.calculateBorrowDueDate(user, borrowDate);
     const maxBooks = user.role === Role.STUDENT
@@ -398,9 +420,11 @@ export class TransactionService {
         : 999;
 
     const transactions = await prisma.$transaction(async (tx) => {
+      transactionId = await this.generateUniqueTransactionId(tx);
+      qrCode = await generateQRFromText(transactionId);
       const claimed = await tx.borrowRequest.updateMany({
-        where: { transactionId, status: 'PENDING' },
-        data: { status: 'APPROVED', processedById: librarianId, processedAt: borrowDate },
+        where: { ...requestBatchWhere, status: 'PENDING' },
+        data: { transactionId, status: 'APPROVED', processedById: librarianId, processedAt: borrowDate },
       });
       if (claimed.count !== requests.length) {
         throw new BadRequestError('This transaction has already been processed');
@@ -459,7 +483,7 @@ export class TransactionService {
           userId: user.id,
           type: 'REQUEST_APPROVED',
           title: 'Borrow Transaction Approved',
-          message: `Your ${requests.length}-book request (${transactionId}) is approved. Due date: ${dueDate.toLocaleDateString()}.`,
+          message: `Your request for ${requests.length} book(s) is approved. Due date: ${dueDate.toLocaleDateString()}.`,
           link: '/transactions',
         },
       });
@@ -503,7 +527,7 @@ export class TransactionService {
       }
     }
 
-    return { transactionId, dueDate, transactions };
+    return { transactionId, qrCode, dueDate, transactions };
   }
 
   /**
@@ -595,9 +619,9 @@ export class TransactionService {
     return request;
   }
 
-  async getBorrowRequestBatch(transactionId: string) {
+  async getBorrowRequestBatch(transactionId: string, userId?: string) {
     const requests = await prisma.borrowRequest.findMany({
-      where: { transactionId },
+      where: { transactionId, ...(userId ? { userId } : {}) },
       include: {
         user: { select: { id: true, firstName: true, lastName: true, libraryId: true, role: true, maxBorrowDays: true } },
         book: { select: { id: true, title: true, author: true, accessionNo: true } },
@@ -605,20 +629,19 @@ export class TransactionService {
       orderBy: { requestDate: 'asc' },
     });
     if (!requests.length) throw new NotFoundError('Borrow transaction');
+    if (requests.some((request) => request.status !== 'APPROVED')) {
+      throw new NotFoundError('Borrow transaction');
+    }
 
     const transactions = await prisma.borrowTransaction.findMany({
       where: { transactionId },
       select: { bookId: true, dueDate: true, status: true },
     });
-    const status = requests[0].status;
-    let previewDueDate: Date | undefined;
-    if (status === 'PENDING') {
-      previewDueDate = await this.calculateBorrowDueDate(requests[0].user, new Date());
-    }
+    const transactionStatuses = Array.from(new Set(transactions.map((transaction) => transaction.status)));
 
     return {
       transactionId,
-      status,
+      status: transactionStatuses.length === 1 ? transactionStatuses[0] : 'PARTIALLY_RETURNED',
       user: requests[0].user,
       books: requests.map((request) => ({
         requestId: request.id,
@@ -626,8 +649,8 @@ export class TransactionService {
         title: request.book.title,
         author: request.book.author,
         accessionNo: request.book.accessionNo,
-        status: request.status,
-        dueDate: transactions.find((transaction) => transaction.bookId === request.bookId)?.dueDate ?? previewDueDate ?? null,
+        status: transactions.find((transaction) => transaction.bookId === request.bookId)?.status ?? request.status,
+        dueDate: transactions.find((transaction) => transaction.bookId === request.bookId)?.dueDate ?? null,
       })),
     };
   }
@@ -678,7 +701,7 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
     const allRows = Array.from(new Map([...matchingRows, ...siblingRows].map((request) => [request.id, request])).values());
     const grouped = new Map<string, typeof allRows>();
     for (const request of allRows) {
-      const key = request.transactionId || `legacy:${request.id}`;
+      const key = request.requestBatchId || request.transactionId || `legacy:${request.id}`;
       const group = grouped.get(key) || [];
       group.push(request);
       grouped.set(key, group);
@@ -691,13 +714,12 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
       const first = group[0];
       return {
         id: first.id,
-        transactionId: first.transactionId,
+        ...(!userId ? { requestBatchId: first.requestBatchId, transactionId: first.transactionId } : {}),
         user: first.user,
         status: first.status,
         requestDate: first.requestDate,
         notes: first.notes,
         books: group.map((request) => ({ ...request.book, requestId: request.id, status: request.status })),
-        requests: group,
       };
     });
 

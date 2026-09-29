@@ -19,8 +19,8 @@ export function QRScanner({
   onClose,
   loading = false,
   title = "Scan QR Code",
-  entryHint = "If QR scan fails, you can enter the Transaction ID (BRW-XXXX-XXXXX format)",
-  placeholder = "Enter Transaction ID (e.g. BRW-1234-56789)",
+  entryHint = "If QR scan fails, enter the 8-digit Transaction ID.",
+  placeholder = "12345678",
   submitLabel = "Submit",
   externalError = "",
 }: QRScannerProps) {
@@ -245,7 +245,10 @@ export function QRScanner({
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const nextValue = manualInput.trim();
-    if (!nextValue) return;
+    if (!/^\d{8}$/.test(nextValue)) {
+      setError("Enter the 8-digit Transaction ID.");
+      return;
+    }
 
     setLastResult(nextValue);
     setError("");
@@ -324,7 +327,7 @@ export function QRScanner({
         {/* Manual entry */}
         <form onSubmit={handleManualSubmit} className="mb-3">
           <label className="block text-sm font-medium text-zinc-700 mb-1">
-            Or enter Transaction ID manually
+            Or enter the 8-digit Transaction ID manually
           </label>
           <p className="text-xs text-zinc-500 mb-2">
             {entryHint}
@@ -333,13 +336,16 @@ export function QRScanner({
             <input
               type="text"
               value={manualInput}
-              onChange={(e) => setManualInput(e.target.value.toUpperCase())}
+              onChange={(e) => setManualInput(e.target.value.replace(/\D/g, "").slice(0, 8))}
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={8}
               placeholder={placeholder}
               className="flex-1 px-3 py-2 border border-zinc-300 rounded-lg bg-white text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono uppercase"
             />
             <button
               type="submit"
-              disabled={!manualInput.trim()}
+              disabled={!/^\d{8}$/.test(manualInput.trim())}
               className="px-4 py-2 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors font-medium"
             >
               {submitLabel}

@@ -531,8 +531,8 @@ async createBorrowRequest(data: {
     return this.get(`/transactions/requests/transaction/${encodeURIComponent(transactionId)}`);
   }
 
-  async approveBorrowRequestBatch(transactionId: string): Promise<ApiResponse<any>> {
-    return this.put(`/transactions/requests/transaction/${encodeURIComponent(transactionId)}/approve`);
+  async approveBorrowRequestBatch(batchId: string): Promise<ApiResponse<any>> {
+    return this.put(`/transactions/requests/transaction/${encodeURIComponent(batchId)}/approve`);
   }
 
   async getBorrowRequests(params?: Record<string, string>): Promise<ApiResponse<any[]>> {

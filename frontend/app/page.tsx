@@ -31,9 +31,20 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
-      <header className="relative overflow-hidden border-b border-zinc-800">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(37,99,235,0.18),transparent_42%),radial-gradient(circle_at_bottom_left,rgba(14,165,233,0.08),transparent_36%)]" />
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <header className="relative overflow-hidden border-b border-zinc-800 bg-[#050a19]">
+        <video
+          aria-hidden="true"
+          autoPlay
+          muted
+          loop
+          playsInline
+          className="pointer-events-none absolute inset-0 z-0 h-full w-full object-cover opacity-[0.35]"
+        >
+          <source src="/videos/cpclms.mp4" type="video/mp4" />
+        </video>
+        <div className="absolute inset-0 z-[1] bg-[rgba(5,10,25,0.7)]" />
+        <div className="absolute inset-0 z-[2] bg-[radial-gradient(circle_at_top_right,rgba(37,99,235,0.18),transparent_42%),radial-gradient(circle_at_bottom_left,rgba(14,165,233,0.08),transparent_36%)]" />
+        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <nav className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               {/* eslint-disable-next-line @next/next/no-img-element */}

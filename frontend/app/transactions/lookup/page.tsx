@@ -13,13 +13,13 @@ function TransactionLookupContent() {
   const router = useRouter();
   const { user, loading: authLoading, isAuthenticated } = useAuth();
   const transactionId = params.get("transactionId")?.trim() || "";
-  const [manualId, setManualId] = useState(transactionId);
+  const [manualId, setManualId] = useState(/^\d{0,8}$/.test(transactionId) ? transactionId : "");
   const [transaction, setTransaction] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    setManualId(transactionId);
+    setManualId(/^\d{0,8}$/.test(transactionId) ? transactionId : "");
     setTransaction(null);
     setError("");
     if (!transactionId || authLoading || !isAuthenticated) return;
@@ -45,7 +45,8 @@ function TransactionLookupContent() {
   const submitLookup = (event: React.FormEvent) => {
     event.preventDefault();
     const value = manualId.trim();
-    if (value) router.push(`/transactions/lookup?transactionId=${encodeURIComponent(value)}`);
+    if (/^\d{8}$/.test(value)) router.push(`/transactions/lookup?transactionId=${encodeURIComponent(value)}`);
+    else setError("Enter the 8-digit Transaction ID.");
   };
 
   const formatDate = (value?: string | null) => value
@@ -79,9 +80,9 @@ function TransactionLookupContent() {
               <form onSubmit={submitLookup} className="mb-6 flex flex-col gap-3 border-b border-zinc-800 pb-6 sm:flex-row sm:items-end">
                 <div className="min-w-0 flex-1">
                   <label htmlFor="transaction-id" className="mb-2 block text-sm font-medium text-zinc-300">Transaction ID</label>
-                  <input id="transaction-id" value={manualId} onChange={(event) => setManualId(event.target.value)} placeholder="Enter Transaction ID" className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2.5 font-mono text-sm text-white placeholder:font-sans placeholder:text-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
+                  <input id="transaction-id" value={manualId} onChange={(event) => setManualId(event.target.value.replace(/\D/g, "").slice(0, 8))} inputMode="numeric" pattern="[0-9]*" maxLength={8} placeholder="12345678" className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2.5 font-mono text-sm text-white placeholder:font-sans placeholder:text-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
                 </div>
-                <button type="submit" disabled={!manualId.trim() || authLoading} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
+                <button type="submit" disabled={!/^\d{8}$/.test(manualId.trim()) || authLoading} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
                   <Search className="h-4 w-4" /> Find
                 </button>
               </form>

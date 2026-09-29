@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
+import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { useDebounce } from "@/lib/useDebounce";
 import Sidebar from "@/components/Sidebar";
@@ -50,6 +51,7 @@ const reqStatusLabel: Record<string, string> = {
 
 export default function RequestsPage() {
   const { user } = useAuth();
+  const router = useRouter();
   const isLibrarian = user?.role === "LIBRARIAN";
 
   // Borrowed books remain available to students and faculty only.
@@ -105,11 +107,10 @@ export default function RequestsPage() {
   const [rejectLoading, setRejectLoading] = useState(false);
   const [rejectError, setRejectError] = useState("");
 
-  const [batchScannerOpen, setBatchScannerOpen] = useState(false);
-  const [batchLookupTarget, setBatchLookupTarget] = useState<any>(null);
-  const [batchLookupLoading, setBatchLookupLoading] = useState(false);
-  const [batchLookupError, setBatchLookupError] = useState("");
   const [approvalReceipt, setApprovalReceipt] = useState<any | null>(null);
+  const [transactionLookupId, setTransactionLookupId] = useState("");
+  const [transactionScannerOpen, setTransactionScannerOpen] = useState(false);
+  const [transactionLookupError, setTransactionLookupError] = useState("");
 
   const loadTransactions = useCallback(async () => {
     if (isLibrarian) return;
@@ -300,31 +301,6 @@ export default function RequestsPage() {
   };
 
 // ── Borrow requests actions ──
-  const handleBatchLookup = async (rawTransactionId: string) => {
-    let transactionId = rawTransactionId.trim();
-    try {
-      transactionId = new URL(rawTransactionId).searchParams.get("transactionId") || transactionId;
-    } catch {
-      transactionId = transactionId.toUpperCase();
-    }
-    if (!transactionId) return;
-    setBatchLookupLoading(true);
-    setBatchLookupError("");
-    try {
-      const response = await api.getBorrowRequestBatch(transactionId);
-      if (!response.success || !response.data) {
-        setBatchLookupError(response.error || "No borrow transaction found for that ID.");
-        return;
-      }
-      setBatchLookupTarget(response.data);
-      setBatchScannerOpen(false);
-    } catch {
-      setBatchLookupError("Unable to look up this transaction.");
-    } finally {
-      setBatchLookupLoading(false);
-    }
-  };
-
   const approveListedBatch = async (request: any) => {
     const requestBatchId = request.requestBatchId || request.transactionId;
     if (!requestBatchId) {
@@ -354,6 +330,35 @@ export default function RequestsPage() {
     setRejectTarget(request);
     setRejectReason("");
     setRejectError("");
+  };
+
+  const handleTransactionLookup = (event: React.FormEvent) => {
+    event.preventDefault();
+    const transactionId = transactionLookupId.trim();
+    if (/^\d{8}$/.test(transactionId)) {
+      router.push(`/transactions/lookup?transactionId=${encodeURIComponent(transactionId)}`);
+    } else {
+      setTransactionLookupError("Enter the 8-digit Transaction ID.");
+    }
+  };
+
+  const handleTransactionScan = async (value: string) => {
+    let transactionId = value.trim();
+    let scannedLookupUrl = false;
+    try {
+      const urlTransactionId = new URL(value).searchParams.get("transactionId");
+      if (urlTransactionId) {
+        transactionId = urlTransactionId;
+        scannedLookupUrl = true;
+      }
+    } catch {}
+    if (!scannedLookupUrl && !/^\d{8}$/.test(transactionId)) {
+      setTransactionLookupError("Scan a valid transaction QR or enter the 8-digit ID.");
+      return;
+    }
+    setTransactionLookupError("");
+    setTransactionScannerOpen(false);
+    router.push(`/transactions/lookup?transactionId=${encodeURIComponent(transactionId)}`);
   };
 
   const handleReject = async () => {
@@ -500,16 +505,34 @@ export default function RequestsPage() {
                   Review and manage borrowing transactions · {reqTotal} total
                 </p>
               </div>
-              {isLibrarian && (
-                <button
-                  type="button"
-                  onClick={() => { setBatchLookupError(""); setBatchScannerOpen(true); }}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
-                >
-                  <QrCode className="h-4 w-4" /> Scan / Find Transaction
-                </button>
-              )}
             </div>
+
+            {!isLibrarian && (
+              <div className="mb-4 border-b border-zinc-800 pb-4">
+                <form onSubmit={handleTransactionLookup} className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <div className="min-w-0 flex-1">
+                    <label htmlFor="request-transaction-lookup" className="mb-2 block text-sm font-medium text-zinc-200">Scan / Find Transaction</label>
+                    <input
+                      id="request-transaction-lookup"
+                      value={transactionLookupId}
+                      onChange={(event) => setTransactionLookupId(event.target.value.replace(/\D/g, "").slice(0, 8))}
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={8}
+                      placeholder="12345678"
+                      className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2.5 font-mono text-sm text-white placeholder:font-sans placeholder:text-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                    />
+                  </div>
+                  <button type="submit" disabled={!/^\d{8}$/.test(transactionLookupId.trim())} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
+                    <Search className="h-4 w-4" /> Find
+                  </button>
+                  <button type="button" onClick={() => { setTransactionLookupError(""); setTransactionScannerOpen(true); }} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-zinc-200 hover:border-blue-500 hover:text-white">
+                    <QrCode className="h-4 w-4" /> Scan QR
+                  </button>
+                </form>
+                {transactionLookupError && <p role="alert" className="mt-2 text-sm text-amber-300">{transactionLookupError}</p>}
+              </div>
+            )}
 
             {/* Toolbar */}
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 mb-4">
@@ -930,49 +953,16 @@ export default function RequestsPage() {
         />
       )}
 
-      {batchScannerOpen && (
+      {!isLibrarian && transactionScannerOpen && (
         <QRScanner
-          onScan={handleBatchLookup}
-          onClose={() => setBatchScannerOpen(false)}
-          loading={batchLookupLoading}
-          title="Find Borrow Transaction"
-          entryHint="Scan the member's QR or enter the TXN ID printed beneath it."
-          placeholder="TXN-2026-..."
+          onScan={handleTransactionScan}
+          onClose={() => setTransactionScannerOpen(false)}
+          title="Scan / Find Transaction"
+          entryHint="Scan the librarian-issued QR code or enter the Transaction ID printed below it."
+          placeholder="12345678"
           submitLabel="Find"
-          externalError={batchLookupError}
+          externalError={transactionLookupError}
         />
-      )}
-
-      {batchLookupTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setBatchLookupTarget(null)} />
-          <div className="relative z-50 w-full max-w-xl rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl shadow-black/50">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3 className="text-lg font-semibold text-white">Borrow Transaction</h3>
-                <p className="mt-1 break-all font-mono text-sm text-blue-300">{batchLookupTarget.transactionId}</p>
-              </div>
-              <button type="button" onClick={() => setBatchLookupTarget(null)} className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-800 hover:text-white" aria-label="Close transaction details">×</button>
-            </div>
-            <div className="mt-5 grid grid-cols-2 gap-3 border-y border-zinc-800 py-4 text-sm">
-              <div><p className="text-xs text-zinc-500">Member</p><p className="mt-1 font-medium text-zinc-100">{batchLookupTarget.user?.firstName} {batchLookupTarget.user?.lastName}</p></div>
-              <div><p className="text-xs text-zinc-500">Library ID</p><p className="mt-1 text-zinc-200">{batchLookupTarget.user?.libraryId || "—"}</p></div>
-              <div className="col-span-2"><p className="text-xs text-zinc-500">Status</p><p className="mt-1 text-zinc-200">{reqStatusLabel[batchLookupTarget.status] || batchLookupTarget.status}</p></div>
-            </div>
-            <div className="max-h-64 divide-y divide-zinc-800 overflow-y-auto">
-              {(batchLookupTarget.books || []).map((book: any) => (
-                <div key={book.requestId || book.bookId} className="flex items-start justify-between gap-4 py-3">
-                  <div className="min-w-0"><p className="font-medium text-zinc-100">{book.title}</p><p className="mt-1 text-xs text-zinc-500">Accession: {book.accessionNo || "—"}</p></div>
-                  <div className="shrink-0 text-right"><p className="text-xs text-zinc-500">Due date</p><p className="mt-1 text-sm text-zinc-200">{formatDate(book.dueDate)}</p></div>
-                </div>
-              ))}
-            </div>
-            {batchLookupError && <p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{batchLookupError}</p>}
-            <div className="mt-5 flex justify-end">
-              <button type="button" onClick={() => setBatchLookupTarget(null)} className="rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2.5 text-sm font-medium text-zinc-200 hover:bg-zinc-700">Close</button>
-            </div>
-          </div>
-        </div>
       )}
 
       {selectedNote !== null && (

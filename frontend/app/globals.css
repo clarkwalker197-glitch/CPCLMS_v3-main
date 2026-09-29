@@ -1,5 +1,20 @@
 @import "tailwindcss";
 
+@keyframes cpc-route-enter {
+  from { opacity: 0; transform: translateY(7px); }
+  to { opacity: 1; transform: none; }
+}
+
+.page-route-enter {
+  animation: cpc-route-enter 200ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-route-enter {
+    animation: none;
+  }
+}
+
 @keyframes mobile-more-sheet-in {
   from {
     opacity: 0;

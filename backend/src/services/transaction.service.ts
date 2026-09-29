@@ -30,7 +30,7 @@ function generateApprovalCode(): string {
 }
 
 function generateTransactionId(): string {
-  return `TXN-${new Date().getFullYear()}-${crypto.randomUUID().toUpperCase()}`;
+  return crypto.randomInt(0, 100_000_000).toString().padStart(8, '0');
 }
 
 function hashQrToken(token: string): string {
@@ -59,6 +59,19 @@ export class TransactionService {
     const dueDate = new Date(borrowDate);
     dueDate.setDate(dueDate.getDate() + borrowDays);
     return dueDate;
+  }
+
+  private async generateUniqueTransactionId(tx: Prisma.TransactionClient): Promise<string> {
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(2026093001::bigint)`;
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const candidate = generateTransactionId();
+      const [existingRequest, existingTransaction] = await Promise.all([
+        tx.borrowRequest.findFirst({ where: { transactionId: candidate }, select: { id: true } }),
+        tx.borrowTransaction.findFirst({ where: { transactionId: candidate }, select: { id: true } }),
+      ]);
+      if (!existingRequest && !existingTransaction) return candidate;
+    }
+    throw new ConflictError('Could not allocate a unique transaction ID. Please retry approval.');
   }
 
   /**
@@ -396,12 +409,10 @@ export class TransactionService {
       throw new BadRequestError('Transaction request contains multiple members');
     }
     const bookIds = requests.map((request) => request.bookId);
-    const transactionId = generateTransactionId();
+    let transactionId = '';
+    let qrCode = '';
     const borrowDate = new Date();
     const dueDate = await this.calculateBorrowDueDate(user, borrowDate);
-    const frontendUrl = (Array.isArray(env.FRONTEND_URL) ? env.FRONTEND_URL[0] : env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
-    const lookupUrl = `${frontendUrl}/transactions/lookup?transactionId=${encodeURIComponent(transactionId)}`;
-    const qrCode = await generateQRFromText(lookupUrl);
     const maxBooks = user.role === Role.STUDENT
       ? user.maxBooksAllowed ?? await policyService.getNumber('MAX_BOOKS_PER_USER', 3)
       : user.role === Role.FACULTY
@@ -409,6 +420,8 @@ export class TransactionService {
         : 999;
 
     const transactions = await prisma.$transaction(async (tx) => {
+      transactionId = await this.generateUniqueTransactionId(tx);
+      qrCode = await generateQRFromText(transactionId);
       const claimed = await tx.borrowRequest.updateMany({
         where: { ...requestBatchWhere, status: 'PENDING' },
         data: { transactionId, status: 'APPROVED', processedById: librarianId, processedAt: borrowDate },
@@ -514,7 +527,7 @@ export class TransactionService {
       }
     }
 
-    return { transactionId, lookupUrl, qrCode, dueDate, transactions };
+    return { transactionId, qrCode, dueDate, transactions };
   }
 
   /**

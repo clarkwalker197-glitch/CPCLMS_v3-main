@@ -214,6 +214,7 @@ model BorrowRequest {
   book          Book          @relation(fields: [bookId], references: [id])
   requestDate   DateTime      @default(now()) @map("request_date")
   status        RequestStatus @default(PENDING)
+  requestBatchId String?      @map("request_batch_id")
   transactionId String?       @map("transaction_id")
   notes         String?
   approvalCode  String?       @unique @map("approval_code") /// Transaction ID (e.g. BRW-1234-567) for QR approval
@@ -231,6 +232,7 @@ model BorrowRequest {
   @@index([bookId])
   @@index([status])
   @@index([requestDate])
+  @@index([requestBatchId])
   @@index([transactionId])
   @@index([approvalCode])
   @@map("borrow_requests")

@@ -8,7 +8,6 @@ import MediaImage from "@/components/MediaImage";
 import { offlineDb } from "@/lib/offline-db";
 import { useDebounce } from "@/lib/useDebounce";
 import { BookBorrowModal } from "@/components/BookBorrowModal";
-import { QRDisplayModal } from "@/components/QRDisplayModal";
 import { AddBookModal } from "@/components/AddBookModal";
 import { EditBookModal } from "@/components/EditBookModal";
 import MobileBookTypeSelect from "@/components/MobileBookTypeSelect";
@@ -59,7 +58,6 @@ export default function BooksPage() {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [cart, setCart] = useState<any[]>([]);
   const [showBorrowModal, setShowBorrowModal] = useState(false);
-  const [requestReceipt, setRequestReceipt] = useState<any | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedBook, setSelectedBook] = useState<any | null>(null);
@@ -170,11 +168,10 @@ export default function BooksPage() {
     setShowBorrowModal(true);
   };
 
-  const handleBorrowSuccess = (submission?: any, queued = false) => {
+  const handleBorrowSuccess = (queued = false) => {
     setSuccessMsg(queued
-      ? "Borrow request queued. Your Transaction ID and QR will be available after reconnecting."
-      : "Borrow request submitted successfully!");
-    if (!queued && submission?.transactionId && submission?.qrCode) setRequestReceipt(submission);
+      ? "Request saved offline and will be sent when you reconnect."
+      : "Request sent! Waiting for librarian approval.");
     setCart([]);
     loadData();
     setTimeout(() => setSuccessMsg(""), 4000);
@@ -741,14 +738,6 @@ export default function BooksPage() {
               onSuccess={handleBorrowSuccess}
             />
           )}
-          <QRDisplayModal
-            open={Boolean(requestReceipt)}
-            onClose={() => setRequestReceipt(null)}
-            qrCodeDataUrl={requestReceipt?.qrCode || ""}
-            transactionId={requestReceipt?.transactionId}
-            title="Borrow Request Sent"
-            description="Your request has been sent. Show this QR code or Transaction ID at the counter once approved."
-          />
 
           <AddBookModal
             open={showAddModal}

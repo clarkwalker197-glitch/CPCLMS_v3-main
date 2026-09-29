@@ -17,20 +17,15 @@ import {
 
 const router = Router();
 
-// ── Public QR Approval Confirmation ─────────────────────
-// The borrower opens this via the QR deep link on their phone.
-// Authorization is the token embedded in the QR, NOT a JWT session,
-// so this must be registered BEFORE the global authenticate middleware.
-router.post('/requests/approve-qr', qrApprovalLimiter, validate(approveByQRCodeSchema), transactionController.approveByQRCode);
-
 // All transaction routes require authentication
 router.use(authenticate);
 
 // ── Borrow Requests ──────────────────────────────────────
+router.post('/requests/approve-qr', authorize('LIBRARIAN'), qrApprovalLimiter, validate(approveByQRCodeSchema), transactionController.approveByQRCode);
 router.post('/requests', validate(createBorrowRequestSchema), transactionController.createBorrowRequest);
 router.get('/requests', transactionController.listBorrowRequests);
-router.get('/requests/transaction/:transactionId', authorize('LIBRARIAN'), transactionController.getBorrowRequestBatch);
-router.put('/requests/transaction/:transactionId/approve', authorize('LIBRARIAN'), transactionController.approveBorrowRequestBatch);
+router.get('/requests/transaction/:transactionId', transactionController.getBorrowRequestBatch);
+router.put('/requests/transaction/:batchId/approve', authorize('LIBRARIAN'), transactionController.approveBorrowRequestBatch);
 router.get('/requests/:id', transactionController.getBorrowRequest);
 router.put('/requests/:id/approve', authorize('LIBRARIAN'), transactionController.approveRequest);
 router.put('/requests/:id/reject', authorize('LIBRARIAN'), validate(rejectRequestSchema), transactionController.rejectRequest);

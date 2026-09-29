@@ -17,6 +17,7 @@ import {
   BookMarked,
   Clock,
   Coins,
+  Search,
 } from "lucide-react";
 
 const statusBadge: Record<string, string> = {
@@ -36,6 +37,7 @@ export default function StudentDashboardPage() {
   const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
   const [dueSoon, setDueSoon] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [transactionLookupId, setTransactionLookupId] = useState("");
 
   useEffect(() => {
     async function load() {
@@ -85,6 +87,13 @@ const statsCards = [
 
 const formatDate = (d?: string) =>
     d ? new Date(d).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" }) : "—";
+  const handleTransactionLookup = (event: React.FormEvent) => {
+    event.preventDefault();
+    const transactionId = transactionLookupId.trim();
+    if (transactionId) {
+      router.push(`/transactions/lookup?transactionId=${encodeURIComponent(transactionId)}`);
+    }
+  };
   const displayStatus = (tx: any) => tx.status === "ACTIVE" && tx.dueDate && new Date(tx.dueDate) < new Date(new Date().setHours(0, 0, 0, 0)) ? "OVERDUE" : tx.status;
 
   return (
@@ -130,6 +139,22 @@ const formatDate = (d?: string) =>
                     <StatCard key={card.title} {...card} />
                   ))}
             </div>
+
+            <form onSubmit={handleTransactionLookup} className="mb-8 flex flex-col gap-3 border-b border-zinc-800 pb-6 sm:flex-row sm:items-end">
+              <div className="min-w-0 flex-1">
+                <label htmlFor="transaction-lookup" className="mb-2 block text-sm font-medium text-zinc-200">Look up a transaction</label>
+                <input
+                  id="transaction-lookup"
+                  value={transactionLookupId}
+                  onChange={(event) => setTransactionLookupId(event.target.value)}
+                  placeholder="Enter Transaction ID"
+                  className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2.5 font-mono text-sm text-white placeholder:font-sans placeholder:text-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                />
+              </div>
+              <button type="submit" disabled={!transactionLookupId.trim()} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
+                <Search className="h-4 w-4" /> Find
+              </button>
+            </form>
 
             {/* Content */}
             <div className="grid grid-cols-1 gap-6">

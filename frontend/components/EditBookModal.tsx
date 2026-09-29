@@ -62,7 +62,6 @@ export function EditBookModal(props: {
     categoryId: "",
     classificationNumber: "",
     description: "",
-    coverImage: "",
     language: "English",
     copies: "1",
     availableCopies: "1",
@@ -89,7 +88,6 @@ export function EditBookModal(props: {
         categoryId: props.book.categoryId || "",
         classificationNumber: props.book.classificationNumber || "",
         description: props.book.description || "",
-        coverImage: props.book.coverImage || "",
         language: props.book.language || "English",
         copies: props.book.copies ? String(props.book.copies) : "1",
         availableCopies: props.book.availableCopies ? String(props.book.availableCopies) : "1",
@@ -231,12 +229,7 @@ export function EditBookModal(props: {
         );
         res = await response.json();
       } else {
-        // Regular JSON update
-        const updateData = {
-          ...commonFields,
-          coverImage: form.coverImage.trim() || undefined,
-        };
-        res = await api.updateBook(props.book.id, updateData);
+        res = await api.updateBook(props.book.id, commonFields);
       }
 
       if (res.success) {

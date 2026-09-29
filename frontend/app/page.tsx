@@ -30,8 +30,8 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
-      <header className="relative overflow-hidden border-b border-zinc-800 bg-[#050a19]">
+    <div className="min-h-screen bg-zinc-950">
+      <header className="landing-hero relative overflow-hidden border-b border-zinc-800 bg-[#050a19] text-zinc-100">
         <video
           aria-hidden="true"
           autoPlay
@@ -131,7 +131,7 @@ export default function Home() {
 
             <div className="min-h-[260px] rounded-2xl border border-zinc-800 bg-zinc-900/70 p-8 text-center flex flex-col items-center justify-center hover:border-blue-500/40 transition-colors">
               <img
-                src="/aple.jpg"
+                src="/AJC.png"
                 alt="Apple Jean Cabardo"
                 className="w-24 h-24 rounded-full object-cover mx-auto mb-6 ring-1 ring-blue-500/20"
               />
@@ -141,7 +141,7 @@ export default function Home() {
 
             <div className="min-h-[260px] rounded-2xl border border-zinc-800 bg-zinc-900/70 p-8 text-center flex flex-col items-center justify-center hover:border-blue-500/40 transition-colors">
               <img
-                src="/mel.jpg"
+                src="/MP.png"
                 alt="Melecio Paes"
                 className="w-24 h-24 rounded-full object-cover mx-auto mb-6 ring-1 ring-blue-500/20"
               />

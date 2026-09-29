@@ -5,7 +5,9 @@
 import fs from 'fs';
 import path from 'path';
 import multer from 'multer';
+import type { NextFunction, Request, Response } from 'express';
 import { BadRequestError } from '../utils/errors';
+import { coverExtensionForMimeType } from '../services/cover-image-storage.service';
 
 const candidateRoots = [
   process.env.CPCLMS_BACKEND_ROOT,
@@ -19,10 +21,9 @@ const backendRoot = candidateRoots.find((root) =>
 ) ?? candidateRoots.find((root) => path.basename(root).toLowerCase() === 'backend') ?? path.join(process.cwd(), 'backend');
 const UPLOADS_ROOT = path.join(backendRoot, 'uploads');
 const EBOOKS_DIR = path.join(UPLOADS_ROOT, 'ebooks');
-const COVERS_DIR = path.join(UPLOADS_ROOT, 'covers');
 const PROFILES_DIR = path.join(UPLOADS_ROOT, 'profiles');
 
-for (const dir of [EBOOKS_DIR, COVERS_DIR, PROFILES_DIR]) {
+for (const dir of [EBOOKS_DIR, PROFILES_DIR]) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
@@ -31,8 +32,7 @@ const EBOOK_EXTENSIONS: Record<string, 'PDF' | 'EPUB' | 'MOBI'> = {
   '.epub': 'EPUB',
   '.mobi': 'MOBI',
 };
-const COVER_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
-
+const MAX_COVER_SIZE = 5 * 1024 * 1024;
 function safeFilename(originalName: string): string {
   const ext = path.extname(originalName);
   const base = path
@@ -42,14 +42,53 @@ function safeFilename(originalName: string): string {
   return `${Date.now()}-${base}${ext.toLowerCase()}`;
 }
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, file.fieldname === 'coverImage' ? COVERS_DIR : EBOOKS_DIR);
-  },
+const ebookDiskStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, EBOOKS_DIR),
   filename: (req, file, cb) => {
     cb(null, safeFilename(file.originalname));
   },
 });
+const memoryStorage = multer.memoryStorage();
+const boundedCoverMemoryStorage: multer.StorageEngine = {
+  _handleFile(_req, file, cb) {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    let callbackCalled = false;
+    file.stream.on('data', (chunk: Buffer) => {
+      if (callbackCalled) return;
+      size += chunk.length;
+      if (size > MAX_COVER_SIZE) {
+        callbackCalled = true;
+        cb(new multer.MulterError('LIMIT_FILE_SIZE', file.fieldname));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    file.stream.on('error', (error) => {
+      if (callbackCalled) return;
+      callbackCalled = true;
+      cb(error);
+    });
+    file.stream.on('end', () => {
+      if (callbackCalled) return;
+      callbackCalled = true;
+      cb(null, { buffer: Buffer.concat(chunks), size });
+    });
+  },
+  _removeFile(_req, _file, cb) {
+    cb(null);
+  },
+};
+const ebookUploadStorage: multer.StorageEngine = {
+  _handleFile(req, file, cb) {
+    const storage = file.fieldname === 'coverImage' ? boundedCoverMemoryStorage : ebookDiskStorage;
+    storage._handleFile(req, file, cb);
+  },
+  _removeFile(req, file, cb) {
+    const storage = file.fieldname === 'coverImage' ? boundedCoverMemoryStorage : ebookDiskStorage;
+    storage._removeFile(req, file, cb);
+  },
+};
 
 function fileFilter(
   req: Express.Request,
@@ -57,15 +96,12 @@ function fileFilter(
   cb: multer.FileFilterCallback
 ) {
   const ext = path.extname(file.originalname).toLowerCase();
-  if (file.fieldname === 'coverImage') {
-    if (!COVER_EXTENSIONS.has(ext)) {
-      return cb(new BadRequestError('Cover image must be a JPG, PNG, or WEBP file'));
-    }
-    return cb(null, true);
-  }
-  if (file.fieldname === 'profilePicture') {
-    if (!COVER_EXTENSIONS.has(ext)) {
-      return cb(new BadRequestError('Profile picture must be a JPG, PNG, or WEBP file'));
+  if (file.fieldname === 'coverImage' || file.fieldname === 'profilePicture') {
+    const extension = coverExtensionForMimeType(file.mimetype);
+    const validProfileExtension = ['.jpg', '.jpeg', '.png', '.webp'].includes(ext);
+    if (!extension || (file.fieldname === 'profilePicture' && !validProfileExtension)) {
+      const label = file.fieldname === 'coverImage' ? 'Cover image' : 'Profile picture';
+      return cb(new BadRequestError(`${label} must be a JPG, PNG, or WEBP image`));
     }
     return cb(null, true);
   }
@@ -79,7 +115,7 @@ function fileFilter(
 }
 
 export const uploadEBookFiles = multer({
-  storage,
+  storage: ebookUploadStorage,
   fileFilter,
   limits: { fileSize: 150 * 1024 * 1024 }, // 150MB per file
 }).fields([
@@ -88,11 +124,24 @@ export const uploadEBookFiles = multer({
 ]);
 
 // Physical books only ever need a cover image (no e-book file field).
-export const uploadBookCover = multer({
-  storage,
+const parseBookCoverUpload = multer({
+  storage: memoryStorage,
   fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  limits: { fileSize: MAX_COVER_SIZE },
 }).single('coverImage');
+export const uploadBookCover = (req: Request, res: Response, next: NextFunction) => {
+  parseBookCoverUpload(req, res, (error) => {
+    if (error) {
+      next(error);
+      return;
+    }
+    if (req.is('multipart/form-data') && !req.file) {
+      next(new BadRequestError('A cover image file is required for multipart uploads'));
+      return;
+    }
+    next();
+  });
+};
 
 export const uploadProfilePicture = multer({
   storage: multer.diskStorage({
@@ -103,24 +152,9 @@ export const uploadProfilePicture = multer({
   limits: { fileSize: 5 * 1024 * 1024 },
 }).single('profilePicture');
 
-/**
- * If a cover image file was uploaded (multipart), turn it into the same
- * `coverImage` URL field the JSON/validation path expects, so one route
- * can accept either a plain JSON body (existing "paste a URL" flow) or a
- * multipart request with an actual file — the Zod schema downstream
- * doesn't need to know which happened.
- */
-export function attachUploadedCoverUrl(req: any, _res: any, next: any) {
-  if (req.file) {
-    req.body.coverImage = `/uploads/covers/${req.file.filename}`;
-  }
-  next();
-}
-
-
 export function formatFromExtension(originalName: string): 'PDF' | 'EPUB' | 'MOBI' {
   const ext = path.extname(originalName).toLowerCase();
   return EBOOK_EXTENSIONS[ext] || 'PDF';
 }
 
-export { EBOOKS_DIR, COVERS_DIR, PROFILES_DIR, UPLOADS_ROOT };
+export { EBOOKS_DIR, PROFILES_DIR, UPLOADS_ROOT };

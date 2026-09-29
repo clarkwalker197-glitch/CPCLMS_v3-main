@@ -6,6 +6,7 @@ import { Request, Response } from 'express';
 import { bookService } from '../services';
 import { asyncHandler } from '../utils/asyncHandler';
 import { sendSuccess, sendError } from '../utils/helpers';
+import { storeCoverImage, tryDeleteNewCoverImage, tryDeleteUnreferencedCoverImage } from '../services/cover-image-storage.service';
 
 // ============================================================
 // Physical Books
@@ -31,16 +32,38 @@ export const getBook = asyncHandler(async (req: Request, res: Response) => {
  * POST /api/books
  */
 export const createBook = asyncHandler(async (req: Request, res: Response) => {
-  const book = await bookService.createBook(req.body);
-  sendSuccess(res, book, 'Book created successfully', 201);
+  const uploadedCover = req.file ? await storeCoverImage(req.file) : undefined;
+  try {
+    const book = await bookService.createBook({
+      ...req.body,
+      ...(uploadedCover ? { coverImage: uploadedCover } : {}),
+    });
+    sendSuccess(res, book, 'Book created successfully', 201);
+  } catch (error) {
+    if (uploadedCover) await tryDeleteNewCoverImage(uploadedCover);
+    throw error;
+  }
 });
 
 /**
  * PUT /api/books/:id
  */
 export const updateBook = asyncHandler(async (req: Request, res: Response) => {
-  const book = await bookService.updateBook(req.params.id, req.body);
-  sendSuccess(res, book, 'Book updated successfully');
+  const existingBook = req.file ? await bookService.getBookById(req.params.id) : null;
+  const uploadedCover = req.file ? await storeCoverImage(req.file) : undefined;
+  try {
+    const book = await bookService.updateBook(req.params.id, {
+      ...req.body,
+      ...(uploadedCover ? { coverImage: uploadedCover } : {}),
+    });
+    if (uploadedCover && existingBook?.coverImage !== uploadedCover) {
+      await tryDeleteUnreferencedCoverImage(existingBook?.coverImage);
+    }
+    sendSuccess(res, book, 'Book updated successfully');
+  } catch (error) {
+    if (uploadedCover) await tryDeleteNewCoverImage(uploadedCover);
+    throw error;
+  }
 });
 
 /**

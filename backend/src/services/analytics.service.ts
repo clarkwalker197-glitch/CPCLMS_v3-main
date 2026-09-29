@@ -115,7 +115,7 @@ export class AnalyticsService {
       }),
       prisma.borrowTransaction.count({
         where: {
-          status: 'ACTIVE',
+          status: { in: ['ACTIVE', 'OVERDUE'] },
           user: activeUserWhere,
           book: activeBookWhere,
         },

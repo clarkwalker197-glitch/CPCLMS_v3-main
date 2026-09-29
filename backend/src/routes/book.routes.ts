@@ -6,7 +6,7 @@ import { Router } from 'express';
 import { bookController } from '../controllers';
 import { authenticate, authorize } from '../middlewares/auth';
 import { validate } from '../middlewares/validate';
-import { uploadBookCover, attachUploadedCoverUrl } from '../middlewares/upload';
+import { uploadBookCover } from '../middlewares/upload';
 import { createBookSchema, updateBookSchema, createCategorySchema } from '../validators/book.schema';
 
 const router = Router();
@@ -16,16 +16,13 @@ router.get('/', bookController.listBooks);
 router.get('/:id', bookController.getBook);
 
 // Librarian-only
-// uploadBookCover/attachUploadedCoverUrl are no-ops for plain JSON requests
-// (no cover file attached) — they only kick in when the request is
-// multipart/form-data with a `coverImage` file, letting one route accept
-// either a pasted cover URL or an actual uploaded image.
+// JSON requests preserve the pasted-URL flow; multipart requests are reserved
+// for a selected cover file and are uploaded to persistent object storage.
 router.post(
   '/',
   authenticate,
   authorize('LIBRARIAN'),
   uploadBookCover,
-  attachUploadedCoverUrl,
   validate(createBookSchema),
   bookController.createBook
 );
@@ -34,7 +31,6 @@ router.put(
   authenticate,
   authorize('LIBRARIAN'),
   uploadBookCover,
-  attachUploadedCoverUrl,
   validate(updateBookSchema),
   bookController.updateBook
 );

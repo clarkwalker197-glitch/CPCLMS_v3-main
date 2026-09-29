@@ -9,6 +9,7 @@ import { sendSuccess } from '../utils/helpers';
 import { BadRequestError } from '../utils/errors';
 import { formatFromExtension } from '../middlewares/upload';
 import { normalizeClassificationNumber } from '../constants/categories';
+import { storeCoverImage, tryDeleteNewCoverImage } from '../services/cover-image-storage.service';
 
 /**
  * GET /api/ebooks
@@ -59,28 +60,30 @@ export const uploadEBook = asyncHandler(async (req: Request, res: Response) => {
   }
 
   const fileUrl = `/uploads/ebooks/${uploadedFile.filename}`;
-  const coverImage = uploadedCover
-    ? `/uploads/covers/${uploadedCover.filename}`
-    : coverImageUrl || undefined;
+  const uploadedCoverUrl = uploadedCover ? await storeCoverImage(uploadedCover) : undefined;
+  try {
+    const ebook = await ebookService.createEBook({
+      isbn,
+      title,
+      author,
+      publisher: publisher || undefined,
+      publishYear: publishYear ? Number(publishYear) : undefined,
+      edition: edition || undefined,
+      categoryId: categoryId || undefined,
+      classificationNumber: normalizedClassificationNumber,
+      description: description || undefined,
+      coverImage: uploadedCoverUrl || coverImageUrl || undefined,
+      language: language || 'English',
+      fileUrl,
+      fileSize: uploadedFile.size,
+      format: formatFromExtension(uploadedFile.originalname),
+    });
 
-  const ebook = await ebookService.createEBook({
-    isbn,
-    title,
-    author,
-    publisher: publisher || undefined,
-    publishYear: publishYear ? Number(publishYear) : undefined,
-    edition: edition || undefined,
-    categoryId: categoryId || undefined,
-    classificationNumber: normalizedClassificationNumber,
-    description: description || undefined,
-    coverImage,
-    language: language || 'English',
-    fileUrl,
-    fileSize: uploadedFile.size,
-    format: formatFromExtension(uploadedFile.originalname),
-  });
-
-  sendSuccess(res, ebook, 'E-Book uploaded successfully', 201);
+    sendSuccess(res, ebook, 'E-Book uploaded successfully', 201);
+  } catch (error) {
+    if (uploadedCoverUrl) await tryDeleteNewCoverImage(uploadedCoverUrl);
+    throw error;
+  }
 });
 
 /**

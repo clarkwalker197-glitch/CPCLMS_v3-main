@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../config';
+import { tryDeleteUnreferencedCoverImage } from './cover-image-storage.service';
 
 export const ARCHIVE_RETENTION_DAYS = 15;
 
@@ -13,16 +14,19 @@ export class ArchiveRetentionService {
         name: 'Book',
         model: prisma.book,
         where: { deletedAt: { not: null }, archivedAt: { lte: cutoff } },
+        includeCover: true,
       },
       {
         name: 'EBook',
         model: prisma.eBook,
         where: { deletedAt: { not: null }, archivedAt: { lte: cutoff } },
+        includeCover: true,
       },
       {
         name: 'User',
         model: prisma.user,
         where: { isActive: false, archivedAt: { lte: cutoff } },
+        includeCover: false,
       },
     ] as const;
 
@@ -30,13 +34,18 @@ export class ArchiveRetentionService {
 
     for (const job of jobs) {
       try {
-        const records = await (job.model as any).findMany({ where: job.where, select: { id: true, archivedAt: true } });
+        const records = await (job.model as any).findMany({
+          where: job.where,
+          select: { id: true, archivedAt: true, ...(job.includeCover ? { coverImage: true } : {}) },
+        });
         results.processed += records.length;
 
         for (const record of records) {
           try {
             await (job.model as any).delete({ where: { id: record.id } });
             results.deleted += 1;
+
+            if (record.coverImage) await tryDeleteUnreferencedCoverImage(record.coverImage);
 
             await prisma.activityLog.create({
               data: {

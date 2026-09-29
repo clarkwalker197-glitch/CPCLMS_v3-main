@@ -148,7 +148,7 @@ export default function RequestsPage() {
       const params: Record<string, string> = {
         page: String(activeTxnPage),
         limit: String(PAGE_SIZE),
-        status: "ACTIVE",
+        status: "ACTIVE,OVERDUE",
       };
       if (debouncedActiveTxnSearch) params.search = debouncedActiveTxnSearch;
       params.sort = activeTxnSort;
@@ -757,7 +757,12 @@ export default function RequestsPage() {
                                 <div>{txn.user?.firstName} {txn.user?.lastName}<p className="text-xs text-zinc-500">{txn.user?.libraryId || ""}</p></div>
                               </div>
                             </td>
-                            <td className="px-6 py-4 text-zinc-400 hidden sm:table-cell">{formatDate(txn.dueDate)}</td>
+                            <td className="px-6 py-4 text-zinc-400 hidden sm:table-cell">
+                              <div className="flex items-center gap-2">
+                                <span>{formatDate(txn.dueDate)}</span>
+                                {txn.status === "OVERDUE" && <span className="inline-flex items-center rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-400 ring-1 ring-red-500/30">Overdue</span>}
+                              </div>
+                            </td>
                             <td className="px-6 py-4 text-right">
                               <div className="inline-flex items-center justify-end gap-1.5">
                                 <button
@@ -791,7 +796,13 @@ export default function RequestsPage() {
                       </div>
                       <div className="grid grid-cols-2 gap-4 py-4 text-sm">
                         <div><p className="text-xs text-zinc-500">Member</p><div className="mt-1 flex items-center gap-2"><UserAvatar firstName={txn.user?.firstName} lastName={txn.user?.lastName} avatar={txn.user?.avatar} className="h-8 w-8" /><div className="break-words text-zinc-300">{txn.user?.firstName} {txn.user?.lastName}<p className="text-xs text-zinc-500">{txn.user?.libraryId || ""}</p></div></div></div>
-                        <div><p className="text-xs text-zinc-500">Due Date</p><p className="mt-1 text-zinc-300">{formatDate(txn.dueDate)}</p></div>
+                        <div>
+                          <p className="text-xs text-zinc-500">Due Date</p>
+                          <div className="mt-1 flex flex-wrap items-center gap-2">
+                            <span className="text-zinc-300">{formatDate(txn.dueDate)}</span>
+                            {txn.status === "OVERDUE" && <span className="inline-flex items-center rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-400 ring-1 ring-red-500/30">Overdue</span>}
+                          </div>
+                        </div>
                       </div>
                       <div className="grid grid-cols-2 gap-2 border-t border-zinc-800/80 pt-3">
                         <button onClick={() => handleReturn(txn)} disabled={actionLoadingId !== null} className="inline-flex min-h-10 items-center justify-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40">

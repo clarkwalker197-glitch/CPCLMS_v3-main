@@ -37,9 +37,18 @@ COOKIE_SECRET=change-this-secret
 RATE_LIMIT_ENABLED=false
 EMAIL_USER=yourgmail@gmail.com
 EMAIL_PASS=your_16_digit_gmail_app_password
+BLOB_READ_WRITE_TOKEN=your_vercel_blob_read_write_token
 ```
 
 `EMAIL_PASS` must be a Gmail App Password. Do not use a normal Gmail account password. Keep `.env` private.
+
+### Persistent Cover Image Storage
+
+Create a **public Vercel Blob** store. For a local backend or a backend hosted outside Vercel, set `BLOB_READ_WRITE_TOKEN` in `backend/.env` and in the backend host's environment settings. If the backend runs on Vercel and the Blob store is connected to that Vercel project, the SDK uses Vercel OIDC automatically; no token should be added to frontend variables. Never expose Blob credentials through `NEXT_PUBLIC_*` variables.
+
+Physical-book and e-book cover uploads are held in memory only long enough to validate and send them to Blob. The database stores the returned public HTTPS URL. Pasted external image URLs continue to be stored as supplied. The existing `coverImage` database field is reused; no schema migration is needed. Replacing a cover cleans up an old Blob object only when no book or e-book still references it. Archiving retains covers for restore; expired archives clean up unreferenced Blob objects after the database row is deleted.
+
+Existing `/uploads/...` cover paths are not rewritten or assigned invented URLs. External URLs continue to work. Any local-upload cover whose file is missing must be re-uploaded by a librarian; the old row remains unchanged until replaced. The `uploads/` static route remains for existing e-book documents and profile images, but book cover uploads no longer write there.
 
 Apply the database schema and generate Prisma Client:
 

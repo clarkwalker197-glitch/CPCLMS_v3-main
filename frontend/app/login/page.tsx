@@ -61,7 +61,7 @@ export default function LoginPage() {
         <div className="flex-1 flex items-center justify-center p-4 sm:p-8">
           <div className="w-full max-w-6xl grid md:grid-cols-2 gap-6">
             {/* ── Left Card: Dark branding ─────────────────────────── */}
-            <div className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-slate-900 via-blue-950 to-blue-900 text-white p-10 sm:p-12 flex flex-col justify-between shadow-[0_20px_60px_-15px_rgba(37,99,235,0.5)] ring-1 ring-white/10 min-h-[560px]">
+            <div className="auth-brand-panel relative overflow-hidden rounded-3xl bg-gradient-to-b from-[#0f172a] via-blue-950 to-blue-900 text-white p-10 sm:p-12 flex flex-col justify-between shadow-[0_20px_60px_-15px_rgba(37,99,235,0.5)] ring-1 ring-white/10 min-h-[560px]">
               {/* Decorative glow */}
               <div className="absolute -top-32 -right-32 w-96 h-96 bg-blue-500/30 rounded-full blur-3xl" />
               <div className="absolute -bottom-40 -left-20 w-80 h-80 bg-sky-400/20 rounded-full blur-3xl" />
@@ -75,17 +75,17 @@ export default function LoginPage() {
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src="/CPClogo.png" alt="Cordova Public College Logo" className="w-12 h-12 object-contain shrink-0" />
                   <div>
-                    <p className="font-bold text-lg leading-tight text-white">Cordova Public College</p>
-                    <p className="text-blue-200 text-sm">Library Management System</p>
+                    <p className="auth-brand-school font-bold text-lg leading-tight text-white">Cordova Public College</p>
+                    <p className="auth-brand-subtitle text-blue-200 text-sm">Library Management System</p>
                   </div>
                 </div>
 
                 {/* Heading + Subtitle */}
                 <div className="max-w-md">
-                  <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold leading-tight tracking-tight text-white mb-4">
-                    Welcome to the <span className="text-blue-300">Gateway of Learning</span>
+                  <h1 className="auth-brand-title text-3xl sm:text-4xl lg:text-5xl font-extrabold leading-tight tracking-tight text-white mb-4">
+                    Welcome to the <span className="auth-brand-title-accent text-blue-300">Gateway of Learning</span>
                   </h1>
-                  <p className="text-base sm:text-lg text-zinc-300 leading-relaxed">
+                  <p className="auth-brand-description text-base sm:text-lg text-zinc-300 leading-relaxed">
                     Sign in to manage books, track borrows, and keep your academic resources organized.
                   </p>
                 </div>
@@ -93,21 +93,21 @@ export default function LoginPage() {
 
               {/* Feature pills */}
               <div className="relative z-10 flex flex-col gap-3 max-w-md">
-                <div className="flex items-center gap-3 bg-white/10 backdrop-blur-md ring-1 ring-white/15 rounded-full px-5 py-3 shadow-lg shadow-black/10">
-                  <div className="w-8 h-8 bg-blue-400/30 rounded-full flex items-center justify-center shrink-0">
-                    <svg className="w-4 h-4 text-blue-100" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <div className="auth-brand-feature flex items-center gap-3 bg-white/10 backdrop-blur-md ring-1 ring-white/15 rounded-full px-5 py-3 shadow-lg shadow-black/10">
+                  <div className="auth-brand-feature-icon w-8 h-8 bg-blue-400/30 rounded-full flex items-center justify-center shrink-0">
+                    <svg className="auth-brand-feature-icon-glyph w-4 h-4 text-blue-100" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
                     </svg>
                   </div>
-                  <span className="text-sm text-blue-50">Secure access with modern authentication UI</span>
+                  <span className="auth-brand-feature-text text-sm text-blue-50">Secure access with modern authentication UI</span>
                 </div>
-                <div className="flex items-center gap-3 bg-white/10 backdrop-blur-md ring-1 ring-white/15 rounded-full px-5 py-3 shadow-lg shadow-black/10">
-                  <div className="w-8 h-8 bg-blue-400/30 rounded-full flex items-center justify-center shrink-0">
-                    <svg className="w-4 h-4 text-blue-100" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <div className="auth-brand-feature flex items-center gap-3 bg-white/10 backdrop-blur-md ring-1 ring-white/15 rounded-full px-5 py-3 shadow-lg shadow-black/10">
+                  <div className="auth-brand-feature-icon w-8 h-8 bg-blue-400/30 rounded-full flex items-center justify-center shrink-0">
+                    <svg className="auth-brand-feature-icon-glyph w-4 h-4 text-blue-100" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                     </svg>
                   </div>
-                  <span className="text-sm text-blue-50">Minimal, professional design consistent with dashboards</span>
+                  <span className="auth-brand-feature-text text-sm text-blue-50">Minimal, professional design consistent with dashboards</span>
                 </div>
               </div>
             </div>

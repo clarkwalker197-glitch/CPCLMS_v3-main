@@ -114,8 +114,8 @@ export default function AnalyticsPage() {
   }, [departmentFilter, range, router, user]);
 
   const overview = stats?.overview || {};
-  const overdueRate = overview.activeBorrows + overview.overdueBooks
-    ? (overview.overdueBooks / (overview.activeBorrows + overview.overdueBooks)) * 100
+  const overdueRate = overview.activeBorrows
+    ? (overview.overdueBooks / overview.activeBorrows) * 100
     : 0;
   const cards = [
     { title: "Active Borrows", value: overview.activeBorrows ?? 0, icon: BookMarked, accent: "bg-blue-500/15 text-blue-400" },

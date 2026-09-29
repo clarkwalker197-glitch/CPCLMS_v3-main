@@ -41,136 +41,136 @@ html.light body {
 }
 
 /* General surfaces: cards, sheets, sidebars, panels */
-html.light .bg-zinc-950,
-html.light .bg-zinc-950\/95,
-html.light .bg-zinc-950\/90,
-html.light .bg-zinc-950\/80,
-html.light .bg-zinc-950\/70,
-html.light .bg-zinc-950\/60,
-html.light .bg-zinc-950\/50,
-html.light .bg-zinc-950\/40,
-html.light .bg-zinc-900,
-html.light .bg-zinc-900\/95,
-html.light .bg-zinc-900\/90,
-html.light .bg-zinc-900\/80,
-html.light .bg-zinc-900\/70,
-html.light .bg-zinc-900\/60,
-html.light .bg-zinc-900\/50,
-html.light .bg-zinc-900\/40,
-html.light .bg-zinc-800,
-html.light .bg-zinc-800\/95,
-html.light .bg-zinc-800\/90,
-html.light .bg-zinc-800\/80,
-html.light .bg-zinc-800\/70,
-html.light .bg-zinc-800\/60,
-html.light .bg-zinc-800\/50,
-html.light .bg-zinc-800\/40,
-html.light .bg-zinc-700,
-html.light .bg-zinc-700\/80,
-html.light .bg-zinc-700\/60,
-html.light .bg-zinc-700\/40,
-html.light .bg-zinc-600 {
+html.light .bg-zinc-950:not(.landing-hero):not(.landing-hero *),
+html.light .bg-zinc-950\/95:not(.landing-hero):not(.landing-hero *),
+html.light .bg-zinc-950\/90:not(.landing-hero):not(.landing-hero *),
+html.light .bg-zinc-950\/80:not(.landing-hero):not(.landing-hero *),
+html.light .bg-zinc-950\/70:not(.landing-hero):not(.landing-hero *),
+html.light .bg-zinc-950\/60:not(.landing-hero):not(.landing-hero *),
+html.light .bg-zinc-950\/50:not(.landing-hero):not(.landing-hero *),
+html.light .bg-zinc-950\/40:not(.landing-hero):not(.landing-hero *),
+html.light .bg-zinc-900:not(.landing-hero):not(.landing-hero *),
+html.light .bg-zinc-900\/95:not(.landing-hero):not(.landing-hero *),
+html.light .bg-zinc-900\/90:not(.landing-hero):not(.landing-hero *),
+html.light .bg-zinc-900\/80:not(.landing-hero):not(.landing-hero *),
+html.light .bg-zinc-900\/70:not(.landing-hero):not(.landing-hero *),
+html.light .bg-zinc-900\/60:not(.landing-hero):not(.landing-hero *),
+html.light .bg-zinc-900\/50:not(.landing-hero):not(.landing-hero *),
+html.light .bg-zinc-900\/40:not(.landing-hero):not(.landing-hero *),
+html.light .bg-zinc-800:not(.landing-hero):not(.landing-hero *),
+html.light .bg-zinc-800\/95:not(.landing-hero):not(.landing-hero *),
+html.light .bg-zinc-800\/90:not(.landing-hero):not(.landing-hero *),
+html.light .bg-zinc-800\/80:not(.landing-hero):not(.landing-hero *),
+html.light .bg-zinc-800\/70:not(.landing-hero):not(.landing-hero *),
+html.light .bg-zinc-800\/60:not(.landing-hero):not(.landing-hero *),
+html.light .bg-zinc-800\/50:not(.landing-hero):not(.landing-hero *),
+html.light .bg-zinc-800\/40:not(.landing-hero):not(.landing-hero *),
+html.light .bg-zinc-700:not(.landing-hero):not(.landing-hero *),
+html.light .bg-zinc-700\/80:not(.landing-hero):not(.landing-hero *),
+html.light .bg-zinc-700\/60:not(.landing-hero):not(.landing-hero *),
+html.light .bg-zinc-700\/40:not(.landing-hero):not(.landing-hero *),
+html.light .bg-zinc-600:not(.landing-hero):not(.landing-hero *) {
   background-color: #ffffff !important;
 }
 
-html.light .bg-zinc-900\/30,
-html.light .bg-zinc-900\/20,
-html.light .bg-zinc-900\/10,
-html.light .bg-zinc-800\/30,
-html.light .bg-zinc-800\/20,
-html.light .bg-zinc-800\/10,
-html.light .bg-zinc-700\/30,
-html.light .bg-zinc-700\/20 {
+html.light .bg-zinc-900\/30:not(.landing-hero):not(.landing-hero *),
+html.light .bg-zinc-900\/20:not(.landing-hero):not(.landing-hero *),
+html.light .bg-zinc-900\/10:not(.landing-hero):not(.landing-hero *),
+html.light .bg-zinc-800\/30:not(.landing-hero):not(.landing-hero *),
+html.light .bg-zinc-800\/20:not(.landing-hero):not(.landing-hero *),
+html.light .bg-zinc-800\/10:not(.landing-hero):not(.landing-hero *),
+html.light .bg-zinc-700\/30:not(.landing-hero):not(.landing-hero *),
+html.light .bg-zinc-700\/20:not(.landing-hero):not(.landing-hero *) {
   background-color: #f5f5f5 !important;
 }
 
 /* Surface accent blocks when they need to remain subtle */
-html.light .from-slate-900,
-html.light .from-blue-900\/30,
-html.light .to-indigo-900\/30,
-html.light .from-blue-500\/10,
-html.light .to-blue-700\/10 {
+html.light .from-slate-900:not(.landing-hero):not(.landing-hero *),
+html.light .from-blue-900\/30:not(.landing-hero):not(.landing-hero *),
+html.light .to-indigo-900\/30:not(.landing-hero):not(.landing-hero *),
+html.light .from-blue-500\/10:not(.landing-hero):not(.landing-hero *),
+html.light .to-blue-700\/10:not(.landing-hero):not(.landing-hero *) {
   background-color: #f8fafc !important;
   background-image: none !important;
 }
 
 /* Text */
-html.light .text-white,
-html.light .text-zinc-100,
-html.light .text-zinc-200,
-html.light .text-zinc-300,
-html.light .text-zinc-400,
-html.light .text-zinc-500,
-html.light .text-zinc-600,
-html.light .text-zinc-700,
-html.light .text-zinc-800,
-html.light .text-zinc-900 {
+html.light .text-white:not(.landing-hero):not(.landing-hero *),
+html.light .text-zinc-100:not(.landing-hero):not(.landing-hero *),
+html.light .text-zinc-200:not(.landing-hero):not(.landing-hero *),
+html.light .text-zinc-300:not(.landing-hero):not(.landing-hero *),
+html.light .text-zinc-400:not(.landing-hero):not(.landing-hero *),
+html.light .text-zinc-500:not(.landing-hero):not(.landing-hero *),
+html.light .text-zinc-600:not(.landing-hero):not(.landing-hero *),
+html.light .text-zinc-700:not(.landing-hero):not(.landing-hero *),
+html.light .text-zinc-800:not(.landing-hero):not(.landing-hero *),
+html.light .text-zinc-900:not(.landing-hero):not(.landing-hero *) {
   color: #18181b !important;
 }
 
-html.light .text-zinc-400,
-html.light .text-zinc-500,
-html.light .text-zinc-600,
-html.light .text-zinc-700 {
+html.light .text-zinc-400:not(.landing-hero):not(.landing-hero *),
+html.light .text-zinc-500:not(.landing-hero):not(.landing-hero *),
+html.light .text-zinc-600:not(.landing-hero):not(.landing-hero *),
+html.light .text-zinc-700:not(.landing-hero):not(.landing-hero *) {
   color: #3f3f46 !important;
 }
 
-html.light .text-zinc-500 {
+html.light .text-zinc-500:not(.landing-hero):not(.landing-hero *) {
   color: #52525b !important;
 }
 
-html.light .text-zinc-400 {
+html.light .text-zinc-400:not(.landing-hero):not(.landing-hero *) {
   color: #52525b !important;
 }
 
-html.light .text-blue-400,
-html.light .text-blue-500,
-html.light .text-blue-600,
-html.light .text-blue-300,
-html.light .text-cyan-400,
-html.light .text-emerald-400,
-html.light .text-amber-400,
-html.light .text-red-400,
-html.light .text-violet-400,
-html.light .text-indigo-400 {
+html.light .text-blue-400:not(.landing-hero):not(.landing-hero *),
+html.light .text-blue-500:not(.landing-hero):not(.landing-hero *),
+html.light .text-blue-600:not(.landing-hero):not(.landing-hero *),
+html.light .text-blue-300:not(.landing-hero):not(.landing-hero *),
+html.light .text-cyan-400:not(.landing-hero):not(.landing-hero *),
+html.light .text-emerald-400:not(.landing-hero):not(.landing-hero *),
+html.light .text-amber-400:not(.landing-hero):not(.landing-hero *),
+html.light .text-red-400:not(.landing-hero):not(.landing-hero *),
+html.light .text-violet-400:not(.landing-hero):not(.landing-hero *),
+html.light .text-indigo-400:not(.landing-hero):not(.landing-hero *) {
   color: #1d4ed8 !important;
 }
 
 /* Borders and dividers */
-html.light .border-zinc-800,
-html.light .border-zinc-800\/60,
-html.light .border-zinc-800\/70,
-html.light .border-zinc-700,
-html.light .border-zinc-700\/50,
-html.light .divide-zinc-800,
-html.light .divide-zinc-800\/60,
-html.light .divide-zinc-700,
-html.light .ring-zinc-700,
-html.light .ring-zinc-500,
-html.light .ring-zinc-800 {
+html.light .border-zinc-800:not(.landing-hero):not(.landing-hero *),
+html.light .border-zinc-800\/60:not(.landing-hero):not(.landing-hero *),
+html.light .border-zinc-800\/70:not(.landing-hero):not(.landing-hero *),
+html.light .border-zinc-700:not(.landing-hero):not(.landing-hero *),
+html.light .border-zinc-700\/50:not(.landing-hero):not(.landing-hero *),
+html.light .divide-zinc-800:not(.landing-hero):not(.landing-hero *),
+html.light .divide-zinc-800\/60:not(.landing-hero):not(.landing-hero *),
+html.light .divide-zinc-700:not(.landing-hero):not(.landing-hero *),
+html.light .ring-zinc-700:not(.landing-hero):not(.landing-hero *),
+html.light .ring-zinc-500:not(.landing-hero):not(.landing-hero *),
+html.light .ring-zinc-800:not(.landing-hero):not(.landing-hero *) {
   border-color: #e4e4e7 !important;
   box-shadow: none !important;
 }
 
-html.light .border-zinc-900 {
+html.light .border-zinc-900:not(.landing-hero):not(.landing-hero *) {
   border-color: #f3f4f6 !important;
 }
 
 /* Hover states */
-html.light .hover\:bg-zinc-800:hover,
-html.light .hover\:bg-zinc-800\/40:hover,
-html.light .hover\:bg-zinc-800\/60:hover,
-html.light .hover\:bg-zinc-700:hover,
-html.light .hover\:bg-zinc-700\/50:hover,
-html.light .hover\:border-zinc-700:hover {
+html.light .hover\:bg-zinc-800:hover:not(.landing-hero):not(.landing-hero *),
+html.light .hover\:bg-zinc-800\/40:hover:not(.landing-hero):not(.landing-hero *),
+html.light .hover\:bg-zinc-800\/60:hover:not(.landing-hero):not(.landing-hero *),
+html.light .hover\:bg-zinc-700:hover:not(.landing-hero):not(.landing-hero *),
+html.light .hover\:bg-zinc-700\/50:hover:not(.landing-hero):not(.landing-hero *),
+html.light .hover\:border-zinc-700:hover:not(.landing-hero):not(.landing-hero *) {
   background-color: #f3f4f6 !important;
   border-color: #d4d4d8 !important;
 }
 
-html.light .hover\:text-white:hover,
-html.light .hover\:text-zinc-200:hover,
-html.light .hover\:text-zinc-300:hover,
-html.light .hover\:text-zinc-400:hover {
+html.light .hover\:text-white:hover:not(.landing-hero):not(.landing-hero *),
+html.light .hover\:text-zinc-200:hover:not(.landing-hero):not(.landing-hero *),
+html.light .hover\:text-zinc-300:hover:not(.landing-hero):not(.landing-hero *),
+html.light .hover\:text-zinc-400:hover:not(.landing-hero):not(.landing-hero *) {
   color: #18181b !important;
 }
 
@@ -224,6 +224,41 @@ html.light .from-slate-900 .text-blue-300 {
 
 html.light .from-slate-900 {
   background-image: linear-gradient(to bottom, #0f172a, #172554, #1e3a8a) !important;
+}
+
+html.light .auth-brand-panel {
+  background-color: #dbeafe !important;
+  background-image: linear-gradient(145deg, #eff6ff 0%, #dbeafe 55%, #bfdbfe 100%) !important;
+  color: #0f172a !important;
+}
+
+html.light .auth-brand-panel .auth-brand-school,
+html.light .auth-brand-panel .auth-brand-title {
+  color: #0f172a !important;
+}
+
+html.light .auth-brand-panel .auth-brand-subtitle,
+html.light .auth-brand-panel .auth-brand-title .auth-brand-title-accent {
+  color: #1e40af !important;
+}
+
+html.light .auth-brand-panel .auth-brand-description {
+  color: #334155 !important;
+}
+
+html.light .auth-brand-feature {
+  background-color: rgba(255, 255, 255, 0.78) !important;
+  border: 1px solid #93c5fd !important;
+  box-shadow: 0 4px 14px rgba(30, 64, 175, 0.12) !important;
+}
+
+html.light .auth-brand-feature-icon {
+  background-color: #bfdbfe !important;
+}
+
+html.light .auth-brand-panel .auth-brand-feature .auth-brand-feature-icon-glyph,
+html.light .auth-brand-panel .auth-brand-feature .auth-brand-feature-text {
+  color: #1e3a8a !important;
 }
 
 /* Scrollbar (optional, subtle) */

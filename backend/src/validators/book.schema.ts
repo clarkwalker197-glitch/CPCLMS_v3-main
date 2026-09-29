@@ -24,10 +24,14 @@ const classificationNumberSchema = z
   .regex(/^\d{1,3}(?:\.\d{1,5})?$/, 'Classification number must contain up to 3 digits and up to 5 decimal places')
   .refine((value) => Number(value) >= 0 && Number(value) <= 999, 'Classification number must be between 000 and 999');
 
-const imagePathSchema = z.string().refine(
-  (value) => value.startsWith('/uploads/') || z.string().url().safeParse(value).success,
-  'Cover image must be a valid URL or uploaded path'
-);
+const imageUrlSchema = z.string().trim().refine((value) => {
+  try {
+    const protocol = new URL(value).protocol;
+    return protocol === 'http:' || protocol === 'https:';
+  } catch {
+    return false;
+  }
+}, 'Cover image must be an HTTP or HTTPS URL');
 
 export const createBookSchema = z.object({
   body: z.object({
@@ -42,7 +46,7 @@ export const createBookSchema = z.object({
     categoryId: categoryIdSchema,
     classificationNumber: classificationNumberSchema,
     description: z.string().optional(),
-    coverImage: imagePathSchema.optional(),
+    coverImage: imageUrlSchema.optional(),
     language: z.string().default('English'),
     shelf: z.string().optional(),
     row: z.string().optional(),
@@ -63,7 +67,7 @@ export const updateBookSchema = z.object({
     categoryId: z.string().optional(),
     classificationNumber: classificationNumberSchema.optional(),
     description: z.string().optional(),
-    coverImage: imagePathSchema.optional(),
+    coverImage: imageUrlSchema.optional(),
     language: z.string().optional(),
     shelf: z.string().optional(),
     row: z.string().optional(),

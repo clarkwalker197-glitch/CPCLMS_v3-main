@@ -22,6 +22,19 @@ export const errorHandler = (
     stack: env.NODE_ENV === 'development' ? err.stack : undefined,
   });
 
+  if (err.name === 'MulterError') {
+    const uploadError = err as Error & { code?: string; field?: string };
+    const message = uploadError.code === 'LIMIT_FILE_SIZE'
+      ? uploadError.field === 'coverImage'
+        ? 'Cover image must be 5 MB or smaller'
+        : 'Uploaded file exceeds the size limit'
+      : uploadError.code === 'LIMIT_UNEXPECTED_FILE'
+        ? 'Unexpected file field in upload'
+        : 'Invalid file upload';
+    res.status(400).json({ success: false, error: message });
+    return;
+  }
+
   // Operational error (expected, known error)
   if (err instanceof AppError) {
     res.status(err.statusCode).json({

@@ -699,7 +699,11 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
   const { sort, order } = getSortParams(query, ['borrowDate', 'dueDate', 'status', 'fineAmount'] as const, 'status', 'asc');
     const where: any = {};
     if (userId) where.userId = userId;
-    if (query.status) where.status = query.status;
+    const statusValues = query.status
+      ? String(query.status).split(',').map((status) => status.trim()).filter(Boolean)
+      : [];
+    if (statusValues.length === 1) where.status = statusValues[0];
+    if (statusValues.length > 1) where.status = { in: statusValues };
 
     // Search by book title/accession no OR member name/library id
     if (query.search) {
@@ -729,7 +733,7 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
           JOIN users u ON u.id = bt.user_id
           JOIN books b ON b.id = bt.book_id
           WHERE (${userId ?? null}::text IS NULL OR bt.user_id = ${userId ?? null})
-            AND (${query.status ?? null}::text IS NULL OR bt.status::text = ${query.status ?? null})
+            AND (${statusValues.length ? statusValues.join(',') : null}::text IS NULL OR bt.status::text = ANY(string_to_array(${statusValues.length ? statusValues.join(',') : null}::text, ',')))
             AND (${query.search ? `%${String(query.search)}%` : null}::text IS NULL OR
               b.title ILIKE ${query.search ? `%${String(query.search)}%` : null} OR
               b.accession_no ILIKE ${query.search ? `%${String(query.search)}%` : null} OR

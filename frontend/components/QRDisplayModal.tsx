@@ -7,6 +7,8 @@ interface QRDisplayModalProps {
   onClose: () => void;
   qrCodeDataUrl: string;
   title: string;
+  transactionId?: string;
+  description?: string;
   bookTitle?: string;
   dueDate?: string;
   accessionNo?: string;
@@ -17,6 +19,8 @@ export function QRDisplayModal({
   onClose,
   qrCodeDataUrl,
   title,
+  transactionId,
+  description,
   bookTitle,
   dueDate,
   accessionNo,
@@ -30,15 +34,15 @@ export function QRDisplayModal({
   const handleCopy = async () => {
     try {
       // Try to copy the QR data URL as text
-      await navigator.clipboard.writeText(qrCodeDataUrl);
+      await navigator.clipboard.writeText(transactionId || qrCodeDataUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
       // Fallback: copy the raw data
       try {
-        const textToCopy = bookTitle
+        const textToCopy = transactionId || (bookTitle
           ? `Book: ${bookTitle}\nAccession: ${accessionNo || "N/A"}\nDue: ${dueDate || "N/A"}`
-          : qrCodeDataUrl;
+          : qrCodeDataUrl);
         await navigator.clipboard.writeText(textToCopy);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
@@ -52,7 +56,7 @@ export function QRDisplayModal({
     try {
       const link = document.createElement("a");
       link.href = qrCodeDataUrl;
-      link.download = `qr-${accessionNo || "book"}-${Date.now()}.png`;
+      link.download = `qr-${transactionId || accessionNo || "book"}-${Date.now()}.png`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -69,6 +73,7 @@ export function QRDisplayModal({
         <head><title>QR Code - ${title}</title></head>
         <body style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:sans-serif;padding:20px;">
           <h2 style="margin-bottom:8px;color:#1a1a2e;">${title}</h2>
+          ${transactionId ? `<p style="margin-bottom:12px;color:#555;font-family:monospace;">${transactionId}</p>` : ""}
           ${bookTitle ? `<p style="margin-bottom:4px;color:#555;">${bookTitle}</p>` : ""}
           ${accessionNo ? `<p style="margin-bottom:16px;color:#888;font-size:14px;">Accession: ${accessionNo}</p>` : ""}
           <img src="${qrCodeDataUrl}" style="width:300px;height:300px;image-rendering:pixelated;" />
@@ -111,6 +116,12 @@ export function QRDisplayModal({
             </div>
           </div>
         )}
+        {transactionId && (
+          <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-center">
+            <p className="text-xs text-zinc-500">Transaction ID</p>
+            <p className="mt-1 break-all font-mono text-sm font-semibold text-blue-700">{transactionId}</p>
+          </div>
+        )}
 
         {/* QR Code image */}
         <div
@@ -126,7 +137,7 @@ export function QRDisplayModal({
           ) : (
             <img
               src={qrCodeDataUrl}
-              alt="QR Code for book borrowing"
+              alt={`QR Code for ${transactionId || "book borrowing"}`}
               className="max-w-full h-auto"
               style={{ width: 200, height: 200, imageRendering: "pixelated" }}
               onError={() => setImgError(true)}
@@ -169,7 +180,7 @@ export function QRDisplayModal({
         </div>
 
         <p className="text-[10px] text-zinc-400 text-center mt-3">
-          Show this QR code at the library counter to borrow or return books.
+          {description || "Show this QR code or Transaction ID at the library counter once the request is approved."}
         </p>
       </div>
     </div>

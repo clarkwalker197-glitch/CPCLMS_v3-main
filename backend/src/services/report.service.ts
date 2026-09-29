@@ -348,7 +348,7 @@ export class ReportService {
       orderBy: { borrowDate: 'desc' },
     });
 
-    const headers = ['Transaction ID', 'User', 'Library ID', 'Book Title', 'Accession No', 'Borrow Date', 'Due Date', 'Return Date', 'Status', 'Fine', 'Fine Paid'];
+    const headers = ['Transaction ID', 'User', 'Library ID', 'Book Title', 'Accession No', 'Borrow Date', 'Due Date', 'Return Date', 'Status', 'Fine', 'Fine Status'];
     const rows = txns.map((t) => [
       t.id,
       `${t.user.firstName} ${t.user.lastName}`,
@@ -360,7 +360,7 @@ export class ReportService {
       t.returnDate || '',
       t.status,
       t.fineAmount || 0,
-      t.finePaid ? 'Yes' : 'No',
+      t.fineAmount && t.fineAmount > 0 ? (t.fineWaived ? 'Waived' : t.finePaid ? 'Paid' : 'Unpaid') : '—',
     ]);
 
     return this.createExcel('Transactions', headers, rows, [28, 25, 15, 40, 15, 14, 14, 14, 12, 10, 10]);

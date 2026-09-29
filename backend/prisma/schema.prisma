@@ -214,6 +214,7 @@ model BorrowRequest {
   book          Book          @relation(fields: [bookId], references: [id])
   requestDate   DateTime      @default(now()) @map("request_date")
   status        RequestStatus @default(PENDING)
+  transactionId String?       @map("transaction_id")
   notes         String?
   approvalCode  String?       @unique @map("approval_code") /// Transaction ID (e.g. BRW-1234-567) for QR approval
   approvalTokenHash      String?   @map("approval_token_hash")
@@ -230,6 +231,7 @@ model BorrowRequest {
   @@index([bookId])
   @@index([status])
   @@index([requestDate])
+  @@index([transactionId])
   @@index([approvalCode])
   @@map("borrow_requests")
 }
@@ -245,8 +247,10 @@ model BorrowTransaction {
   dueDate    DateTime          @map("due_date")
   returnDate DateTime?         @map("return_date")
   status     TransactionStatus @default(ACTIVE)
+  transactionId String?        @map("transaction_id")
   fineAmount Float?            @default(0) @map("fine_amount")
   finePaid   Boolean           @default(false) @map("fine_paid")
+  fineWaived Boolean           @default(false) @map("fine_waived")
   notes      String?
   qrCode     String?           @map("qr_code") /// Base64 PNG QR code for this transaction
   qrScanned  Boolean           @default(false) @map("qr_scanned") /// Whether QR was scanned at return
@@ -258,6 +262,7 @@ model BorrowTransaction {
   @@index([status])
   @@index([dueDate])
   @@index([borrowDate])
+  @@index([transactionId])
   @@map("borrow_transactions")
 }
 

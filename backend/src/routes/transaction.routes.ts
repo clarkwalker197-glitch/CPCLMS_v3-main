@@ -29,6 +29,8 @@ router.use(authenticate);
 // ── Borrow Requests ──────────────────────────────────────
 router.post('/requests', validate(createBorrowRequestSchema), transactionController.createBorrowRequest);
 router.get('/requests', transactionController.listBorrowRequests);
+router.get('/requests/transaction/:transactionId', authorize('LIBRARIAN'), transactionController.getBorrowRequestBatch);
+router.put('/requests/transaction/:transactionId/approve', authorize('LIBRARIAN'), transactionController.approveBorrowRequestBatch);
 router.get('/requests/:id', transactionController.getBorrowRequest);
 router.put('/requests/:id/approve', authorize('LIBRARIAN'), transactionController.approveRequest);
 router.put('/requests/:id/reject', authorize('LIBRARIAN'), validate(rejectRequestSchema), transactionController.rejectRequest);

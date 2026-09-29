@@ -10,7 +10,7 @@ export function BookBorrowModal(props: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   books: any[];
-  onSuccess: () => void;
+  onSuccess: (submission?: any, queued?: boolean) => void;
 }) {
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
@@ -30,7 +30,7 @@ export function BookBorrowModal(props: {
         notes: notes || undefined,
       });
       if (res.success) {
-        props.onSuccess();
+        props.onSuccess(res.data, Boolean(res.queued));
         props.onOpenChange(false);
         setNotes("");
       } else {

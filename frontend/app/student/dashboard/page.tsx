@@ -49,7 +49,7 @@ export default function StudentDashboardPage() {
           setStats({
             myBorrowed: cachedTransactions.filter((transaction) => ["ACTIVE", "OVERDUE"].includes(String(transaction.status))).length,
             myPendingRequests: cachedRequests.filter((request) => request.status === "PENDING").length,
-            myFines: cachedTransactions.reduce((total, transaction) => total + (!transaction.finePaid && Number(transaction.fineAmount || 0) > 0 ? Number(transaction.fineAmount || 0) : 0), 0),
+            myFines: cachedTransactions.reduce((total, transaction) => total + (!transaction.finePaid && !transaction.fineWaived && !transaction.returnDate && ["ACTIVE", "OVERDUE"].includes(String(transaction.status)) && Number(transaction.fineAmount || 0) > 0 ? Number(transaction.fineAmount || 0) : 0), 0),
           });
           setLoading(false);
         }

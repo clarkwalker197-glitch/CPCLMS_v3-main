@@ -280,7 +280,7 @@ interface TopBookRaw { bookId: string; _count: { bookId: number } }
           where: { userId, status: 'ACTIVE' },
         }),
         prisma.borrowTransaction.findMany({
-          where: { userId, fineAmount: { gt: 0 }, finePaid: false },
+          where: { userId, fineAmount: { gt: 0 }, finePaid: false, fineWaived: false },
           select: { fineAmount: true },
         }),
       ]);
@@ -460,26 +460,30 @@ interface TopBookRaw { bookId: string; _count: { bookId: number } }
         fineAmount: { gt: 0 },
         ...(rangeStart ? { borrowDate: { gte: rangeStart } } : {}),
       },
-      select: { fineAmount: true, finePaid: true, borrowDate: true },
+      select: { fineAmount: true, finePaid: true, fineWaived: true, borrowDate: true },
       orderBy: { borrowDate: 'asc' },
     });
-    const monthly = new Map<string, { paid: number; unpaid: number }>();
+    const monthly = new Map<string, { paid: number; unpaid: number; waived: number }>();
     let paid = 0;
     let unpaid = 0;
+    let waived = 0;
     for (const transaction of transactions) {
       const amount = transaction.fineAmount || 0;
       if (transaction.finePaid) paid += amount;
+      else if (transaction.fineWaived) waived += amount;
       else unpaid += amount;
       const month = `${transaction.borrowDate.getFullYear()}-${String(transaction.borrowDate.getMonth() + 1).padStart(2, '0')}`;
-      const entry = monthly.get(month) || { paid: 0, unpaid: 0 };
-      entry[transaction.finePaid ? 'paid' : 'unpaid'] += amount;
+      const entry = monthly.get(month) || { paid: 0, unpaid: 0, waived: 0 };
+      const disposition = transaction.finePaid ? 'paid' : transaction.fineWaived ? 'waived' : 'unpaid';
+      entry[disposition] += amount;
       monthly.set(month, entry);
     }
     return {
       range: normalizeRange(range),
       paid,
       unpaid,
-      total: paid + unpaid,
+      waived,
+      total: paid + unpaid + waived,
       monthly: Array.from(monthly.entries()).map(([month, values]) => ({ month, ...values })),
     };
   }

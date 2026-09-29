@@ -527,6 +527,14 @@ async createBorrowRequest(data: {
     return this.post('/transactions/requests', { bookIds: data.bookIds, notes: data.notes });
   }
 
+  async getBorrowRequestBatch(transactionId: string): Promise<ApiResponse<any>> {
+    return this.get(`/transactions/requests/transaction/${encodeURIComponent(transactionId)}`);
+  }
+
+  async approveBorrowRequestBatch(transactionId: string): Promise<ApiResponse<any>> {
+    return this.put(`/transactions/requests/transaction/${encodeURIComponent(transactionId)}/approve`);
+  }
+
   async getBorrowRequests(params?: Record<string, string>): Promise<ApiResponse<any[]>> {
     const query = params ? '?' + new URLSearchParams(params).toString() : '';
     return this.get(`/transactions/requests${query}`);

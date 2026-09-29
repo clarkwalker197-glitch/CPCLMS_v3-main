@@ -62,7 +62,9 @@ export async function createBorrowRequestLocalFirst(
 
   const response = await api.createBorrowRequest(data);
   if (response.success && response.data && canUseOfflineStorage()) {
-    const records = Array.isArray(response.data) ? response.data : [response.data];
+    const records = Array.isArray(response.data.requests)
+      ? response.data.requests
+      : Array.isArray(response.data) ? response.data : [response.data];
     await db.borrowRequests.bulkPut(records);
   }
   return response;

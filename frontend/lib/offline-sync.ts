@@ -114,7 +114,9 @@ async function pushMutation(mutation: SyncMutation): Promise<boolean> {
     const localIds = Array.isArray(mutation.payload.localRequestIds)
       ? (mutation.payload.localRequestIds as string[])
       : [];
-    const created = Array.isArray(response.data) ? response.data : response.data ? [response.data] : [];
+    const created = Array.isArray(response.data?.requests)
+      ? response.data.requests
+      : Array.isArray(response.data) ? response.data : response.data ? [response.data] : [];
 
     await Promise.all(localIds.map((id) => db.borrowRequests.delete(id)));
     if (created.length) {

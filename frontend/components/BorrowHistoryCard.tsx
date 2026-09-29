@@ -47,7 +47,9 @@ export default function BorrowHistoryCard({
         {hasFine && (
           <div>
             <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">Fine</p>
-            <p className="mt-1 text-sm font-semibold text-amber-400">₱{transaction.fineAmount.toFixed(2)}</p>
+            <p className={`mt-1 text-sm font-semibold ${transaction.fineWaived ? "text-zinc-400" : transaction.finePaid ? "text-emerald-400" : "text-amber-400"}`}>
+              ₱{transaction.fineAmount.toFixed(2)} · {transaction.fineWaived ? "Waived" : transaction.finePaid ? "Paid" : "Unpaid"}
+            </p>
           </div>
         )}
         {contextLabel && contextValue && (

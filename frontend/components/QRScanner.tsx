@@ -7,9 +7,23 @@ interface QRScannerProps {
   onScan: (data: string) => Promise<void> | void;
   onClose: () => void;
   loading?: boolean;
+  title?: string;
+  entryHint?: string;
+  placeholder?: string;
+  submitLabel?: string;
+  externalError?: string;
 }
 
-export function QRScanner({ onScan, onClose, loading = false }: QRScannerProps) {
+export function QRScanner({
+  onScan,
+  onClose,
+  loading = false,
+  title = "Scan QR Code",
+  entryHint = "If QR scan fails, you can enter the Transaction ID (BRW-XXXX-XXXXX format)",
+  placeholder = "Enter Transaction ID (e.g. BRW-1234-56789)",
+  submitLabel = "Submit",
+  externalError = "",
+}: QRScannerProps) {
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState("");
   const [manualInput, setManualInput] = useState("");
@@ -238,7 +252,7 @@ export function QRScanner({ onScan, onClose, loading = false }: QRScannerProps) 
     try {
       await onScan(nextValue);
     } catch {
-      setError("Failed to approve this transaction.");
+      setError("Failed to process this transaction.");
     }
   };
 
@@ -248,7 +262,7 @@ export function QRScanner({ onScan, onClose, loading = false }: QRScannerProps) 
       <div className="relative z-50 w-full max-w-md rounded-xl bg-white shadow-lg p-6">
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-zinc-800">Scan QR Code</h3>
+          <h3 className="text-lg font-semibold text-zinc-800">{title}</h3>
           <button
             onClick={onClose}
             className="p-1 rounded hover:bg-zinc-100 text-zinc-400 transition-colors"
@@ -301,9 +315,9 @@ export function QRScanner({ onScan, onClose, loading = false }: QRScannerProps) 
         </div>
 
         {/* Error messages */}
-        {error && (
+        {(error || externalError) && (
           <div className="p-3 mb-4 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700">
-            {error}
+            {error || externalError}
           </div>
         )}
 
@@ -313,14 +327,14 @@ export function QRScanner({ onScan, onClose, loading = false }: QRScannerProps) 
             Or enter Transaction ID manually
           </label>
           <p className="text-xs text-zinc-500 mb-2">
-            If QR scan fails, you can enter the Transaction ID (BRW-XXXX-XXXXX format)
+            {entryHint}
           </p>
           <div className="flex gap-2">
             <input
               type="text"
               value={manualInput}
               onChange={(e) => setManualInput(e.target.value.toUpperCase())}
-              placeholder="Enter Transaction ID (e.g. BRW-1234-56789)"
+              placeholder={placeholder}
               className="flex-1 px-3 py-2 border border-zinc-300 rounded-lg bg-white text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono uppercase"
             />
             <button
@@ -328,7 +342,7 @@ export function QRScanner({ onScan, onClose, loading = false }: QRScannerProps) 
               disabled={!manualInput.trim()}
               className="px-4 py-2 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors font-medium"
             >
-              Submit
+              {submitLabel}
             </button>
           </div>
         </form>

@@ -113,6 +113,11 @@ export default function RequestsPage() {
   const [qrScannerRequest, setQrScannerRequest] = useState<any>(null);
   const [qrScannerLoading, setQrScannerLoading] = useState(false);
   const [qrScannerError, setQrScannerError] = useState("");
+  const [batchScannerOpen, setBatchScannerOpen] = useState(false);
+  const [batchLookupTarget, setBatchLookupTarget] = useState<any>(null);
+  const [batchLookupLoading, setBatchLookupLoading] = useState(false);
+  const [batchLookupError, setBatchLookupError] = useState("");
+  const [batchApprovalLoading, setBatchApprovalLoading] = useState(false);
 
   const loadTransactions = useCallback(async () => {
     if (isLibrarian) return;
@@ -319,6 +324,72 @@ export default function RequestsPage() {
     setTimeout(() => setSuccessMsg(""), 4000);
   };
 
+  const handleBatchLookup = async (rawTransactionId: string) => {
+    const transactionId = rawTransactionId.trim().toUpperCase();
+    if (!transactionId) return;
+    setBatchLookupLoading(true);
+    setBatchLookupError("");
+    try {
+      const response = await api.getBorrowRequestBatch(transactionId);
+      if (!response.success || !response.data) {
+        setBatchLookupError(response.error || "No borrow transaction found for that ID.");
+        return;
+      }
+      setBatchLookupTarget(response.data);
+      setBatchScannerOpen(false);
+    } catch {
+      setBatchLookupError("Unable to look up this transaction.");
+    } finally {
+      setBatchLookupLoading(false);
+    }
+  };
+
+  const approveListedBatch = async (request: any) => {
+    if (!request.transactionId) {
+      handleApprove(request);
+      return;
+    }
+    setActionLoadingId(request.id);
+    try {
+      const response = await api.approveBorrowRequestBatch(request.transactionId);
+      if (!response.success) {
+        setError(response.error || "Failed to approve borrow transaction");
+        return;
+      }
+      setSuccessMsg(`${request.transactionId}: ${response.data?.transactions?.length || request.books.length} book(s) marked as borrowed`);
+      loadRequests();
+      loadActiveTransactions();
+      setTimeout(() => setSuccessMsg(""), 4000);
+    } catch {
+      setError("Failed to approve borrow transaction");
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const approveLookedUpBatch = async () => {
+    if (!batchLookupTarget?.transactionId) return;
+    setBatchApprovalLoading(true);
+    setBatchLookupError("");
+    try {
+      const response = await api.approveBorrowRequestBatch(batchLookupTarget.transactionId);
+      if (!response.success) {
+        setBatchLookupError(response.error || "Failed to approve this transaction.");
+        return;
+      }
+      const count = response.data?.transactions?.length || batchLookupTarget.books.length;
+      setBatchLookupTarget(null);
+      setSuccessMsg(`${batchLookupTarget.transactionId}: ${count} book(s) marked as borrowed`);
+      loadRequests();
+      loadActiveTransactions();
+      setTimeout(() => setSuccessMsg(""), 4000);
+    } catch {
+      setBatchLookupError("Failed to approve this transaction.");
+    } finally {
+      setBatchApprovalLoading(false);
+    }
+  };
+
   // Handle QR code scan for student/faculty (scan librarian's approval QR)
   const openQRScanner = (request: any) => {
     setQrScannerRequest(request);
@@ -375,7 +446,7 @@ export default function RequestsPage() {
       if (res.success) {
         setRejectTarget(null);
         setRejectReason("");
-        setSuccessMsg("Borrow request rejected");
+        setSuccessMsg(rejectTarget.transactionId ? "Borrow transaction rejected" : "Borrow request rejected");
         loadRequests();
         setTimeout(() => setSuccessMsg(""), 4000);
       } else {
@@ -474,7 +545,7 @@ export default function RequestsPage() {
                                   <td className="px-6 py-4"><p className="text-zinc-100 font-medium">{txn.book?.title || "Unknown"}</p><p className="text-xs text-zinc-500">{txn.book?.author || ""}</p></td>
                                   <td className="px-6 py-4 text-zinc-400 hidden sm:table-cell">{txn.book?.accessionNo || "—"}</td><td className="px-6 py-4 text-zinc-400 hidden sm:table-cell">{formatDate(txn.borrowDate)}</td><td className="px-6 py-4 text-zinc-400 hidden md:table-cell">{formatDate(txn.dueDate)}</td><td className="px-6 py-4 text-zinc-400 hidden md:table-cell">{formatDate(txn.returnDate)}</td>
                                   <td className="px-6 py-4"><span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${txnStatusBadge[txn.status] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>{txnStatusLabel[txn.status] || txn.status}</span></td>
-                                  <td className="px-6 py-4"><span className={`font-medium ${txn.fineAmount > 0 ? "text-amber-400" : "text-zinc-500"}`}>{txn.fineAmount ? `₱${txn.fineAmount.toFixed(2)}` : "—"}</span></td>
+                                  <td className="px-6 py-4"><span className={`font-medium ${txn.fineWaived ? "text-zinc-400" : txn.finePaid ? "text-emerald-400" : txn.fineAmount > 0 ? "text-amber-400" : "text-zinc-500"}`}>{txn.fineAmount ? `₱${txn.fineAmount.toFixed(2)} · ${txn.fineWaived ? "Waived" : txn.finePaid ? "Paid" : "Unpaid"}` : "—"}</span></td>
                                 </tr>)}</tbody>
                               </table>
                             </div>
@@ -502,9 +573,18 @@ export default function RequestsPage() {
               <div>
                 <h2 className="text-2xl font-bold text-white">Borrow Requests</h2>
                 <p className="text-sm text-zinc-400 mt-1">
-                  Review and manage book borrowing requests · {reqTotal} total
+                  Review and manage borrowing transactions · {reqTotal} total
                 </p>
               </div>
+              {isLibrarian && (
+                <button
+                  type="button"
+                  onClick={() => { setBatchLookupError(""); setBatchScannerOpen(true); }}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+                >
+                  <QrCode className="h-4 w-4" /> Scan / Find Transaction
+                </button>
+              )}
             </div>
 
             {/* Toolbar */}
@@ -561,7 +641,7 @@ export default function RequestsPage() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="bg-zinc-900 text-left text-xs uppercase tracking-wide text-zinc-500">
-                        <th className="px-6 py-3 font-medium">Book</th>
+                        <th className="px-6 py-3 font-medium">Books / Transaction</th>
                         <th className="px-6 py-3 font-medium hidden md:table-cell"><SortHeader field="memberName" sort={reqSort} order={reqSortOrder} onSort={(field) => changeRequestSort(field, nextSortOrder(reqSort, reqSortOrder, field))}>Member</SortHeader></th>
                         <th className="px-6 py-3 font-medium hidden sm:table-cell"><SortHeader field="requestDate" sort={reqSort} order={reqSortOrder} onSort={(field) => changeRequestSort(field, nextSortOrder(reqSort, reqSortOrder, field))}>Request Date</SortHeader></th>
                         <th className="px-6 py-3 font-medium">Notes</th>
@@ -573,8 +653,15 @@ export default function RequestsPage() {
                       {records.map((req: any) => (
                         <tr key={req.id} className="border-t border-zinc-800/60 hover:bg-zinc-800/40 transition-colors">
                           <td className="px-6 py-4">
-                            <p className="text-zinc-100 font-medium">{req.book?.title || "Unknown"}</p>
-                            <p className="text-xs text-zinc-500">{req.book?.accessionNo || ""}</p>
+                            {req.transactionId && <p className="mb-1 font-mono text-xs text-blue-300">{req.transactionId}</p>}
+                            <div className="space-y-1">
+                              {(req.books || []).map((book: any) => (
+                                <div key={book.requestId || book.id}>
+                                  <p className="text-zinc-100 font-medium">{book.title || "Unknown"}</p>
+                                  <p className="text-xs text-zinc-500">{book.accessionNo || ""}</p>
+                                </div>
+                              ))}
+                            </div>
                           </td>
                           <td className="px-6 py-4 text-zinc-300 hidden md:table-cell">
                             <div>{req.user?.firstName} {req.user?.lastName}<p className="text-xs text-zinc-500">{req.user?.libraryId || ""}</p></div>
@@ -602,10 +689,11 @@ export default function RequestsPage() {
                               {isLibrarian && req.status === "PENDING" && (
                                 <>
                                   <button
-                                    onClick={() => handleApprove(req)}
-                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium rounded-lg transition-colors"
+                                    onClick={() => approveListedBatch(req)}
+                                    disabled={actionLoadingId === req.id}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
                                   >
-                                    <QrCode className="w-3.5 h-3.5" /> Approve via QR
+                                    <CheckCircle2 className="w-3.5 h-3.5" /> {actionLoadingId === req.id ? "Approving..." : req.transactionId ? "Approve & Mark Borrowed" : "Approve via QR"}
                                   </button>
                                   <button
                                     onClick={() => openRejectModal(req)}
@@ -615,7 +703,7 @@ export default function RequestsPage() {
                                   </button>
                                 </>
                               )}
-                              {!isLibrarian && req.status === "PENDING" && (
+                              {!isLibrarian && req.status === "PENDING" && !req.transactionId && (
                                 <button
                                   onClick={() => openQRScanner(req)}
                                   className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors"
@@ -637,9 +725,12 @@ export default function RequestsPage() {
               <ResponsiveTable mobile={
                 records.map((req: any) => (
                   <article key={req.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-lg shadow-black/10">
-                    <div className="border-b border-zinc-800/80 pb-3"><p className="font-semibold text-zinc-100 break-words">{req.book?.title || "Unknown"}</p><p className="mt-1 text-sm text-zinc-500">{req.book?.accessionNo || ""}</p></div>
+                    <div className="border-b border-zinc-800/80 pb-3">
+                      {req.transactionId && <p className="mb-2 break-all font-mono text-xs text-blue-300">{req.transactionId}</p>}
+                      {(req.books || []).map((book: any) => <div key={book.requestId || book.id} className="mb-2 last:mb-0"><p className="font-semibold text-zinc-100 break-words">{book.title || "Unknown"}</p><p className="mt-1 text-sm text-zinc-500">{book.accessionNo || ""}</p></div>)}
+                    </div>
                     <div className="grid grid-cols-2 gap-3 py-4 text-sm"><div><p className="text-xs text-zinc-500">Member</p><p className="mt-1 break-words text-zinc-300">{req.user?.firstName} {req.user?.lastName}</p><p className="text-xs text-zinc-500">{req.user?.libraryId || ""}</p></div><div><p className="text-xs text-zinc-500">Request Date</p><p className="mt-1 text-zinc-300">{formatDate(req.requestDate)}</p></div><div className="col-span-2"><p className="text-xs text-zinc-500">Notes</p><p className="mt-1 whitespace-pre-wrap break-words text-zinc-300">{req.notes || "—"}</p></div></div>
-                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-800/80 pt-3"><span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${reqStatusBadge[req.status] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>{reqStatusLabel[req.status] || req.status}</span><div className="flex flex-wrap gap-2">{isLibrarian && req.status === "PENDING" && <><button onClick={() => handleApprove(req)} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-medium text-white">Approve via QR</button><button onClick={() => openRejectModal(req)} className="rounded-lg bg-red-500/15 px-3 py-2 text-xs font-medium text-red-400">Reject</button></>}{!isLibrarian && req.status === "PENDING" && <button onClick={() => openQRScanner(req)} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white">Scan QR</button>}</div></div>
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-800/80 pt-3"><span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${reqStatusBadge[req.status] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>{reqStatusLabel[req.status] || req.status}</span><div className="flex flex-wrap gap-2">{isLibrarian && req.status === "PENDING" && <><button disabled={actionLoadingId === req.id} onClick={() => approveListedBatch(req)} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-50">{actionLoadingId === req.id ? "Approving..." : req.transactionId ? "Approve & Mark Borrowed" : "Approve via QR"}</button><button onClick={() => openRejectModal(req)} className="rounded-lg bg-red-500/15 px-3 py-2 text-xs font-medium text-red-400">Reject</button></>}{!isLibrarian && req.status === "PENDING" && !req.transactionId && <button onClick={() => openQRScanner(req)} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white">Scan QR</button>}</div></div>
                   </article>
                 ))
               } />
@@ -653,7 +744,7 @@ export default function RequestsPage() {
                   <span className="text-zinc-300">
                     {(reqPage - 1) * PAGE_SIZE + 1}–{Math.min(reqPage * PAGE_SIZE, reqTotal)}
                   </span>{" "}
-                  of <span className="text-zinc-300">{reqTotal}</span> records
+                  of <span className="text-zinc-300">{reqTotal}</span> transactions
                 </p>
                 <div className="flex items-center gap-1">
                   <button
@@ -865,10 +956,13 @@ export default function RequestsPage() {
                 <XCircle className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-white">Reject Borrow Request</h3>
+                <h3 className="text-lg font-semibold text-white">Reject Borrow Transaction</h3>
                 <p className="text-sm text-zinc-400 mt-1">
-                  Reject the request for "{rejectTarget.book?.title || "this book"}"? A reason is required.
+                  Reject all {rejectTarget.books?.length || 1} book(s){rejectTarget.transactionId ? ` in ${rejectTarget.transactionId}` : " in this request"}? A reason is required.
                 </p>
+                <ul className="mt-2 space-y-1 text-xs text-zinc-500">
+                  {(rejectTarget.books || []).map((book: any) => <li key={book.requestId || book.id}>{book.title} · {book.accessionNo}</li>)}
+                </ul>
               </div>
             </div>
 
@@ -926,6 +1020,54 @@ export default function RequestsPage() {
           onClose={() => setQrScannerRequest(null)}
           loading={qrScannerLoading}
         />
+      )}
+
+      {batchScannerOpen && (
+        <QRScanner
+          onScan={handleBatchLookup}
+          onClose={() => setBatchScannerOpen(false)}
+          loading={batchLookupLoading}
+          title="Find Borrow Transaction"
+          entryHint="Scan the member's QR or enter the TXN ID printed beneath it."
+          placeholder="TXN-2026-..."
+          submitLabel="Find"
+          externalError={batchLookupError}
+        />
+      )}
+
+      {batchLookupTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setBatchLookupTarget(null)} />
+          <div className="relative z-50 w-full max-w-xl rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl shadow-black/50">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold text-white">Borrow Transaction</h3>
+                <p className="mt-1 break-all font-mono text-sm text-blue-300">{batchLookupTarget.transactionId}</p>
+              </div>
+              <button type="button" onClick={() => setBatchLookupTarget(null)} className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-800 hover:text-white" aria-label="Close transaction details">×</button>
+            </div>
+            <div className="mt-5 grid grid-cols-2 gap-3 border-y border-zinc-800 py-4 text-sm">
+              <div><p className="text-xs text-zinc-500">Member</p><p className="mt-1 font-medium text-zinc-100">{batchLookupTarget.user?.firstName} {batchLookupTarget.user?.lastName}</p></div>
+              <div><p className="text-xs text-zinc-500">Library ID</p><p className="mt-1 text-zinc-200">{batchLookupTarget.user?.libraryId || "—"}</p></div>
+              <div className="col-span-2"><p className="text-xs text-zinc-500">Status</p><p className="mt-1 text-zinc-200">{reqStatusLabel[batchLookupTarget.status] || batchLookupTarget.status}</p></div>
+            </div>
+            <div className="max-h-64 divide-y divide-zinc-800 overflow-y-auto">
+              {(batchLookupTarget.books || []).map((book: any) => (
+                <div key={book.requestId || book.bookId} className="flex items-start justify-between gap-4 py-3">
+                  <div className="min-w-0"><p className="font-medium text-zinc-100">{book.title}</p><p className="mt-1 text-xs text-zinc-500">Accession: {book.accessionNo || "—"}</p></div>
+                  <div className="shrink-0 text-right"><p className="text-xs text-zinc-500">Due date</p><p className="mt-1 text-sm text-zinc-200">{formatDate(book.dueDate)}</p></div>
+                </div>
+              ))}
+            </div>
+            {batchLookupError && <p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{batchLookupError}</p>}
+            <div className="mt-5 flex justify-end gap-3">
+              <button type="button" onClick={() => setBatchLookupTarget(null)} className="rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2.5 text-sm font-medium text-zinc-200 hover:bg-zinc-700">Close</button>
+              <button type="button" onClick={approveLookedUpBatch} disabled={batchLookupTarget.status !== "PENDING" || batchApprovalLoading} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50">
+                <CheckCircle2 className="h-4 w-4" /> {batchApprovalLoading ? "Confirming..." : "Confirm Pickup & Mark Borrowed"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {selectedNote !== null && (

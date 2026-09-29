@@ -71,6 +71,23 @@ export const getBorrowRequest = asyncHandler(
   }
 );
 
+export const getBorrowRequestBatch = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const transaction = await transactionService.getBorrowRequestBatch(req.params.transactionId);
+    sendSuccess(res, transaction);
+  }
+);
+
+export const approveBorrowRequestBatch = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const result = await transactionService.approveTransactionBatch(
+      req.params.transactionId,
+      req.user!.userId
+    );
+    sendSuccess(res, result, 'Borrow transaction approved');
+  }
+);
+
 // Generate a unique QR code for a pending borrow request (librarian only).
 // The QR encodes a deep link that the borrower scans to confirm approval.
 export const generateRequestQR = asyncHandler(

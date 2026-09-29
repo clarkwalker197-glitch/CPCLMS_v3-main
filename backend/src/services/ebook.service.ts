@@ -6,6 +6,7 @@ import { prisma } from '../config';
 import { NotFoundError, ConflictError } from '../utils/errors';
 import { getPaginationParams, buildPaginationMeta } from '../utils/pagination';
 import { normalizeClassificationNumber } from '../constants/categories';
+import { getSortParams } from '../utils/sorting';
 
 export class EBookService {
   /**
@@ -13,6 +14,7 @@ export class EBookService {
    */
   async listEBooks(query: Record<string, unknown>) {
     const { page, limit, skip, take } = getPaginationParams(query);
+    const { sort, order } = getSortParams(query, ['title', 'author', 'classification', 'createdAt', 'availability'] as const, 'title', 'asc');
 
     const where: Record<string, unknown> = { deletedAt: null };
 
@@ -54,7 +56,9 @@ export class EBookService {
         include: {
           category: { select: { id: true, name: true, slug: true } },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: sort === 'availability'
+          ? [{ status: order === 'asc' ? 'asc' : 'desc' }, { title: 'asc' }, { id: 'asc' }]
+          : [{ [sort === 'classification' ? 'classificationNumber' : sort]: order }, { id: 'asc' }],
         skip,
         take,
       }),

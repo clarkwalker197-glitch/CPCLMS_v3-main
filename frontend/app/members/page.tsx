@@ -7,6 +7,7 @@ import { isValidName, nameValidationMessage, sanitizeNameInput } from "@/lib/nam
 import { useDebounce } from "@/lib/useDebounce";
 import Sidebar from "@/components/Sidebar";
 import ResponsiveTable from "@/components/ResponsiveTable";
+import { SortHeader, SortSelect, nextSortOrder, type SortOption } from "@/components/SortControls";
 import { Dialog, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
   Plus,
@@ -56,6 +57,8 @@ export default function MembersPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [sort, setSort] = useState("name");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [successMsg, setSuccessMsg] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
@@ -78,6 +81,8 @@ export default function MembersPage() {
       };
       if (debouncedSearch) params.search = debouncedSearch;
       if (debouncedStatus) params.isActive = debouncedStatus === "active" ? "true" : "false";
+      params.sort = sort;
+      params.order = sortOrder;
 
 const [usersRes, statsRes] = await Promise.all([
         api.get<any>("/auth/users?" + new URLSearchParams(params).toString()),
@@ -103,7 +108,7 @@ const [usersRes, statsRes] = await Promise.all([
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, debouncedStatus, currentPage]);
+  }, [debouncedSearch, debouncedStatus, currentPage, sort, sortOrder]);
 
   useEffect(() => {
     if (user && user.role !== "LIBRARIAN") {
@@ -233,6 +238,22 @@ const handleDelete = async (member: any) => {
   const formatPhone = (p?: string) => p || "—";
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const displayedMembers = members;
+  const sortOptions: SortOption[] = [
+    { sort: "name", order: "asc", label: "Name A–Z" },
+    { sort: "name", order: "desc", label: "Name Z–A" },
+    { sort: "joinDate", order: "desc", label: "Join date newest" },
+    { sort: "joinDate", order: "asc", label: "Join date oldest" },
+    { sort: "fines", order: "desc", label: "Fines high–low" },
+    { sort: "fines", order: "asc", label: "Fines low–high" },
+    { sort: "libraryId", order: "asc", label: "Library ID A–Z" },
+    { sort: "libraryId", order: "desc", label: "Library ID Z–A" },
+  ];
+  const changeSort = (field: string, direction: "asc" | "desc") => {
+    setSort(field);
+    setSortOrder(direction);
+    setCurrentPage(1);
+  };
 
   const getPageNumbers = () => {
     const pages: number[] = [];
@@ -496,22 +517,25 @@ const handleDelete = async (member: any) => {
 
           {!loading && members.length > 0 && (
             <>
+            <div className="mb-3 flex justify-end">
+              <SortSelect options={sortOptions} sort={sort} order={sortOrder} onChange={changeSort} />
+            </div>
             <div className="hidden sm:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-zinc-900 text-left text-xs uppercase tracking-wide text-zinc-500">
-                      <th className="px-6 py-3 font-medium">Name</th>
+                      <th className="px-6 py-3 font-medium"><SortHeader field="name" sort={sort} order={sortOrder} onSort={(field) => changeSort(field, nextSortOrder(sort, sortOrder, field))}>Name</SortHeader></th>
                       <th className="px-6 py-3 font-medium hidden md:table-cell">Email</th>
                       <th className="px-6 py-3 font-medium hidden lg:table-cell">Phone</th>
-                      <th className="px-6 py-3 font-medium hidden sm:table-cell">Join Date</th>
-                      <th className="px-6 py-3 font-medium">Fines</th>
+                      <th className="px-6 py-3 font-medium hidden sm:table-cell"><SortHeader field="joinDate" sort={sort} order={sortOrder} onSort={(field) => changeSort(field, nextSortOrder(sort, sortOrder, field))}>Join Date</SortHeader></th>
+                      <th className="px-6 py-3 font-medium"><SortHeader field="fines" sort={sort} order={sortOrder} onSort={(field) => changeSort(field, nextSortOrder(sort, sortOrder, field))}>Fines</SortHeader></th>
                       <th className="px-6 py-3 font-medium">Status</th>
                       <th className="px-6 py-3 font-medium text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {members.map((m: any) => (
+                    {displayedMembers.map((m: any) => (
                       <tr key={m.id} className="border-t border-zinc-800/60 hover:bg-zinc-800/40 transition-colors">
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
@@ -520,7 +544,7 @@ const handleDelete = async (member: any) => {
                             </div>
                             <div className="min-w-0">
                               <p className="text-zinc-100 font-medium truncate">{getFullName(m)}</p>
-                              <p className="text-xs text-zinc-500">{m.libraryId || ""}</p>
+                              <p className="text-xs text-zinc-500">{m.libraryId || "—"}</p>
                             </div>
                           </div>
                         </td>
@@ -565,7 +589,7 @@ const handleDelete = async (member: any) => {
               </div>
             </div>
             <ResponsiveTable desktop={null} mobile={
-              members.map((m: any) => (
+              displayedMembers.map((m: any) => (
                 <article key={m.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-lg shadow-black/10">
                   <div className="flex items-center gap-3 border-b border-zinc-800/80 pb-3">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-500/15 text-xs font-semibold text-blue-300">{m.firstName?.charAt(0)}{m.lastName?.charAt(0)}</div>

@@ -1,5 +1,6 @@
 import { prisma } from '../config';
 import { BadRequestError, NotFoundError } from '../utils/errors';
+import { notificationService } from './notification.service';
 
 const suggestionStatuses = new Set(['PENDING', 'REVIEWED', 'ACCEPTED', 'REJECTED']);
 const acquisitionStatuses = new Set(['PENDING', 'ACCEPTED', 'REJECTED', 'FULFILLED']);
@@ -13,11 +14,31 @@ export class CommunityService {
   }
 
   async createFaq(input: { question: string; answer: string; category?: string; sortOrder?: number; isPublished?: boolean; createdById: string }) {
-    return prisma.faq.create({ data: { ...input, category: input.category || undefined } });
+    const faq = await prisma.faq.create({ data: { ...input, category: input.category || undefined } });
+    if (faq.isPublished) {
+      await notificationService.notifyStudentsAndFaculty(
+        'FAQ_PUBLISHED',
+        'New FAQ',
+        `New FAQ: "${faq.question}"`,
+        '/faq'
+      );
+    }
+    return faq;
   }
 
   async updateFaq(id: string, input: Partial<{ question: string; answer: string; category: string; sortOrder: number; isPublished: boolean }>) {
-    return prisma.faq.update({ where: { id }, data: input });
+    const existing = await prisma.faq.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundError('FAQ');
+    const faq = await prisma.faq.update({ where: { id }, data: input });
+    if (!existing.isPublished && faq.isPublished) {
+      await notificationService.notifyStudentsAndFaculty(
+        'FAQ_PUBLISHED',
+        'New FAQ',
+        `New FAQ: "${faq.question}"`,
+        '/faq'
+      );
+    }
+    return faq;
   }
 
   async deleteFaq(id: string) {
@@ -26,7 +47,18 @@ export class CommunityService {
 
   async createSuggestion(userId: string, input: { subject: string; message: string }) {
     if (!input.subject?.trim() || !input.message?.trim()) throw new BadRequestError('Subject and message are required');
-    return prisma.suggestion.create({ data: { userId, subject: input.subject.trim(), message: input.message.trim() } });
+    const suggestion = await prisma.suggestion.create({
+      data: { userId, subject: input.subject.trim(), message: input.message.trim() },
+      include: { user: { select: { firstName: true, lastName: true } } },
+    });
+    const memberName = `${suggestion.user.firstName} ${suggestion.user.lastName}`.trim();
+    await notificationService.notifyAllLibrarians(
+      'SUGGESTION_NEW',
+      'New suggestion',
+      `New suggestion: "${suggestion.subject}" from ${memberName}`,
+      '/suggestions'
+    );
+    return suggestion;
   }
 
   async listSuggestions(userId?: string, status?: string) {
@@ -39,12 +71,35 @@ export class CommunityService {
 
   async updateSuggestion(id: string, input: { status?: string; adminNote?: string }) {
     if (input.status && !suggestionStatuses.has(input.status)) throw new BadRequestError('Invalid suggestion status');
-    return prisma.suggestion.update({ where: { id }, data: input });
+    const existing = await prisma.suggestion.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundError('Suggestion');
+    const suggestion = await prisma.suggestion.update({ where: { id }, data: input });
+    if (input.status && input.status !== existing.status) {
+      await notificationService.createNotification(
+        suggestion.userId,
+        'SUGGESTION_UPDATED',
+        'Suggestion status updated',
+        `Your suggestion "${suggestion.subject}" was marked ${suggestion.status.toLowerCase()}`,
+        '/suggestions'
+      );
+    }
+    return suggestion;
   }
 
   async createAcquisitionRequest(userId: string, input: { title: string; author?: string; isbn?: string; details?: string }) {
     if (!input.title?.trim()) throw new BadRequestError('Book title is required');
-    return prisma.acquisitionRequest.create({ data: { userId, title: input.title.trim(), author: input.author?.trim() || undefined, isbn: input.isbn?.trim() || undefined, details: input.details?.trim() || undefined } });
+    const request = await prisma.acquisitionRequest.create({
+      data: { userId, title: input.title.trim(), author: input.author?.trim() || undefined, isbn: input.isbn?.trim() || undefined, details: input.details?.trim() || undefined },
+      include: { user: { select: { firstName: true, lastName: true } } },
+    });
+    const memberName = `${request.user.firstName} ${request.user.lastName}`.trim();
+    await notificationService.notifyAllLibrarians(
+      'ACQUISITION_REQUEST_NEW',
+      'New book request',
+      `New book request: "${request.title}" from ${memberName}`,
+      '/acquisition-requests'
+    );
+    return request;
   }
 
   async listAcquisitionRequests(userId?: string, status?: string) {
@@ -57,7 +112,19 @@ export class CommunityService {
 
   async updateAcquisitionRequest(id: string, input: { status?: string; adminNote?: string }) {
     if (input.status && !acquisitionStatuses.has(input.status)) throw new BadRequestError('Invalid acquisition request status');
-    return prisma.acquisitionRequest.update({ where: { id }, data: input });
+    const existing = await prisma.acquisitionRequest.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundError('Acquisition request');
+    const request = await prisma.acquisitionRequest.update({ where: { id }, data: input });
+    if (input.status && input.status !== existing.status) {
+      await notificationService.createNotification(
+        request.userId,
+        'ACQUISITION_REQUEST_UPDATED',
+        'Book request status updated',
+        `Your book request "${request.title}" was ${request.status.toLowerCase()}`,
+        '/acquisition-requests'
+      );
+    }
+    return request;
   }
 }
 

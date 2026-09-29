@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import api from "@/lib/api";
-import { resolveMediaUrl } from "@/lib/api";
+import MediaImage from "@/components/MediaImage";
 import { offlineDb } from "@/lib/offline-db";
 import { useDebounce } from "@/lib/useDebounce";
 import { BookBorrowModal } from "@/components/BookBorrowModal";
@@ -13,6 +13,7 @@ import { EditBookModal } from "@/components/EditBookModal";
 import MobileBookTypeSelect from "@/components/MobileBookTypeSelect";
 import Sidebar from "@/components/Sidebar";
 import ResponsiveTable from "@/components/ResponsiveTable";
+import { SortHeader, SortSelect, nextSortOrder, type SortOption } from "@/components/SortControls";
 import { categoryDisplayName, DEWEY_MAIN_CATEGORIES, subcategoriesForMain } from "@/lib/categories";
 import {
   Plus,
@@ -53,6 +54,8 @@ export default function BooksPage() {
   const [classificationFilter, setClassificationFilter] = useState("");
   const [view, setView] = useState<"grid" | "list">("grid");
   const [currentPage, setCurrentPage] = useState(1);
+  const [sort, setSort] = useState("title");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [cart, setCart] = useState<any[]>([]);
   const [showBorrowModal, setShowBorrowModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -85,6 +88,8 @@ export default function BooksPage() {
 
       const params: Record<string, string> = {};
       params.limit = "100";
+      params.sort = sort;
+      params.order = sortOrder;
       if (debouncedSearch) params.search = debouncedSearch;
       if (categoryFilter) params.categoryId = categoryFilter;
       else if (mainCategoryFilter) params.categoryMain = mainCategoryFilter;
@@ -102,7 +107,7 @@ export default function BooksPage() {
     } finally {
       if (requestId === requestSequence.current) setLoading(false);
     }
-  }, [categoryFilter, classificationFilter, debouncedSearch, mainCategoryFilter]);
+  }, [categoryFilter, classificationFilter, debouncedSearch, mainCategoryFilter, sort, sortOrder]);
 
   const visibleBooks = books;
 
@@ -261,6 +266,22 @@ export default function BooksPage() {
     ? "bg-violet-500/15 text-violet-300"
     : "bg-cyan-500/15 text-cyan-300";
   const typeLabel = (book: any) => book.bookType === "ebook" ? "eBook" : "Physical";
+  const sortOptions: SortOption[] = [
+    { sort: "title", order: "asc", label: "Title A–Z" },
+    { sort: "title", order: "desc", label: "Title Z–A" },
+    { sort: "author", order: "asc", label: "Author A–Z" },
+    { sort: "author", order: "desc", label: "Author Z–A" },
+    { sort: "classification", order: "asc", label: "Classification low–high" },
+    { sort: "classification", order: "desc", label: "Classification high–low" },
+    { sort: "createdAt", order: "desc", label: "Date added newest" },
+    { sort: "createdAt", order: "asc", label: "Date added oldest" },
+    { sort: "availability", order: "asc", label: "Available first" },
+  ];
+  const changeSort = (field: string, direction: "asc" | "desc") => {
+    setSort(field);
+    setSortOrder(direction);
+    setCurrentPage(1);
+  };
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex">
@@ -335,6 +356,7 @@ export default function BooksPage() {
             </div>
 
             <div className="mt-2 grid grid-cols-2 gap-2 sm:mt-3 sm:flex sm:flex-wrap sm:items-center sm:gap-3">
+              <SortSelect options={sortOptions} sort={sort} order={sortOrder} onChange={changeSort} />
               <select
                 value={mainCategoryFilter}
                 onChange={(e) => {
@@ -424,12 +446,7 @@ export default function BooksPage() {
                   <div key={book.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden hover:border-zinc-700 transition-colors">
                     {/* Cover */}
                     <div className="aspect-[3/4] bg-zinc-800 relative">
-                      {book.coverImage ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={resolveMediaUrl(book.coverImage)} alt={book.title} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-                      ) : (
-                        fallbackCover
-                      )}
+                      <MediaImage src={book.coverImage} alt={book.title} className="w-full h-full object-cover" fallback={fallbackCover} />
                       {!isLibrarian && inCart(book.id) && (
                         <div className="absolute top-2 right-2 w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center shadow-lg">
                           <Check className="w-4 h-4 text-white" />
@@ -513,7 +530,7 @@ export default function BooksPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-zinc-900 text-left text-xs uppercase tracking-wide text-zinc-500">
-                      <th className="px-6 py-3 font-medium">Book</th>
+                      <th className="px-6 py-3 font-medium"><SortHeader field="title" sort={sort} order={sortOrder} onSort={(field) => changeSort(field, nextSortOrder(sort, sortOrder, field))}>Book</SortHeader></th>
                       <th className="px-6 py-3 font-medium hidden md:table-cell">Genre</th>
                       <th className="px-6 py-3 font-medium hidden sm:table-cell">Year</th>
                       <th className="px-6 py-3 font-medium">Status</th>
@@ -526,14 +543,7 @@ export default function BooksPage() {
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
                             <div className="w-11 h-14 rounded-lg overflow-hidden bg-zinc-800 shrink-0">
-                              {book.coverImage ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img src={resolveMediaUrl(book.coverImage)} alt={book.title} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center">
-                                  <ImageIcon className="w-5 h-5 text-zinc-600" />
-                                </div>
-                              )}
+                              <MediaImage src={book.coverImage} alt={book.title} className="w-full h-full object-cover" fallback={<div className="flex h-full w-full items-center justify-center"><ImageIcon className="h-5 w-5 text-zinc-600" /></div>} />
                             </div>
                             <div className="min-w-0">
                               <div className="flex items-center gap-2"><p className="text-zinc-100 font-medium truncate">{book.title}</p><span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${typeBadge(book)}`}>{typeLabel(book)}</span></div>
@@ -610,7 +620,7 @@ export default function BooksPage() {
                 paginatedBooks.map((book: any) => (
                   <article key={book.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-lg shadow-black/10">
                     <div className="flex items-start gap-3 border-b border-zinc-800/80 pb-3">
-                      <div className="h-14 w-11 shrink-0 overflow-hidden rounded-lg bg-zinc-800">{book.coverImage ? <img src={resolveMediaUrl(book.coverImage)} alt={book.title} className="h-full w-full object-cover" /> : <ImageIcon className="m-3 h-5 w-5 text-zinc-600" />}</div>
+                      <div className="h-14 w-11 shrink-0 overflow-hidden rounded-lg bg-zinc-800"><MediaImage src={book.coverImage} alt={book.title} className="h-full w-full object-cover" fallback={<ImageIcon className="m-3 h-5 w-5 text-zinc-600" />} /></div>
                       <div className="min-w-0"><p className="font-semibold text-zinc-100 break-words">{book.title}</p><p className="mt-1 text-sm text-zinc-500 break-words">{book.author}</p></div>
                     </div>
                     <div className="grid grid-cols-2 gap-3 py-4 text-sm"><div><p className="text-xs text-zinc-500">Type</p><span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${typeBadge(book)}`}>{typeLabel(book)}</span></div><div><p className="text-xs text-zinc-500">Genre</p><p className="mt-1 text-zinc-300">{book.category?.name || "General"}</p></div><div><p className="text-xs text-zinc-500">Year</p><p className="mt-1 text-zinc-300">{book.publishYear || "—"}</p></div><div><p className="text-xs text-zinc-500">{book.bookType === "ebook" ? "Access" : "Copies"}</p><p className="mt-1 text-zinc-300">{book.bookType === "ebook" ? "Digital reader" : `${book.availableCopies ?? 0}/${book.copies ?? 0} available`}</p></div></div>

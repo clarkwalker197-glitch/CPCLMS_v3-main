@@ -39,6 +39,21 @@ export function subcategoriesForMain(mainCode: string) {
   );
 }
 
+export function categoryIdForDewey(
+  category: { code: string; name: string; slug: string },
+  categories: Array<{ id: string; name: string; slug?: string }>
+): string {
+  const normalizeName = (name: string) => name.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+  const normalizedName = normalizeName(category.name);
+  const record = categories.find((item) =>
+    item.slug === category.slug ||
+    item.id === `dewey-${category.code}` ||
+    normalizeName(item.name) === normalizedName ||
+    normalizeName(item.name.replace(/^\d{3}\s+/, "")) === normalizeName(categoryDisplayName(category.name))
+  );
+  return record?.id || `dewey-${category.code}`;
+}
+
 export function categoryDisplayName(name: string): string {
   return name.replace(/^\d{3}\s+/, "").trim();
 }

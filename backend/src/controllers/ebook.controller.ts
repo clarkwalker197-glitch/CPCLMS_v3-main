@@ -58,10 +58,9 @@ export const uploadEBook = asyncHandler(async (req: Request, res: Response) => {
     throw new BadRequestError('Classification number must be between 000 and 999 with up to 5 decimal places');
   }
 
-  const baseUrl = `${req.protocol}://${req.get('host')}`;
-  const fileUrl = `${baseUrl}/uploads/ebooks/${uploadedFile.filename}`;
+  const fileUrl = `/uploads/ebooks/${uploadedFile.filename}`;
   const coverImage = uploadedCover
-    ? `${baseUrl}/uploads/covers/${uploadedCover.filename}`
+    ? `/uploads/covers/${uploadedCover.filename}`
     : coverImageUrl || undefined;
 
   const ebook = await ebookService.createEBook({

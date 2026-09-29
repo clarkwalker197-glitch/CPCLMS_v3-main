@@ -21,16 +21,36 @@ function resolveApiBaseUrl(): string {
 
 export function resolveMediaUrl(value?: string | null): string {
   if (!value) return '';
-  if (/^(https?:|data:|blob:)/i.test(value)) return value;
-  if (typeof window !== 'undefined' && value.startsWith('/uploads/')) {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
-    if (apiUrl) return `${apiUrl.replace(/\/api\/?$/, '').replace(/\/+$/, '')}${value}`;
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-      return `http://${window.location.hostname}:4000${value}`;
+  const normalizeUploadPath = (path: string) => path.replace(/^\/api(?=\/uploads\/)/, '');
+
+  if (/^(https?:|data:|blob:)/i.test(value)) {
+    if (!/^https?:/i.test(value)) return value;
+    try {
+      const mediaUrl = new URL(value);
+      mediaUrl.pathname = normalizeUploadPath(mediaUrl.pathname);
+      return mediaUrl.toString();
+    } catch {
+      return value;
     }
-    return value;
   }
-  return value;
+
+  const mediaPath = normalizeUploadPath(value);
+  if (typeof window !== 'undefined' && mediaPath.startsWith('/uploads/')) {
+    const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
+    if (configuredApiUrl) {
+      try {
+        const apiUrl = new URL(configuredApiUrl, window.location.origin);
+        return `${apiUrl.origin}${mediaPath}`;
+      } catch {
+        return `${window.location.origin}${mediaPath}`;
+      }
+    }
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === '0.0.0.0') {
+      return `http://${window.location.hostname}:4000${mediaPath}`;
+    }
+    return `${window.location.origin}${mediaPath}`;
+  }
+  return mediaPath;
 }
 
 const API_BASE_URL = resolveApiBaseUrl();

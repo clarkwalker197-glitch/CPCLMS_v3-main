@@ -4,7 +4,7 @@ import { useState, useRef } from "react";
 import { Dialog, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import api from "@/lib/api";
-import { categoryDisplayName, categoryForClassification, DEWEY_MAIN_CATEGORIES, mainCategoryForClassification, normalizeClassificationNumber, sanitizeClassificationInput, subcategoriesForMain } from "@/lib/categories";
+import { categoryDisplayName, categoryForClassification, categoryIdForDewey, DEWEY_MAIN_CATEGORIES, mainCategoryForClassification, normalizeClassificationNumber, sanitizeClassificationInput, subcategoriesForMain } from "@/lib/categories";
 import { BookOpen, Upload, Link2, FileText, X } from "lucide-react";
 
 interface Category {
@@ -66,7 +66,7 @@ export function AddEBookModal(props: {
     const value = sanitizeClassificationInput(e.target.value);
     const detected = categoryForClassification(value);
     const mainCategory = mainCategoryForClassification(value);
-    const categoryId = detected ? props.categories.find((category) => category.name === detected.name)?.id || "" : undefined;
+    const categoryId = detected ? categoryIdForDewey(detected, props.categories) : undefined;
     setMainCategoryCode(mainCategory?.code || "");
     setForm((current) => ({ ...current, classificationNumber: value, categoryId: categoryId || "" }));
   };
@@ -311,8 +311,8 @@ export function AddEBookModal(props: {
             <select className={`${inputClass} mt-2`} value={form.categoryId} onChange={update("categoryId")} disabled={!mainCategoryCode} required>
               <option value="">Select a subcategory</option>
               {subcategoriesForMain(mainCategoryCode).map((category) => {
-                const record = props.categories.find((item) => item.name === category.name);
-                return record ? <option key={record.id} value={record.id}>{categoryDisplayName(category.name)}</option> : null;
+                const categoryId = categoryIdForDewey(category, props.categories);
+                return <option key={category.code} value={categoryId}>{categoryDisplayName(category.name)}</option>;
               })}
             </select>
           </div>

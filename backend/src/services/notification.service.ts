@@ -29,7 +29,7 @@ export class NotificationService {
     link?: string
   ): Promise<number> {
     const librarians = await prisma.user.findMany({
-      where: { role: 'LIBRARIAN', isActive: true },
+      where: { role: 'LIBRARIAN', isActive: true, notificationsEnabled: true },
       select: { id: true },
     });
 
@@ -58,11 +58,39 @@ export class NotificationService {
     message?: string,
     link?: string
   ) {
+    const recipient = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { notificationsEnabled: true },
+    });
+    if (!recipient?.notificationsEnabled) return null;
+
     const notification = await prisma.notification.create({
       data: { userId, type, title, message, link },
     });
 
     return notification;
+  }
+
+  async notifyStudentsAndFaculty(
+    type: NotificationType,
+    title: string,
+    message?: string,
+    link?: string
+  ): Promise<number> {
+    const recipients = await prisma.user.findMany({
+      where: {
+        role: { in: ['STUDENT', 'FACULTY'] },
+        isActive: true,
+        notificationsEnabled: true,
+      },
+      select: { id: true },
+    });
+    if (recipients.length === 0) return 0;
+
+    const result = await prisma.notification.createMany({
+      data: recipients.map(({ id }) => ({ userId: id, type, title, message, link })),
+    });
+    return result.count;
   }
 
   /**

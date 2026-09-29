@@ -6,6 +6,7 @@ import api from "@/lib/api";
 import { useDebounce } from "@/lib/useDebounce";
 import Sidebar from "@/components/Sidebar";
 import ResponsiveTable from "@/components/ResponsiveTable";
+import { SortHeader, SortSelect, nextSortOrder, type SortOption } from "@/components/SortControls";
 import BorrowHistoryCard from "@/components/BorrowHistoryCard";
 import { QRApprovalModal } from "@/components/QRApprovalModal";
 import { QRScanner } from "@/components/QRScanner";
@@ -58,6 +59,8 @@ export default function RequestsPage() {
   const [txnSearch, setTxnSearch] = useState("");
   const [txnStatusFilter, setTxnStatusFilter] = useState("");
   const [txnPage, setTxnPage] = useState(1);
+  const [txnSort, setTxnSort] = useState("status");
+  const [txnSortOrder, setTxnSortOrder] = useState<"asc" | "desc">("asc");
 
   // Librarian-only active borrowed books
   const [activeTxns, setActiveTxns] = useState<any[]>([]);
@@ -65,6 +68,8 @@ export default function RequestsPage() {
   const [activeTxnLoading, setActiveTxnLoading] = useState(true);
   const [activeTxnSearch, setActiveTxnSearch] = useState("");
   const [activeTxnPage, setActiveTxnPage] = useState(1);
+  const [activeTxnSort, setActiveTxnSort] = useState("dueDate");
+  const [activeTxnSortOrder, setActiveTxnSortOrder] = useState<"asc" | "desc">("asc");
   const [missingTarget, setMissingTarget] = useState<any>(null);
   const [missingReason, setMissingReason] = useState("");
   const [missingLoading, setMissingLoading] = useState(false);
@@ -77,6 +82,8 @@ export default function RequestsPage() {
   const [reqSearch, setReqSearch] = useState("");
   const [reqStatusFilter, setReqStatusFilter] = useState("");
   const [reqPage, setReqPage] = useState(1);
+  const [reqSort, setReqSort] = useState("status");
+  const [reqSortOrder, setReqSortOrder] = useState<"asc" | "desc">("asc");
 
   const [successMsg, setSuccessMsg] = useState("");
   const [error, setError] = useState("");
@@ -116,6 +123,8 @@ export default function RequestsPage() {
       };
       if (debouncedTxnSearch) params.search = debouncedTxnSearch;
       if (debouncedTxnStatus) params.status = debouncedTxnStatus;
+      params.sort = txnSort;
+      params.order = txnSortOrder;
 
       const res = await api.get<any>(`/transactions?${new URLSearchParams(params).toString()}`);
       if (res.success) {
@@ -129,7 +138,7 @@ export default function RequestsPage() {
     } finally {
       setTxnLoading(false);
     }
-  }, [debouncedTxnSearch, debouncedTxnStatus, isLibrarian, txnPage]);
+  }, [debouncedTxnSearch, debouncedTxnStatus, isLibrarian, txnPage, txnSort, txnSortOrder]);
 
   const loadActiveTransactions = useCallback(async () => {
     if (!isLibrarian) return;
@@ -141,6 +150,8 @@ export default function RequestsPage() {
         status: "ACTIVE",
       };
       if (debouncedActiveTxnSearch) params.search = debouncedActiveTxnSearch;
+      params.sort = activeTxnSort;
+      params.order = activeTxnSortOrder;
       const res = await api.get<any>(`/transactions?${new URLSearchParams(params).toString()}`);
       if (res.success) {
         setActiveTxns((res.data as any[]) || []);
@@ -153,7 +164,7 @@ export default function RequestsPage() {
     } finally {
       setActiveTxnLoading(false);
     }
-  }, [activeTxnPage, debouncedActiveTxnSearch, isLibrarian]);
+  }, [activeTxnPage, debouncedActiveTxnSearch, isLibrarian, activeTxnSort, activeTxnSortOrder]);
 
   useEffect(() => {
     if (!isLibrarian) loadTransactions();
@@ -181,6 +192,8 @@ export default function RequestsPage() {
       };
       if (debouncedReqSearch) params.search = debouncedReqSearch;
       if (debouncedReqStatus) params.status = debouncedReqStatus;
+      params.sort = reqSort;
+      params.order = reqSortOrder;
 
       const res = await api.getBorrowRequests(params);
       if (res.success) {
@@ -196,7 +209,7 @@ export default function RequestsPage() {
     } finally {
       setReqLoading(false);
     }
-  }, [debouncedReqSearch, debouncedReqStatus, reqPage]);
+  }, [debouncedReqSearch, debouncedReqStatus, reqPage, reqSort, reqSortOrder]);
 
   useEffect(() => {
     loadRequests();
@@ -205,6 +218,40 @@ export default function RequestsPage() {
   useEffect(() => {
     setReqPage(1);
   }, [debouncedReqSearch, debouncedReqStatus]);
+
+  const txnSortOptions: SortOption[] = [
+    { sort: "borrowDate", order: "desc", label: "Borrow date newest" },
+    { sort: "borrowDate", order: "asc", label: "Borrow date oldest" },
+    { sort: "dueDate", order: "asc", label: "Due date soonest" },
+    { sort: "dueDate", order: "desc", label: "Due date latest" },
+    { sort: "status", order: "asc", label: "Overdue, active, returned" },
+    { sort: "status", order: "desc", label: "Returned, active, overdue" },
+    { sort: "fineAmount", order: "desc", label: "Fine high–low" },
+    { sort: "fineAmount", order: "asc", label: "Fine low–high" },
+  ];
+  const requestSortOptions: SortOption[] = [
+    { sort: "status", order: "asc", label: "Pending first" },
+    { sort: "status", order: "desc", label: "Pending last" },
+    { sort: "requestDate", order: "desc", label: "Request date newest" },
+    { sort: "requestDate", order: "asc", label: "Request date oldest" },
+    { sort: "memberName", order: "asc", label: "Member name A–Z" },
+    { sort: "memberName", order: "desc", label: "Member name Z–A" },
+  ];
+  const changeTxnSort = (field: string, direction: "asc" | "desc") => {
+    setTxnSort(field);
+    setTxnSortOrder(direction);
+    setTxnPage(1);
+  };
+  const changeActiveTxnSort = (field: string, direction: "asc" | "desc") => {
+    setActiveTxnSort(field);
+    setActiveTxnSortOrder(direction);
+    setActiveTxnPage(1);
+  };
+  const changeRequestSort = (field: string, direction: "asc" | "desc") => {
+    setReqSort(field);
+    setReqSortOrder(direction);
+    setReqPage(1);
+  };
 
   const handleReturn = async (record: any) => {
     if (!window.confirm(`Return "${record.book?.title || "this book"}"?`)) return;
@@ -402,6 +449,7 @@ export default function RequestsPage() {
                               <option value="OVERDUE" className="bg-zinc-900 text-white">Overdue</option>
                               <option value="RETURNED" className="bg-zinc-900 text-white">Returned</option>
                             </select>
+                            <SortSelect options={txnSortOptions} sort={txnSort} order={txnSortOrder} onChange={changeTxnSort} />
                           </div>
                         </div>
 
@@ -419,7 +467,7 @@ export default function RequestsPage() {
                             <div className="overflow-x-auto">
                               <table className="w-full text-sm">
                                 <thead><tr className="bg-zinc-900 text-left text-xs uppercase tracking-wide text-zinc-500">
-                                  <th className="px-6 py-3 font-medium">Book</th><th className="px-6 py-3 font-medium hidden sm:table-cell">Accession</th><th className="px-6 py-3 font-medium hidden sm:table-cell">Borrow Date</th><th className="px-6 py-3 font-medium hidden md:table-cell">Due Date</th><th className="px-6 py-3 font-medium hidden md:table-cell">Return Date</th><th className="px-6 py-3 font-medium">Status</th><th className="px-6 py-3 font-medium">Fine</th>
+                                  <th className="px-6 py-3 font-medium">Book</th><th className="px-6 py-3 font-medium hidden sm:table-cell">Accession</th><th className="px-6 py-3 font-medium hidden sm:table-cell"><SortHeader field="borrowDate" sort={txnSort} order={txnSortOrder} onSort={(field) => changeTxnSort(field, nextSortOrder(txnSort, txnSortOrder, field))}>Borrow Date</SortHeader></th><th className="px-6 py-3 font-medium hidden md:table-cell"><SortHeader field="dueDate" sort={txnSort} order={txnSortOrder} onSort={(field) => changeTxnSort(field, nextSortOrder(txnSort, txnSortOrder, field))}>Due Date</SortHeader></th><th className="px-6 py-3 font-medium hidden md:table-cell">Return Date</th><th className="px-6 py-3 font-medium"><SortHeader field="status" sort={txnSort} order={txnSortOrder} onSort={(field) => changeTxnSort(field, nextSortOrder(txnSort, txnSortOrder, field))}>Status</SortHeader></th><th className="px-6 py-3 font-medium"><SortHeader field="fineAmount" sort={txnSort} order={txnSortOrder} onSort={(field) => changeTxnSort(field, nextSortOrder(txnSort, txnSortOrder, field))}>Fine</SortHeader></th>
                                 </tr></thead>
                                 <tbody>{txns.map((txn: any) => <tr key={txn.id} className="border-t border-zinc-800/60 hover:bg-zinc-800/40 transition-colors">
                                   <td className="px-6 py-4"><p className="text-zinc-100 font-medium">{txn.book?.title || "Unknown"}</p><p className="text-xs text-zinc-500">{txn.book?.author || ""}</p></td>
@@ -483,6 +531,7 @@ export default function RequestsPage() {
                   <option value="APPROVED" className="bg-zinc-900 text-white">Approved</option>
                   <option value="REJECTED" className="bg-zinc-900 text-white">Rejected</option>
                 </select>
+                <SortSelect options={requestSortOptions} sort={reqSort} order={reqSortOrder} onChange={changeRequestSort} />
               </div>
             </div>
 
@@ -512,10 +561,10 @@ export default function RequestsPage() {
                     <thead>
                       <tr className="bg-zinc-900 text-left text-xs uppercase tracking-wide text-zinc-500">
                         <th className="px-6 py-3 font-medium">Book</th>
-                        <th className="px-6 py-3 font-medium hidden md:table-cell">Member</th>
-                        <th className="px-6 py-3 font-medium hidden sm:table-cell">Request Date</th>
+                        <th className="px-6 py-3 font-medium hidden md:table-cell"><SortHeader field="memberName" sort={reqSort} order={reqSortOrder} onSort={(field) => changeRequestSort(field, nextSortOrder(reqSort, reqSortOrder, field))}>Member</SortHeader></th>
+                        <th className="px-6 py-3 font-medium hidden sm:table-cell"><SortHeader field="requestDate" sort={reqSort} order={reqSortOrder} onSort={(field) => changeRequestSort(field, nextSortOrder(reqSort, reqSortOrder, field))}>Request Date</SortHeader></th>
                         <th className="px-6 py-3 font-medium">Notes</th>
-                        <th className="px-6 py-3 font-medium">Status</th>
+                        <th className="px-6 py-3 font-medium"><SortHeader field="status" sort={reqSort} order={reqSortOrder} onSort={(field) => changeRequestSort(field, nextSortOrder(reqSort, reqSortOrder, field))}>Status</SortHeader></th>
                         <th className="px-6 py-3 font-medium text-right">Actions</th>
                       </tr>
                     </thead>
@@ -651,7 +700,8 @@ export default function RequestsPage() {
               </div>
 
               <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 mb-4">
-                <div className="relative max-w-xl">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="relative max-w-xl flex-1">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <Search className="w-5 h-5 text-zinc-500" />
                   </div>
@@ -662,6 +712,8 @@ export default function RequestsPage() {
                     placeholder="Search by book title or member name..."
                     className="w-full pl-10 pr-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
                   />
+                </div>
+                <SortSelect options={txnSortOptions.filter((option) => option.sort === "dueDate")} sort={activeTxnSort} order={activeTxnSortOrder} onChange={changeActiveTxnSort} />
                 </div>
               </div>
 
@@ -688,7 +740,7 @@ export default function RequestsPage() {
                         <tr className="bg-zinc-900 text-left text-xs uppercase tracking-wide text-zinc-500">
                           <th className="px-6 py-3 font-medium">Book</th>
                           <th className="px-6 py-3 font-medium">Member</th>
-                          <th className="px-6 py-3 font-medium hidden sm:table-cell">Due Date</th>
+                          <th className="px-6 py-3 font-medium hidden sm:table-cell"><SortHeader field="dueDate" sort={activeTxnSort} order={activeTxnSortOrder} onSort={(field) => changeActiveTxnSort(field, nextSortOrder(activeTxnSort, activeTxnSortOrder, field))}>Due Date</SortHeader></th>
                           <th className="px-6 py-3 font-medium text-right">Actions</th>
                         </tr>
                       </thead>

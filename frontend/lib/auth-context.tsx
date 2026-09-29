@@ -6,7 +6,7 @@ import api from './api';
 import { clearOfflineData } from './offline-db';
 import { syncNow } from './offline-sync';
 
-const IDLE_TIMEOUT_MS = 10 * 60 * 1000;
+const IDLE_TIMEOUT_MS = 7 * 24 * 60 * 60 * 1000;
 const IDLE_WARNING_MS = IDLE_TIMEOUT_MS - 60 * 1000;
 const ACTIVITY_THROTTLE_MS = 1000;
 

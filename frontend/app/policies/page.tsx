@@ -68,37 +68,41 @@ const DEFAULT_LIBRARY_INFO: LibraryInfo = {
 
 export default function PoliciesPage() {
   const { user } = useAuth();
-  const [libraryInfo, setLibraryInfo] = useState<LibraryInfo>(DEFAULT_LIBRARY_INFO);
+  const [libraryInfo, setLibraryInfo] = useState<LibraryInfo | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState<LibraryInfo>(DEFAULT_LIBRARY_INFO);
   const [successMsg, setSuccessMsg] = useState("");
+  const [loadError, setLoadError] = useState("");
 
   const isLibrarian = user?.role === "LIBRARIAN";
   const canViewPage = user?.role === "STUDENT" || user?.role === "FACULTY" || user?.role === "LIBRARIAN";
 
   useEffect(() => {
     const loadLibraryInfo = async () => {
-      const saved = localStorage.getItem("libraryInfo");
-      let cached: LibraryInfo | null = null;
-      if (saved) {
-        try { cached = JSON.parse(saved) as LibraryInfo; } catch { cached = null; }
+      const response = await api.get<Array<{ key: string; value: string }>>("/policies");
+      if (!response.success || !Array.isArray(response.data)) {
+        setLoadError(response.error || "Unable to load library information");
+        return;
       }
 
-      const response = await api.get<{ value?: string }>("/policies/LIBRARY_INFO");
-      let serverValue: LibraryInfo | null = null;
-      if (response.success && response.data?.value) {
-        try { serverValue = JSON.parse(response.data.value) as LibraryInfo; } catch { serverValue = null; }
+      const savedPolicy = response.data.find((policy) => policy.key === "LIBRARY_INFO");
+      let next = DEFAULT_LIBRARY_INFO;
+      if (savedPolicy) {
+        try {
+          next = JSON.parse(savedPolicy.value) as LibraryInfo;
+        } catch {
+          setLoadError("Saved library information is invalid");
+          return;
+        }
       }
-      const next = serverValue || cached || DEFAULT_LIBRARY_INFO;
       setLibraryInfo(next);
       setEditData(next);
-      if (serverValue) localStorage.setItem("libraryInfo", JSON.stringify(serverValue));
     };
     void loadLibraryInfo();
   }, []);
 
   const handleEditStart = () => {
-    setEditData(libraryInfo);
+    setEditData(libraryInfo ?? DEFAULT_LIBRARY_INFO);
     setIsEditing(true);
   };
 
@@ -145,7 +149,6 @@ export default function PoliciesPage() {
       return;
     }
     setLibraryInfo(editData);
-    localStorage.setItem("libraryInfo", JSON.stringify(editData));
     setIsEditing(false);
     setSuccessMsg("Library information updated successfully");
     setTimeout(() => setSuccessMsg(""), 4000);
@@ -160,6 +163,17 @@ export default function PoliciesPage() {
             <h1 className="text-2xl font-bold text-white mb-4">Access Denied</h1>
             <p className="text-zinc-400">You don't have permission to view this page.</p>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!libraryInfo) {
+    return (
+      <div className="flex h-screen bg-zinc-950">
+        <Sidebar />
+        <div className="flex-1 flex items-center justify-center text-sm text-zinc-400">
+          {loadError || "Loading library information..."}
         </div>
       </div>
     );
@@ -269,6 +283,8 @@ export default function PoliciesPage() {
                         {libraryInfo.librarianEmail}
                       </a>
                     </p>
+                    <p className="text-sm text-zinc-500 uppercase tracking-wide mb-1">Extension</p>
+                    <p className="text-zinc-300">{libraryInfo.librarianExtension}</p>
                   </div>
                 </div>
                 <p className="text-sm text-zinc-500 uppercase tracking-wide mb-1 mt-6">Office</p>

@@ -7,8 +7,10 @@
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../config';
 import { env } from '../config/env';
+import { getSortParams } from '../utils/sorting';
 import { JwtPayload } from '../types';
 import {
   UnauthorizedError,
@@ -470,6 +472,7 @@ const user = await prisma.user.create({
     const page = Math.max(1, Number(query.page) || 1);
     const limit = Math.min(50, Math.max(1, Number(query.limit) || 20));
     const skip = (page - 1) * limit;
+    const { sort, order } = getSortParams(query, ['name', 'joinDate', 'fines', 'libraryId'] as const, 'name', 'asc');
 
     const where: Record<string, unknown> = {};
     if (query.role) where.role = query.role;
@@ -484,28 +487,75 @@ const user = await prisma.user.create({
       ];
     }
 
-    const [users, total] = await Promise.all([
-      prisma.user.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: limit,
-        select: {
-          id: true,
-          libraryId: true,
-          firstName: true,
-          lastName: true,
-          email: true,
-          role: true,
-          department: true,
-          yearSection: true,
-          phone: true,
-          isActive: true,
-          createdAt: true,
-        },
-      }),
+    const orderedIds = sort === 'fines'
+      ? await prisma.$queryRaw<Array<{ id: string }>>`
+          SELECT u.id
+          FROM users u
+          LEFT JOIN (
+            SELECT bt.user_id, SUM(bt.fine_amount) AS total_fine
+            FROM borrow_transactions bt
+            JOIN books b ON b.id = bt.book_id
+            WHERE bt.status::text = 'OVERDUE' AND b.deleted_at IS NULL
+            GROUP BY bt.user_id
+          ) fines ON fines.user_id = u.id
+          WHERE u.is_active = ${query.isActive === undefined ? true : query.isActive === 'true'}
+            AND (${query.role ?? null}::text IS NULL OR u.role::text = ${query.role ?? null})
+            AND (${query.search ? `%${String(query.search)}%` : null}::text IS NULL OR
+              u.first_name ILIKE ${query.search ? `%${String(query.search)}%` : null} OR
+              u.last_name ILIKE ${query.search ? `%${String(query.search)}%` : null} OR
+              u.email ILIKE ${query.search ? `%${String(query.search)}%` : null} OR
+              u.library_id ILIKE ${query.search ? `%${String(query.search)}%` : null})
+          ORDER BY COALESCE(fines.total_fine, 0) ${Prisma.raw(order.toUpperCase())}, u.id ASC
+          LIMIT ${limit} OFFSET ${skip}
+        `
+      : sort === 'name'
+        ? await prisma.$queryRaw<Array<{ id: string }>>`
+            SELECT u.id
+            FROM users u
+            WHERE u.is_active = ${query.isActive === undefined ? true : query.isActive === 'true'}
+              AND (${query.role ?? null}::text IS NULL OR u.role::text = ${query.role ?? null})
+              AND (${query.search ? `%${String(query.search)}%` : null}::text IS NULL OR
+                u.first_name ILIKE ${query.search ? `%${String(query.search)}%` : null} OR
+                u.last_name ILIKE ${query.search ? `%${String(query.search)}%` : null} OR
+                u.email ILIKE ${query.search ? `%${String(query.search)}%` : null} OR
+                u.library_id ILIKE ${query.search ? `%${String(query.search)}%` : null})
+            ORDER BY LOWER(CONCAT_WS(' ', u.first_name, u.last_name)) ${Prisma.raw(order.toUpperCase())}, u.id ASC
+            LIMIT ${limit} OFFSET ${skip}
+          `
+      : null;
+
+    const userSelect = {
+      id: true,
+      libraryId: true,
+      firstName: true,
+      lastName: true,
+      email: true,
+      role: true,
+      department: true,
+      yearSection: true,
+      phone: true,
+      isActive: true,
+      createdAt: true,
+    } as const;
+    const userArgs: Prisma.UserFindManyArgs = orderedIds
+      ? { where: { ...where, id: { in: orderedIds.map(({ id }) => id) } }, select: userSelect }
+      : {
+          where,
+          orderBy: [{ [sort === 'joinDate' ? 'createdAt' : sort]: order }, { id: 'asc' }],
+          skip,
+          take: limit,
+          select: userSelect,
+        };
+
+    const [userRows, total] = await Promise.all([
+      prisma.user.findMany(userArgs),
       prisma.user.count({ where }),
     ]);
+
+    const userMap = new Map(userRows.map((user) => [user.id, user]));
+    const users = orderedIds
+      ? orderedIds.map(({ id }) => userMap.get(id)).filter((user) => user !== undefined)
+      : userRows;
 
     return {
       users,

@@ -100,7 +100,7 @@ export default function Home() {
             <div className="min-h-[260px] rounded-2xl border border-zinc-800 bg-zinc-900/70 p-8 text-center flex flex-col items-center justify-center hover:border-blue-500/40 transition-colors">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src="/sekey1.jpg"
+                src="/sekey2.png"
                 alt="Clark Kent Periño"
                 className="w-24 h-24 rounded-full object-cover mx-auto mb-6 ring-1 ring-blue-500/20"
               />
@@ -110,7 +110,7 @@ export default function Home() {
 
             <div className="min-h-[260px] rounded-2xl border border-zinc-800 bg-zinc-900/70 p-8 text-center flex flex-col items-center justify-center hover:border-blue-500/40 transition-colors">
               <img
-                src="/desay.jpg"
+                src="/desii.png"
                 alt="Desi Marie Birondo"
                 className="w-24 h-24 rounded-full object-cover mx-auto mb-6 ring-1 ring-blue-500/20"
               />
@@ -135,7 +135,7 @@ export default function Home() {
                 className="w-24 h-24 rounded-full object-cover mx-auto mb-6 ring-1 ring-blue-500/20"
               />
               <h3 className="text-lg font-semibold text-white">Melecio Paes</h3>
-              <p className="text-base text-zinc-500 mt-2">Full Developer</p>
+              <p className="text-base text-zinc-500 mt-2">Frontend Developer</p>
             </div>
           </div>
         </section>

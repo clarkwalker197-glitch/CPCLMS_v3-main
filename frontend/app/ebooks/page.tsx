@@ -3,8 +3,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import api from '@/lib/api';
+import { resolveMediaUrl } from '@/lib/api';
 import Sidebar from '@/components/Sidebar';
+import MediaImage from '@/components/MediaImage';
 import ResponsiveTable from '@/components/ResponsiveTable';
+import { SortHeader, SortSelect, nextSortOrder, type SortOption } from '@/components/SortControls';
 import { AddEBookModal } from '@/components/AddEBookModal';
 import { EditEBookModal } from '@/components/EditEBookModal';
 import MobileBookTypeSelect from '@/components/MobileBookTypeSelect';
@@ -45,6 +48,8 @@ export default function EBooksPage() {
   const [classificationFilter, setClassificationFilter] = useState('');
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [currentPage, setCurrentPage] = useState(1);
+  const [sort, setSort] = useState('title');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [successMsg, setSuccessMsg] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -58,6 +63,9 @@ export default function EBooksPage() {
     setError('');
     try {
       const params: Record<string, string> = {};
+      params.limit = '100';
+      params.sort = sort;
+      params.order = sortOrder;
       if (search) params.search = search;
       if (categoryFilter) params.categoryId = categoryFilter;
       else if (mainCategoryFilter) params.categoryMain = mainCategoryFilter;
@@ -73,7 +81,7 @@ export default function EBooksPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, mainCategoryFilter, categoryFilter, classificationFilter]);
+  }, [search, mainCategoryFilter, categoryFilter, classificationFilter, sort, sortOrder]);
 
   useEffect(() => {
     const timer = setTimeout(loadData, 300);
@@ -145,6 +153,23 @@ export default function EBooksPage() {
   const formatFileSize = (bytes?: number) => {
     if (!bytes) return '';
     return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+  };
+
+  const sortOptions: SortOption[] = [
+    { sort: 'title', order: 'asc', label: 'Title A–Z' },
+    { sort: 'title', order: 'desc', label: 'Title Z–A' },
+    { sort: 'author', order: 'asc', label: 'Author A–Z' },
+    { sort: 'author', order: 'desc', label: 'Author Z–A' },
+    { sort: 'classification', order: 'asc', label: 'Classification low–high' },
+    { sort: 'classification', order: 'desc', label: 'Classification high–low' },
+    { sort: 'createdAt', order: 'desc', label: 'Date added newest' },
+    { sort: 'createdAt', order: 'asc', label: 'Date added oldest' },
+    { sort: 'availability', order: 'asc', label: 'Available first' },
+  ];
+  const changeSort = (field: string, direction: 'asc' | 'desc') => {
+    setSort(field);
+    setSortOrder(direction);
+    setCurrentPage(1);
   };
 
   return (
@@ -220,6 +245,7 @@ export default function EBooksPage() {
             </div>
 
             <div className="mt-2 grid grid-cols-2 gap-2 sm:mt-3 sm:flex sm:flex-wrap sm:items-center sm:gap-3">
+              <SortSelect options={sortOptions} sort={sort} order={sortOrder} onChange={changeSort} />
               <select
                 value={mainCategoryFilter}
                 onChange={(e) => {
@@ -307,12 +333,7 @@ export default function EBooksPage() {
                 <div key={ebook.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden hover:border-zinc-700 transition-colors">
                   {/* Cover */}
                   <div className="aspect-[3/4] bg-zinc-800 relative">
-                    {ebook.coverImage ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={ebook.coverImage} alt={ebook.title} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                    ) : (
-                      fallbackCover
-                    )}
+                    <MediaImage src={ebook.coverImage} alt={ebook.title} className="w-full h-full object-cover" fallback={fallbackCover} />
                     <div className="absolute top-3 right-3">
                       <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${formatBadge[ebook.format] || 'bg-zinc-500/15 text-zinc-400 ring-zinc-500/30'}`}>
                         {ebook.format}
@@ -368,7 +389,7 @@ export default function EBooksPage() {
                       ) : (
                         <>
                           <button
-                            onClick={() => window.open(ebook.fileUrl, '_blank')}
+                            onClick={() => window.open(resolveMediaUrl(ebook.fileUrl), '_blank')}
                             disabled={!isEBookAvailable(ebook)}
                             className="flex-1 inline-flex items-center justify-center gap-1 px-2 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors shadow-lg shadow-blue-600/20 disabled:opacity-40 disabled:cursor-not-allowed sm:gap-1.5 sm:px-3 sm:text-sm"
                           >
@@ -392,8 +413,8 @@ export default function EBooksPage() {
                   <thead>
                     <tr className="bg-zinc-900 text-left text-xs uppercase tracking-wide text-zinc-500">
                       <th className="px-6 py-3 font-medium">Cover</th>
-                      <th className="px-6 py-3 font-medium">Title</th>
-                      <th className="px-6 py-3 font-medium hidden sm:table-cell">Author</th>
+                      <th className="px-6 py-3 font-medium"><SortHeader field="title" sort={sort} order={sortOrder} onSort={(field) => changeSort(field, nextSortOrder(sort, sortOrder, field))}>Title</SortHeader></th>
+                      <th className="px-6 py-3 font-medium hidden sm:table-cell"><SortHeader field="author" sort={sort} order={sortOrder} onSort={(field) => changeSort(field, nextSortOrder(sort, sortOrder, field))}>Author</SortHeader></th>
                       <th className="px-6 py-3 font-medium hidden md:table-cell">Category</th>
                       <th className="px-6 py-3 font-medium">Format</th>
                       {isLibrarian && <th className="px-6 py-3 font-medium">Status</th>}
@@ -405,14 +426,7 @@ export default function EBooksPage() {
                       <tr key={ebook.id} className="border-t border-zinc-800/60 hover:bg-zinc-800/40 transition-colors">
                         <td className="px-6 py-4">
                           <div className="w-11 h-14 rounded-lg overflow-hidden bg-zinc-800 shrink-0">
-                            {ebook.coverImage ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img src={ebook.coverImage} alt={ebook.title} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center">
-                                <ImageIcon className="w-5 h-5 text-zinc-600" />
-                              </div>
-                            )}
+                            <MediaImage src={ebook.coverImage} alt={ebook.title} className="w-full h-full object-cover" fallback={<div className="flex h-full w-full items-center justify-center"><ImageIcon className="h-5 w-5 text-zinc-600" /></div>} />
                           </div>
                         </td>
                         <td className="px-6 py-4">
@@ -469,7 +483,7 @@ export default function EBooksPage() {
                           ) : (
                             <div className="inline-flex items-center gap-1.5">
                               <button
-                                onClick={() => window.open(ebook.fileUrl, '_blank')}
+                                onClick={() => window.open(resolveMediaUrl(ebook.fileUrl), '_blank')}
                                 disabled={!isEBookAvailable(ebook)}
                                 className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                               >
@@ -487,9 +501,9 @@ export default function EBooksPage() {
             <ResponsiveTable mobile={
               paginatedEBooks.map((ebook: any) => (
                 <article key={ebook.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-lg shadow-black/10">
-                  <div className="flex items-start gap-3 border-b border-zinc-800/80 pb-3"><div className="h-14 w-11 shrink-0 overflow-hidden rounded-lg bg-zinc-800">{ebook.coverImage ? <img src={ebook.coverImage} alt={ebook.title} className="h-full w-full object-cover" /> : <ImageIcon className="m-3 h-5 w-5 text-zinc-600" />}</div><div className="min-w-0"><p className="font-semibold text-zinc-100 break-words">{ebook.title}</p><p className="mt-1 text-sm text-zinc-500 break-words">{ebook.author}</p></div></div>
+                  <div className="flex items-start gap-3 border-b border-zinc-800/80 pb-3"><div className="h-14 w-11 shrink-0 overflow-hidden rounded-lg bg-zinc-800"><MediaImage src={ebook.coverImage} alt={ebook.title} className="h-full w-full object-cover" fallback={<ImageIcon className="m-3 h-5 w-5 text-zinc-600" />} /></div><div className="min-w-0"><p className="font-semibold text-zinc-100 break-words">{ebook.title}</p><p className="mt-1 text-sm text-zinc-500 break-words">{ebook.author}</p></div></div>
                   <div className="grid grid-cols-2 gap-3 py-4 text-sm"><div><p className="text-xs text-zinc-500">Category</p><p className="mt-1 text-zinc-300">{ebook.category?.name || "General"}</p></div><div><p className="text-xs text-zinc-500">Format</p><p className="mt-1 text-zinc-300">{ebook.format}</p></div></div>
-                  <div className="flex items-center justify-between gap-3 border-t border-zinc-800/80 pt-3"><span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${isEBookAvailable(ebook) ? 'bg-emerald-500/15 text-emerald-400 ring-emerald-500/30' : 'bg-orange-500/15 text-orange-400 ring-orange-500/30'}`}>{isEBookAvailable(ebook) ? 'Available' : 'Unavailable'}</span>{isLibrarian ? <div className="flex gap-2"><button onClick={() => handleEdit(ebook)} className="rounded-lg bg-zinc-800 px-3 py-2 text-xs text-zinc-200">Edit</button><button onClick={() => handleToggleAvailability(ebook)} className="rounded-lg bg-orange-500/10 px-3 py-2 text-xs text-orange-400">Toggle</button></div> : <button onClick={() => window.open(ebook.fileUrl, '_blank')} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white" disabled={!isEBookAvailable(ebook)}>{isEBookAvailable(ebook) ? 'View' : 'Unavailable'}</button>}</div>
+                  <div className="flex items-center justify-between gap-3 border-t border-zinc-800/80 pt-3"><span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${isEBookAvailable(ebook) ? 'bg-emerald-500/15 text-emerald-400 ring-emerald-500/30' : 'bg-orange-500/15 text-orange-400 ring-orange-500/30'}`}>{isEBookAvailable(ebook) ? 'Available' : 'Unavailable'}</span>{isLibrarian ? <div className="flex gap-2"><button onClick={() => handleEdit(ebook)} className="rounded-lg bg-zinc-800 px-3 py-2 text-xs text-zinc-200">Edit</button><button onClick={() => handleToggleAvailability(ebook)} className="rounded-lg bg-orange-500/10 px-3 py-2 text-xs text-orange-400">Toggle</button></div> : <button onClick={() => window.open(resolveMediaUrl(ebook.fileUrl), '_blank')} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white" disabled={!isEBookAvailable(ebook)}>{isEBookAvailable(ebook) ? 'View' : 'Unavailable'}</button>}</div>
                 </article>
               ))
             } />

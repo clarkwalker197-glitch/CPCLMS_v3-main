@@ -9,10 +9,12 @@
 // - Overdue checks and fine calculations
 // ============================================================
 
+import { Prisma } from '@prisma/client';
 import { prisma } from '../config';
 import { env } from '../config/env';
 import { NotFoundError, BadRequestError, ConflictError } from '../utils/errors';
 import { getPaginationParams, buildPaginationMeta } from '../utils/pagination';
+import { getSortParams } from '../utils/sorting';
 import { generateQRCode, generateQRFromText } from '../utils/qrcode';
 import { policyService } from './policy.service';
 import { notificationService } from './notification.service';
@@ -414,6 +416,7 @@ export class TransactionService {
    */
 async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
     const { page, limit, skip, take } = getPaginationParams(query);
+  const { sort, order } = getSortParams(query, ['requestDate', 'status', 'memberName'] as const, 'status', 'asc');
     const where: any = {};
     if (userId) where.userId = userId;
     if (query.status) where.status = query.status;
@@ -431,20 +434,48 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
       ];
     }
 
-    const [requests, total] = await Promise.all([
+    const orderedIds = sort === 'status'
+      ? await prisma.$queryRaw<Array<{ id: string }>>`
+          SELECT br.id
+          FROM borrow_requests br
+          JOIN users u ON u.id = br.user_id
+          JOIN books b ON b.id = br.book_id
+          WHERE (${userId ?? null}::text IS NULL OR br.user_id = ${userId ?? null})
+            AND (${query.status ?? null}::text IS NULL OR br.status::text = ${query.status ?? null})
+            AND (${query.search ? `%${String(query.search)}%` : null}::text IS NULL OR
+              b.title ILIKE ${query.search ? `%${String(query.search)}%` : null} OR
+              b.accession_no ILIKE ${query.search ? `%${String(query.search)}%` : null} OR
+              b.author ILIKE ${query.search ? `%${String(query.search)}%` : null} OR
+              u.first_name ILIKE ${query.search ? `%${String(query.search)}%` : null} OR
+              u.last_name ILIKE ${query.search ? `%${String(query.search)}%` : null} OR
+              u.library_id ILIKE ${query.search ? `%${String(query.search)}%` : null})
+          ORDER BY CASE br.status::text WHEN 'PENDING' THEN 0 WHEN 'APPROVED' THEN 1 ELSE 2 END ${Prisma.raw(order.toUpperCase())},
+            br.request_date ${Prisma.raw(order.toUpperCase())}, br.id ASC
+          LIMIT ${take} OFFSET ${skip}
+        `
+      : null;
+
+    const [requestRows, total] = await Promise.all([
       prisma.borrowRequest.findMany({
-        where,
         include: {
           user: { select: { id: true, firstName: true, lastName: true, libraryId: true, role: true } },
           book: { select: { id: true, title: true, author: true, accessionNo: true, isbn: true } },
           processedBy: { select: { id: true, firstName: true, lastName: true } },
         },
-        orderBy: { requestDate: 'desc' },
-        skip,
-        take,
+        orderBy: sort === 'memberName'
+          ? [{ user: { firstName: order } }, { user: { lastName: order } }, { id: 'asc' }]
+          : [{ requestDate: order }, { id: 'asc' }],
+        ...(orderedIds
+          ? { where: { ...where, id: { in: orderedIds.map(({ id }) => id) } } }
+          : { where, skip, take }),
       }),
       prisma.borrowRequest.count({ where }),
     ]);
+
+    const requestMap = new Map(requestRows.map((request) => [request.id, request]));
+    const requests = orderedIds
+      ? orderedIds.map(({ id }) => requestMap.get(id)).filter((request) => request !== undefined)
+      : requestRows;
 
     return { requests, meta: buildPaginationMeta(total, { page, limit, skip, take }) };
   }
@@ -665,6 +696,7 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
 async listTransactions(query: Record<string, unknown>, userId?: string) {
     await this.synchronizeOverdueTransactions();
     const { page, limit, skip, take } = getPaginationParams(query);
+  const { sort, order } = getSortParams(query, ['borrowDate', 'dueDate', 'status', 'fineAmount'] as const, 'status', 'asc');
     const where: any = {};
     if (userId) where.userId = userId;
     if (query.status) where.status = query.status;
@@ -690,19 +722,49 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
       where.borrowDate = { ...(where.borrowDate || {}), lte: new Date(query.toDate as string) };
     }
 
-    const [transactions, total] = await Promise.all([
+    const orderedIds = sort === 'status'
+      ? await prisma.$queryRaw<Array<{ id: string }>>`
+          SELECT bt.id
+          FROM borrow_transactions bt
+          JOIN users u ON u.id = bt.user_id
+          JOIN books b ON b.id = bt.book_id
+          WHERE (${userId ?? null}::text IS NULL OR bt.user_id = ${userId ?? null})
+            AND (${query.status ?? null}::text IS NULL OR bt.status::text = ${query.status ?? null})
+            AND (${query.search ? `%${String(query.search)}%` : null}::text IS NULL OR
+              b.title ILIKE ${query.search ? `%${String(query.search)}%` : null} OR
+              b.accession_no ILIKE ${query.search ? `%${String(query.search)}%` : null} OR
+              b.author ILIKE ${query.search ? `%${String(query.search)}%` : null} OR
+              u.first_name ILIKE ${query.search ? `%${String(query.search)}%` : null} OR
+              u.last_name ILIKE ${query.search ? `%${String(query.search)}%` : null} OR
+              u.library_id ILIKE ${query.search ? `%${String(query.search)}%` : null})
+            AND (${query.fromDate ?? null}::timestamptz IS NULL OR bt.borrow_date >= ${query.fromDate ? new Date(String(query.fromDate)) : null})
+            AND (${query.toDate ?? null}::timestamptz IS NULL OR bt.borrow_date <= ${query.toDate ? new Date(String(query.toDate)) : null})
+          ORDER BY CASE bt.status::text WHEN 'OVERDUE' THEN 0 WHEN 'ACTIVE' THEN 1 ELSE 2 END ${Prisma.raw(order.toUpperCase())},
+            bt.due_date ASC, bt.id ASC
+          LIMIT ${take} OFFSET ${skip}
+        `
+      : null;
+
+    const [transactionRows, total] = await Promise.all([
       prisma.borrowTransaction.findMany({
-        where,
         include: {
           user: { select: { id: true, firstName: true, lastName: true, libraryId: true, role: true } },
           book: { select: { id: true, title: true, author: true, accessionNo: true, isbn: true } },
         },
-        orderBy: { borrowDate: 'desc' },
-        skip,
-        take,
+        orderBy: sort === 'status'
+          ? { id: 'asc' }
+          : [{ [sort]: order }, { id: 'asc' }],
+        ...(orderedIds
+          ? { where: { ...where, id: { in: orderedIds.map(({ id }) => id) } } }
+          : { where, skip, take }),
       }),
       prisma.borrowTransaction.count({ where }),
     ]);
+
+    const transactionMap = new Map(transactionRows.map((transaction) => [transaction.id, transaction]));
+    const transactions = orderedIds
+      ? orderedIds.map(({ id }) => transactionMap.get(id)).filter((transaction) => transaction !== undefined)
+      : transactionRows;
 
     return { transactions, meta: buildPaginationMeta(total, { page, limit, skip, take }) };
   }
@@ -732,7 +794,7 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
       UPDATE borrow_transactions
       SET status = 'OVERDUE',
           fine_amount = GREATEST(0, (${todayStart}::date - due_date::date)) * ${finePerDay}
-      WHERE status = 'ACTIVE'
+      WHERE status IN ('ACTIVE', 'OVERDUE')
         AND due_date < ${todayStart}
         AND return_date IS NULL
     `;
@@ -1087,6 +1149,7 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
       where: {
         status: 'ACTIVE',
         dueDate: { lt: todayStart },
+        returnDate: null,
       },
       include: {
         book: { select: { title: true } },
@@ -1094,27 +1157,23 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
       },
     });
 
+    await this.synchronizeOverdueTransactions();
+
     for (const txn of overdueTransactions) {
       const finePerDay = await policyService.getFloat('FINE_PER_DAY', 5);
       const dueStart = new Date(txn.dueDate.getFullYear(), txn.dueDate.getMonth(), txn.dueDate.getDate());
       const diffDays = Math.floor((todayStart.getTime() - dueStart.getTime()) / (1000 * 60 * 60 * 24));
       const fine = Math.max(0, diffDays) * finePerDay;
 
-      await prisma.$transaction([
-        prisma.borrowTransaction.update({
-          where: { id: txn.id },
-          data: { status: 'OVERDUE', fineAmount: fine },
-        }),
-        prisma.notification.create({
-          data: {
-            userId: txn.userId,
-            type: 'OVERDUE_FINE',
-            title: 'Book Overdue',
-            message: `"${txn.book.title}" is ${diffDays} day(s) overdue. Fine: ₱${fine.toFixed(2)}. Please return immediately.`,
-            link: `/transactions/${txn.id}`,
-          },
-        }),
-      ]);
+      await prisma.notification.create({
+        data: {
+          userId: txn.userId,
+          type: 'OVERDUE_FINE',
+          title: 'Book Overdue',
+          message: `"${txn.book.title}" is ${diffDays} day(s) overdue. Fine: ₱${fine.toFixed(2)}. Please return immediately.`,
+          link: `/transactions/${txn.id}`,
+        },
+      });
     }
 
     return { processed: overdueTransactions.length };

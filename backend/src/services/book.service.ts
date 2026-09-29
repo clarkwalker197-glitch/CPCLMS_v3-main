@@ -8,6 +8,7 @@ import { NotFoundError, ConflictError, BadRequestError } from '../utils/errors';
 import { getPaginationParams, buildPaginationMeta } from '../utils/pagination';
 import { CreateBookInput, UpdateBookInput, CreateCategoryInput } from '../validators';
 import { DEWEY_SECOND_SUMMARY, normalizeClassificationNumber } from '../constants/categories';
+import { getSortParams } from '../utils/sorting';
 
 export class BookService {
   // ============================================================
@@ -19,6 +20,7 @@ export class BookService {
    */
   async listBooks(query: Record<string, unknown>) {
     const { page, limit, skip, take } = getPaginationParams(query);
+    const { sort, order } = getSortParams(query, ['title', 'author', 'classification', 'createdAt', 'availability'] as const, 'title', 'asc');
 
     const where: Prisma.BookWhereInput = { deletedAt: null };
 
@@ -63,7 +65,9 @@ export class BookService {
         include: {
           category: { select: { id: true, name: true, slug: true } },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: sort === 'availability'
+          ? [{ availableCopies: order === 'asc' ? 'desc' : 'asc' }, { title: 'asc' }, { id: 'asc' }]
+          : [{ [sort === 'classification' ? 'classificationNumber' : sort]: order }, { id: 'asc' }],
         skip,
         take,
       }),
@@ -239,10 +243,10 @@ export class BookService {
    */
   async listCategories() {
     // Keep the category API usable even when a deployment has not run the latest seed.
-    await prisma.$transaction(
+    const categories = await prisma.$transaction(
       DEWEY_SECOND_SUMMARY.map(([code, name]) => prisma.category.upsert({
         where: { slug: `dewey-${code}` },
-        update: { name: `${code} ${name}`, description: `Dewey Decimal 2nd Summary ${code}` },
+        update: { name: `${code} ${name}`, description: `Dewey Decimal 2nd Summary ${code}`, parentId: null },
         create: {
           id: `dewey-${code}`,
           name: `${code} ${name}`,
@@ -252,7 +256,28 @@ export class BookService {
       }))
     );
 
-    const categories = await prisma.category.findMany({
+    const categoriesByCode = new Map(categories.map((category) => [category.slug.slice(-3), category]));
+    const childrenByParent = new Map<string, string[]>();
+    for (const category of categories) {
+      const code = category.slug.slice(-3);
+      if (code.endsWith('00')) continue;
+      const parentCode = `${code[0]}00`;
+      const parent = categoriesByCode.get(parentCode);
+      if (!parent || category.parentId === parent.id) continue;
+      const childIds = childrenByParent.get(parent.id) || [];
+      childIds.push(category.id);
+      childrenByParent.set(parent.id, childIds);
+    }
+    if (childrenByParent.size > 0) {
+      await prisma.$transaction(
+        Array.from(childrenByParent, ([parentId, ids]) => prisma.category.updateMany({
+          where: { id: { in: ids } },
+          data: { parentId },
+        }))
+      );
+    }
+
+    return prisma.category.findMany({
       where: { slug: { startsWith: 'dewey-' } },
       include: {
         children: { include: { _count: { select: { books: true, eBooks: true } } } },

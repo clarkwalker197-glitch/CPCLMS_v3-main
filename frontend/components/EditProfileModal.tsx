@@ -5,6 +5,7 @@ import { AlertCircle, CheckCircle2, ImagePlus, Loader2, Trash2, X } from "lucide
 import { useAuth } from "@/lib/auth-context";
 import api from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/api";
+import MediaImage from "@/components/MediaImage";
 import { isValidName, nameValidationMessage, sanitizeNameInput } from "@/lib/name-validation";
 
 type EditProfileModalProps = {
@@ -35,6 +36,10 @@ export default function EditProfileModal({ onClose, onSaved }: EditProfileModalP
     });
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    setPreview(resolveMediaUrl(user?.avatar));
+  }, [user?.avatar]);
 
   useEffect(() => {
     if (!picture) return;
@@ -120,7 +125,7 @@ export default function EditProfileModal({ onClose, onSaved }: EditProfileModalP
 
           <div className="flex items-center gap-4">
             <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-blue-500 to-blue-700 text-xl font-bold text-white">
-              {preview && !removePicture ? <img src={preview} alt="Profile preview" className="h-full w-full object-cover" /> : `${user?.firstName?.[0] || "U"}${user?.lastName?.[0] || ""}`.toUpperCase()}
+              {preview && !removePicture ? <MediaImage src={preview} alt="Profile preview" className="h-full w-full object-cover" fallback={`${user?.firstName?.[0] || "U"}${user?.lastName?.[0] || ""}`.toUpperCase()} /> : `${user?.firstName?.[0] || "U"}${user?.lastName?.[0] || ""}`.toUpperCase()}
             </div>
             <div className="flex flex-wrap gap-2">
               <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-zinc-800 px-3 py-2 text-xs font-medium text-zinc-200 hover:bg-zinc-700">

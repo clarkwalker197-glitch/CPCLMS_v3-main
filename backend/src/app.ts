@@ -3,7 +3,6 @@
 // ============================================================
 
 import express from 'express';
-import path from 'path';
 import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
@@ -12,6 +11,7 @@ import routes from './routes';
 import { apiLimiter } from './middlewares/rateLimiter';
 import { errorHandler } from './middlewares/errorHandler';
 import { archiveRetentionService } from './services';
+import { UPLOADS_ROOT } from './middlewares/upload';
 
 const app = express();
 const allowedOrigins = Array.isArray(env.FRONTEND_URL)
@@ -55,7 +55,7 @@ app.use(
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     next();
   },
-  express.static(path.join(__dirname, '..', 'uploads'))
+  express.static(UPLOADS_ROOT)
 );
 
 // ============================================================

@@ -7,7 +7,17 @@ import path from 'path';
 import multer from 'multer';
 import { BadRequestError } from '../utils/errors';
 
-const UPLOADS_ROOT = path.join(__dirname, '..', '..', 'uploads');
+const candidateRoots = [
+  process.env.CPCLMS_BACKEND_ROOT,
+  process.cwd(),
+  path.join(process.cwd(), 'backend'),
+  path.resolve(__dirname, '..', '..'),
+  path.resolve(__dirname, '..', '..', '..'),
+].filter((root): root is string => Boolean(root));
+const backendRoot = candidateRoots.find((root) =>
+  fs.existsSync(path.join(root, 'prisma', 'schema.prisma'))
+) ?? candidateRoots.find((root) => path.basename(root).toLowerCase() === 'backend') ?? path.join(process.cwd(), 'backend');
+const UPLOADS_ROOT = path.join(backendRoot, 'uploads');
 const EBOOKS_DIR = path.join(UPLOADS_ROOT, 'ebooks');
 const COVERS_DIR = path.join(UPLOADS_ROOT, 'covers');
 const PROFILES_DIR = path.join(UPLOADS_ROOT, 'profiles');

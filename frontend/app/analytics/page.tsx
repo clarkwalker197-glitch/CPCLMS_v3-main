@@ -20,6 +20,7 @@ import {
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Sidebar from "@/components/Sidebar";
 import NotificationBell from "@/components/NotificationBell";
+import UserAvatar from "@/components/UserAvatar";
 import { StatCard } from "@/components/StatCard";
 import { useAuth } from "@/lib/auth-context";
 import api from "@/lib/api";
@@ -141,8 +142,8 @@ export default function AnalyticsPage() {
                   {ranges.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                 </select>
                 <NotificationBell />
-                <Link href="/profile" aria-label="Open profile" className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-sm font-semibold text-white shadow-lg shadow-blue-600/30">
-                  {user?.firstName?.charAt(0)}{user?.lastName?.charAt(0)}
+                <Link href="/profile" aria-label="Open profile" className="flex h-10 w-10 items-center justify-center rounded-xl shadow-lg shadow-blue-600/30">
+                  <UserAvatar firstName={user?.firstName} lastName={user?.lastName} avatar={user?.avatar} className="h-10 w-10" />
                 </Link>
               </div>
             </header>

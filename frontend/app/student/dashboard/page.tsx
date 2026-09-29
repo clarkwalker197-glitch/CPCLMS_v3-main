@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import NotificationBell from "@/components/NotificationBell";
+import UserAvatar from "@/components/UserAvatar";
 import Sidebar from "@/components/Sidebar";
 import ResponsiveTable from "@/components/ResponsiveTable";
 import { StatCard } from "@/components/StatCard";
@@ -112,9 +113,9 @@ const formatDate = (d?: string) =>
                 <Link
                   href="/profile"
                   aria-label="Open profile"
-                  className="w-10 h-10 ml-1 rounded-xl bg-blue-600 flex items-center justify-center text-white font-semibold text-sm shadow-lg shadow-blue-600/30 hover:bg-blue-700 transition-colors"
+                  className="ml-1 flex h-10 w-10 items-center justify-center rounded-xl shadow-lg shadow-blue-600/30 transition-colors hover:bg-blue-700"
                 >
-                    {user?.firstName?.charAt(0)}{user?.lastName?.charAt(0)}
+                    <UserAvatar firstName={user?.firstName} lastName={user?.lastName} avatar={user?.avatar} className="h-10 w-10" />
                 </Link>
               </div>
             </div>

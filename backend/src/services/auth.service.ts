@@ -530,6 +530,7 @@ const user = await prisma.user.create({
       firstName: true,
       lastName: true,
       email: true,
+      avatar: true,
       role: true,
       department: true,
       yearSection: true,

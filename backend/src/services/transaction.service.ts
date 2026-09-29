@@ -288,7 +288,7 @@ export class TransactionService {
         },
         include: {
           book: { select: { title: true, accessionNo: true, isbn: true, shelf: true, row: true } },
-          user: { select: { id: true, firstName: true, lastName: true, libraryId: true, role: true } },
+          user: { select: { id: true, firstName: true, lastName: true, libraryId: true, avatar: true, role: true } },
         },
       }),
       prisma.borrowRequest.update({
@@ -458,7 +458,7 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
     const [requestRows, total] = await Promise.all([
       prisma.borrowRequest.findMany({
         include: {
-          user: { select: { id: true, firstName: true, lastName: true, libraryId: true, role: true } },
+          user: { select: { id: true, firstName: true, lastName: true, libraryId: true, avatar: true, role: true } },
           book: { select: { id: true, title: true, author: true, accessionNo: true, isbn: true } },
           processedBy: { select: { id: true, firstName: true, lastName: true } },
         },
@@ -748,7 +748,7 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
     const [transactionRows, total] = await Promise.all([
       prisma.borrowTransaction.findMany({
         include: {
-          user: { select: { id: true, firstName: true, lastName: true, libraryId: true, role: true } },
+          user: { select: { id: true, firstName: true, lastName: true, libraryId: true, avatar: true, role: true } },
           book: { select: { id: true, title: true, author: true, accessionNo: true, isbn: true } },
         },
         orderBy: sort === 'status'

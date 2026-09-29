@@ -5,7 +5,7 @@ import { AlertCircle, CheckCircle2, ImagePlus, Loader2, Trash2, X } from "lucide
 import { useAuth } from "@/lib/auth-context";
 import api from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/api";
-import MediaImage from "@/components/MediaImage";
+import UserAvatar from "@/components/UserAvatar";
 import { isValidName, nameValidationMessage, sanitizeNameInput } from "@/lib/name-validation";
 
 type EditProfileModalProps = {
@@ -124,9 +124,7 @@ export default function EditProfileModal({ onClose, onSaved }: EditProfileModalP
           {success && <div className="flex gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-300"><CheckCircle2 className="h-4 w-4 shrink-0" />Profile updated successfully.</div>}
 
           <div className="flex items-center gap-4">
-            <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-blue-500 to-blue-700 text-xl font-bold text-white">
-              {preview && !removePicture ? <MediaImage src={preview} alt="Profile preview" className="h-full w-full object-cover" fallback={`${user?.firstName?.[0] || "U"}${user?.lastName?.[0] || ""}`.toUpperCase()} /> : `${user?.firstName?.[0] || "U"}${user?.lastName?.[0] || ""}`.toUpperCase()}
-            </div>
+            <UserAvatar firstName={user?.firstName} lastName={user?.lastName} avatar={removePicture ? null : preview} className="h-16 w-16 text-xl" />
             <div className="flex flex-wrap gap-2">
               <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-zinc-800 px-3 py-2 text-xs font-medium text-zinc-200 hover:bg-zinc-700">
                 <ImagePlus className="h-4 w-4" /> Choose picture

@@ -6,6 +6,7 @@ import api from "@/lib/api";
 import { useDebounce } from "@/lib/useDebounce";
 import Sidebar from "@/components/Sidebar";
 import ResponsiveTable from "@/components/ResponsiveTable";
+import UserAvatar from "@/components/UserAvatar";
 import { SortHeader, SortSelect, nextSortOrder, type SortOption } from "@/components/SortControls";
 import BorrowHistoryCard from "@/components/BorrowHistoryCard";
 import { QRApprovalModal } from "@/components/QRApprovalModal";
@@ -576,8 +577,7 @@ export default function RequestsPage() {
                             <p className="text-xs text-zinc-500">{req.book?.accessionNo || ""}</p>
                           </td>
                           <td className="px-6 py-4 text-zinc-300 hidden md:table-cell">
-                            {req.user?.firstName} {req.user?.lastName}
-                            <p className="text-xs text-zinc-500">{req.user?.libraryId || ""}</p>
+                            <div>{req.user?.firstName} {req.user?.lastName}<p className="text-xs text-zinc-500">{req.user?.libraryId || ""}</p></div>
                           </td>
                           <td className="px-6 py-4 text-zinc-400 hidden sm:table-cell">{formatDate(req.requestDate)}</td>
                           <td className="px-6 py-4 text-zinc-400 max-w-[180px]">
@@ -638,7 +638,7 @@ export default function RequestsPage() {
                 records.map((req: any) => (
                   <article key={req.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-lg shadow-black/10">
                     <div className="border-b border-zinc-800/80 pb-3"><p className="font-semibold text-zinc-100 break-words">{req.book?.title || "Unknown"}</p><p className="mt-1 text-sm text-zinc-500">{req.book?.accessionNo || ""}</p></div>
-                    <div className="grid grid-cols-2 gap-3 py-4 text-sm"><div><p className="text-xs text-zinc-500">Member</p><p className="mt-1 break-words text-zinc-300">{req.user?.firstName} {req.user?.lastName}</p></div><div><p className="text-xs text-zinc-500">Request Date</p><p className="mt-1 text-zinc-300">{formatDate(req.requestDate)}</p></div><div className="col-span-2"><p className="text-xs text-zinc-500">Notes</p><p className="mt-1 whitespace-pre-wrap break-words text-zinc-300">{req.notes || "—"}</p></div></div>
+                    <div className="grid grid-cols-2 gap-3 py-4 text-sm"><div><p className="text-xs text-zinc-500">Member</p><p className="mt-1 break-words text-zinc-300">{req.user?.firstName} {req.user?.lastName}</p><p className="text-xs text-zinc-500">{req.user?.libraryId || ""}</p></div><div><p className="text-xs text-zinc-500">Request Date</p><p className="mt-1 text-zinc-300">{formatDate(req.requestDate)}</p></div><div className="col-span-2"><p className="text-xs text-zinc-500">Notes</p><p className="mt-1 whitespace-pre-wrap break-words text-zinc-300">{req.notes || "—"}</p></div></div>
                     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-800/80 pt-3"><span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${reqStatusBadge[req.status] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>{reqStatusLabel[req.status] || req.status}</span><div className="flex flex-wrap gap-2">{isLibrarian && req.status === "PENDING" && <><button onClick={() => handleApprove(req)} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-medium text-white">Approve via QR</button><button onClick={() => openRejectModal(req)} className="rounded-lg bg-red-500/15 px-3 py-2 text-xs font-medium text-red-400">Reject</button></>}{!isLibrarian && req.status === "PENDING" && <button onClick={() => openQRScanner(req)} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white">Scan QR</button>}</div></div>
                   </article>
                 ))
@@ -752,8 +752,10 @@ export default function RequestsPage() {
                               <p className="text-xs text-zinc-500">{txn.book?.author || ""}</p>
                             </td>
                             <td className="px-6 py-4 text-zinc-300">
-                              {txn.user?.firstName} {txn.user?.lastName}
-                              <p className="text-xs text-zinc-500">{txn.user?.libraryId || ""}</p>
+                              <div className="flex items-center gap-2.5">
+                                <UserAvatar firstName={txn.user?.firstName} lastName={txn.user?.lastName} avatar={txn.user?.avatar} className="h-8 w-8" />
+                                <div>{txn.user?.firstName} {txn.user?.lastName}<p className="text-xs text-zinc-500">{txn.user?.libraryId || ""}</p></div>
+                              </div>
                             </td>
                             <td className="px-6 py-4 text-zinc-400 hidden sm:table-cell">{formatDate(txn.dueDate)}</td>
                             <td className="px-6 py-4 text-right">
@@ -788,7 +790,7 @@ export default function RequestsPage() {
                         <p className="mt-1 text-sm text-zinc-500 break-words">{txn.book?.author || "Unknown author"}</p>
                       </div>
                       <div className="grid grid-cols-2 gap-4 py-4 text-sm">
-                        <div><p className="text-xs text-zinc-500">Member</p><p className="mt-1 text-zinc-300 break-words">{txn.user?.firstName} {txn.user?.lastName}</p><p className="text-xs text-zinc-500">{txn.user?.libraryId || ""}</p></div>
+                        <div><p className="text-xs text-zinc-500">Member</p><div className="mt-1 flex items-center gap-2"><UserAvatar firstName={txn.user?.firstName} lastName={txn.user?.lastName} avatar={txn.user?.avatar} className="h-8 w-8" /><div className="break-words text-zinc-300">{txn.user?.firstName} {txn.user?.lastName}<p className="text-xs text-zinc-500">{txn.user?.libraryId || ""}</p></div></div></div>
                         <div><p className="text-xs text-zinc-500">Due Date</p><p className="mt-1 text-zinc-300">{formatDate(txn.dueDate)}</p></div>
                       </div>
                       <div className="grid grid-cols-2 gap-2 border-t border-zinc-800/80 pt-3">

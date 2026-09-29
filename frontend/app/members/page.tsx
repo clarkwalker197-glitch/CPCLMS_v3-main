@@ -7,6 +7,7 @@ import { isValidName, nameValidationMessage, sanitizeNameInput } from "@/lib/nam
 import { useDebounce } from "@/lib/useDebounce";
 import Sidebar from "@/components/Sidebar";
 import ResponsiveTable from "@/components/ResponsiveTable";
+import UserAvatar from "@/components/UserAvatar";
 import { SortHeader, SortSelect, nextSortOrder, type SortOption } from "@/components/SortControls";
 import { Dialog, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
@@ -539,9 +540,7 @@ const handleDelete = async (member: any) => {
                       <tr key={m.id} className="border-t border-zinc-800/60 hover:bg-zinc-800/40 transition-colors">
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-full bg-blue-500/15 text-blue-300 flex items-center justify-center font-semibold text-xs shrink-0">
-                              {m.firstName?.charAt(0)}{m.lastName?.charAt(0)}
-                            </div>
+                            <UserAvatar firstName={m.firstName} lastName={m.lastName} avatar={m.avatar} />
                             <div className="min-w-0">
                               <p className="text-zinc-100 font-medium truncate">{getFullName(m)}</p>
                               <p className="text-xs text-zinc-500">{m.libraryId || "—"}</p>
@@ -592,7 +591,7 @@ const handleDelete = async (member: any) => {
               displayedMembers.map((m: any) => (
                 <article key={m.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-lg shadow-black/10">
                   <div className="flex items-center gap-3 border-b border-zinc-800/80 pb-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-500/15 text-xs font-semibold text-blue-300">{m.firstName?.charAt(0)}{m.lastName?.charAt(0)}</div>
+                    <UserAvatar firstName={m.firstName} lastName={m.lastName} avatar={m.avatar} className="h-10 w-10" />
                     <div className="min-w-0"><p className="truncate font-semibold text-zinc-100">{getFullName(m)}</p><p className="text-xs text-zinc-500">{m.libraryId || "—"}</p></div>
                   </div>
                   <div className="grid grid-cols-2 gap-3 py-4 text-sm">

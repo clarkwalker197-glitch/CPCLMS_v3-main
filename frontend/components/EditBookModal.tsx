@@ -37,7 +37,11 @@ interface Book {
 const inputClass =
   "w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm";
 const labelClass = "block text-sm font-medium text-zinc-300 mb-1.5";
-const ACCEPTED_COVER_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const ACCEPTED_COVER_TYPES: Record<string, readonly string[]> = {
+  "image/jpeg": [".jpg", ".jpeg"],
+  "image/png": [".png"],
+  "image/webp": [".webp"],
+};
 const MAX_COVER_MB = 5;
 
 function formatBytes(bytes: number): string {
@@ -104,6 +108,10 @@ export function EditBookModal(props: {
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => setForm((f) => ({ ...f, [field]: e.target.value }));
 
+  const clearCoverError = () => setError((currentError) => (
+    /cover image/i.test(currentError) ? "" : currentError
+  ));
+
   const updateClassificationNumber = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = sanitizeClassificationInput(e.target.value);
     const detected = categoryForClassification(value);
@@ -120,14 +128,21 @@ export function EditBookModal(props: {
 
   const onPickCoverFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    if (!ACCEPTED_COVER_TYPES.includes(file.type)) {
+    if (!file) {
+      clearCoverError();
+      return;
+    }
+    const extension = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
+    const allowedExtensions = ACCEPTED_COVER_TYPES[file.type];
+    if (!allowedExtensions?.includes(extension)) {
       setError("Cover image must be a JPG, PNG, or WEBP file.");
+      setCoverFile(null);
       e.target.value = "";
       return;
     }
     if (file.size > MAX_COVER_MB * 1024 * 1024) {
       setError(`Cover image must be under ${MAX_COVER_MB}MB.`);
+      setCoverFile(null);
       e.target.value = "";
       return;
     }
@@ -137,6 +152,7 @@ export function EditBookModal(props: {
 
   const removeCoverFile = () => {
     setCoverFile(null);
+    clearCoverError();
     if (coverInputRef.current) {
       coverInputRef.current.value = "";
     }
@@ -459,7 +475,7 @@ export function EditBookModal(props: {
             type="file"
             ref={coverInputRef}
             onChange={onPickCoverFile}
-            accept={ACCEPTED_COVER_TYPES.join(",")}
+            accept={Object.values(ACCEPTED_COVER_TYPES).flat().join(",")}
             className="hidden"
           />
         </div>

@@ -35,7 +35,10 @@ export async function storeCoverImage(file: Pick<Express.Multer.File, 'buffer' |
   const hasReadWriteToken = Boolean(process.env.BLOB_READ_WRITE_TOKEN?.trim());
   const hasVercelOidc = Boolean(process.env.VERCEL_OIDC_TOKEN && process.env.BLOB_STORE_ID);
   if (!hasReadWriteToken && !hasVercelOidc) {
-    throw new AppError('Cover image storage is not configured. Contact an administrator.', 503);
+    throw new AppError(
+      'Cover image storage is not configured. Set BLOB_READ_WRITE_TOKEN, or connect a Vercel Blob store and provide BLOB_STORE_ID with VERCEL_OIDC_TOKEN.',
+      503
+    );
   }
 
   try {

@@ -32,6 +32,11 @@ const EBOOK_EXTENSIONS: Record<string, 'PDF' | 'EPUB' | 'MOBI'> = {
   '.epub': 'EPUB',
   '.mobi': 'MOBI',
 };
+const COVER_EXTENSIONS: Record<string, readonly string[]> = {
+  'image/jpeg': ['.jpg', '.jpeg'],
+  'image/png': ['.png'],
+  'image/webp': ['.webp'],
+};
 const MAX_COVER_SIZE = 5 * 1024 * 1024;
 function safeFilename(originalName: string): string {
   const ext = path.extname(originalName);
@@ -99,7 +104,8 @@ function fileFilter(
   if (file.fieldname === 'coverImage' || file.fieldname === 'profilePicture') {
     const extension = coverExtensionForMimeType(file.mimetype);
     const validProfileExtension = ['.jpg', '.jpeg', '.png', '.webp'].includes(ext);
-    if (!extension || (file.fieldname === 'profilePicture' && !validProfileExtension)) {
+    const validCoverExtension = COVER_EXTENSIONS[file.mimetype]?.includes(ext);
+    if (!extension || (file.fieldname === 'coverImage' && !validCoverExtension) || (file.fieldname === 'profilePicture' && !validProfileExtension)) {
       const label = file.fieldname === 'coverImage' ? 'Cover image' : 'Profile picture';
       return cb(new BadRequestError(`${label} must be a JPG, PNG, or WEBP image`));
     }

@@ -626,7 +626,14 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
     const { sort, order } = getSortParams(query, ['requestDate', 'status', 'memberName'] as const, 'status', 'asc');
     const where: any = {};
     if (userId) where.userId = userId;
-    if (query.status) where.status = query.status;
+    if (query.status) {
+      const requestedStatus = String(query.status).trim().toUpperCase();
+      const normalizedStatus = requestedStatus === 'AWAITING_PICKUP' ? 'PENDING' : requestedStatus;
+      if (!['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED'].includes(normalizedStatus)) {
+        throw new BadRequestError('Invalid borrow request status');
+      }
+      where.status = normalizedStatus;
+    }
 
     // Search by book title/accession no OR member name/library id
     if (query.search) {

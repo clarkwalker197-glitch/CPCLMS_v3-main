@@ -1,7 +1,9 @@
 "use client";
 
+import { ModalLayer } from "@/components/ModalLayer";
 import { useState, useEffect, useRef, useCallback, useId } from "react";
 import { Html5Qrcode } from "html5-qrcode";
+import { formatBorrowId, normalizeBorrowId } from "@/lib/borrow-id";
 
 interface QRScannerProps {
   onScan: (data: string) => Promise<void> | void;
@@ -19,12 +21,13 @@ export function QRScanner({
   onClose,
   loading = false,
   title = "Scan QR Code",
-  entryHint = "If QR scan fails, enter the 8-digit Transaction ID.",
-  placeholder = "12345678",
+  entryHint = "If QR scan fails, enter the Borrow ID.",
+  placeholder = "BRW-1234-5678",
   submitLabel = "Submit",
   externalError = "",
 }: QRScannerProps) {
   const [scanning, setScanning] = useState(false);
+  const [scannerEnabled, setScannerEnabled] = useState(true);
   const [error, setError] = useState("");
   const [manualInput, setManualInput] = useState("");
   const [cameras, setCameras] = useState<{ id: string; label: string }[]>([]);
@@ -32,16 +35,52 @@ export function QRScanner({
   const [lastResult, setLastResult] = useState<string>("");
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const fallbackIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const fallbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scanHandledRef = useRef(false);
   const scannerElementId = `qr-scanner-${useId().replace(/:/g, "")}`;
   const mountedRef = useRef(true);
 
+  const stopScanner = useCallback(async () => {
+    if (scannerRef.current) {
+      try {
+        await scannerRef.current.stop();
+      } catch {
+        // Ignore stop errors
+      }
+      scannerRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    if (fallbackIntervalRef.current) clearInterval(fallbackIntervalRef.current);
+    if (fallbackTimeoutRef.current) clearTimeout(fallbackTimeoutRef.current);
+    fallbackIntervalRef.current = null;
+    fallbackTimeoutRef.current = null;
+    setScanning(false);
+    setScannerEnabled(false);
+  }, []);
+
   // Cleanup on unmount
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      stopScanner();
+      if (scannerRef.current) {
+        void scannerRef.current.stop().catch(() => {});
+        scannerRef.current = null;
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+      }
+      if (fallbackIntervalRef.current) clearInterval(fallbackIntervalRef.current);
+      if (fallbackTimeoutRef.current) clearTimeout(fallbackTimeoutRef.current);
+      fallbackIntervalRef.current = null;
+      fallbackTimeoutRef.current = null;
     };
-  }, []);
+  }, [stopScanner]);
 
   // List available cameras
   const listCameras = useCallback(async () => {
@@ -77,6 +116,7 @@ export function QRScanner({
   // Start scanner
   const startScanner = useCallback(async (cameraId: string) => {
     if (!cameraId) return;
+    scanHandledRef.current = false;
     setScanning(true);
     setError("");
 
@@ -86,6 +126,7 @@ export function QRScanner({
       if (!existingEl) {
         setError("Scanner element not found");
         setScanning(false);
+        setScannerEnabled(false);
         return;
       }
 
@@ -104,12 +145,17 @@ export function QRScanner({
           qrbox: { width: 250, height: 250 },
         },
         (decodedText) => {
-          // Success callback
-          if (!mountedRef.current) return;
-          setLastResult(decodedText);
-          // Debounce: prevent double-scan
+          if (!mountedRef.current || scanHandledRef.current) return;
+          scanHandledRef.current = true;
+          const borrowId = normalizeBorrowId(decodedText);
+          if (!borrowId) {
+            setError("This QR code does not contain a valid Borrow ID.");
+            void stopScanner();
+            return;
+          }
+          setLastResult(formatBorrowId(borrowId));
           stopScanner();
-          onScan(decodedText);
+          onScan(borrowId);
         },
         () => {
           // Ignore individual frame failures
@@ -139,9 +185,10 @@ export function QRScanner({
           ? "Camera permission was denied. Allow camera access in your browser settings or use manual entry below."
           : err?.message || "Failed to start camera. Use manual entry below.");
         setScanning(false);
+        setScannerEnabled(false);
       }
     }
-  }, [onScan, scannerElementId]);
+  }, [onScan, scannerElementId, stopScanner]);
 
   // Fallback: use native BarcodeDetector API
   const tryFallbackBarcodeDetector = useCallback(async () => {
@@ -165,65 +212,68 @@ export function QRScanner({
       await videoEl.play();
 
       const detector = new (window as any).BarcodeDetector({ formats: ["qr_code"] });
+      let timeoutId: ReturnType<typeof setTimeout>;
       const checkInterval = setInterval(async () => {
         if (!mountedRef.current) {
           clearInterval(checkInterval);
+          fallbackIntervalRef.current = null;
           stream.getTracks().forEach(t => t.stop());
           return;
         }
         try {
           const barcodes = await detector.detect(videoEl);
           if (barcodes.length > 0) {
+            if (scanHandledRef.current) return;
+            scanHandledRef.current = true;
             clearInterval(checkInterval);
+            fallbackIntervalRef.current = null;
+            clearTimeout(timeoutId);
+            fallbackTimeoutRef.current = null;
             stream.getTracks().forEach(t => t.stop());
             streamRef.current = null;
             videoEl.remove();
             if (mountedRef.current) {
+              const borrowId = normalizeBorrowId(barcodes[0].rawValue);
+              if (!borrowId) {
+                setError("This QR code does not contain a valid Borrow ID.");
+                setScannerEnabled(false);
+                setScanning(false);
+                return;
+              }
+              setLastResult(formatBorrowId(borrowId));
+              setScannerEnabled(false);
               setScanning(false);
-              onScan(barcodes[0].rawValue);
+              onScan(borrowId);
             }
           }
         } catch {
           // continue scanning
         }
       }, 500);
+      fallbackIntervalRef.current = checkInterval;
 
-      setTimeout(() => {
+      timeoutId = setTimeout(() => {
         clearInterval(checkInterval);
+        fallbackIntervalRef.current = null;
+        fallbackTimeoutRef.current = null;
         stream.getTracks().forEach(t => t.stop());
         streamRef.current = null;
         videoEl.remove();
         if (mountedRef.current) {
           setScanning(false);
-          if (!lastResult) {
-            setError("Scan timed out. Enter code manually.");
-          }
+          setScannerEnabled(false);
+          setError("Scan timed out. Enter the Borrow ID manually.");
         }
       }, 30000);
+      fallbackTimeoutRef.current = timeoutId;
     } catch {
       if (mountedRef.current) {
         setError("Camera access denied. Use manual entry below.");
         setScanning(false);
+        setScannerEnabled(false);
       }
     }
   }, [onScan, lastResult]);
-
-  // Stop scanner
-  const stopScanner = useCallback(async () => {
-    if (scannerRef.current) {
-      try {
-        await scannerRef.current.stop();
-      } catch {
-        // Ignore stop errors
-      }
-      scannerRef.current = null;
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    }
-    setScanning(false);
-  }, []);
 
   // Initialize on mount
   useEffect(() => {
@@ -232,35 +282,37 @@ export function QRScanner({
 
   // Start scanning when camera is selected
   useEffect(() => {
-    if (selectedCamera && !scanning) {
+    if (selectedCamera && scannerEnabled && !scanning) {
       startScanner(selectedCamera);
     }
-  }, [selectedCamera, startScanner, scanning]);
+  }, [selectedCamera, startScanner, scanning, scannerEnabled]);
 
-  const handleCameraChange = (cameraId: string) => {
-    stopScanner();
+  const handleCameraChange = async (cameraId: string) => {
+    await stopScanner();
     setSelectedCamera(cameraId);
+    setScannerEnabled(true);
   };
 
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const nextValue = manualInput.trim();
-    if (!/^\d{8}$/.test(nextValue)) {
-      setError("Enter the 8-digit Transaction ID.");
+    const borrowId = normalizeBorrowId(manualInput);
+    if (!borrowId) {
+      setError("Enter a valid Borrow ID, such as BRW-1234-5678.");
       return;
     }
 
-    setLastResult(nextValue);
+    setLastResult(formatBorrowId(borrowId));
     setError("");
     try {
-      await onScan(nextValue);
+      await onScan(borrowId);
     } catch {
       setError("Failed to process this transaction.");
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <ModalLayer>
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="fixed inset-0 bg-black/50" onClick={onClose} />
       <div className="relative z-50 w-full max-w-md rounded-xl bg-white shadow-lg p-6">
         {/* Header */}
@@ -327,7 +379,7 @@ export function QRScanner({
         {/* Manual entry */}
         <form onSubmit={handleManualSubmit} className="mb-3">
           <label className="block text-sm font-medium text-zinc-700 mb-1">
-            Or enter the 8-digit Transaction ID manually
+            Or enter the Borrow ID manually
           </label>
           <p className="text-xs text-zinc-500 mb-2">
             {entryHint}
@@ -336,16 +388,14 @@ export function QRScanner({
             <input
               type="text"
               value={manualInput}
-              onChange={(e) => setManualInput(e.target.value.replace(/\D/g, "").slice(0, 8))}
-              inputMode="numeric"
-              pattern="[0-9]*"
-              maxLength={8}
+              onChange={(e) => setManualInput(e.target.value.toUpperCase().slice(0, 13))}
+              maxLength={13}
               placeholder={placeholder}
               className="flex-1 px-3 py-2 border border-zinc-300 rounded-lg bg-white text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono uppercase"
             />
             <button
               type="submit"
-              disabled={!/^\d{8}$/.test(manualInput.trim())}
+              disabled={!normalizeBorrowId(manualInput) || loading}
               className="px-4 py-2 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors font-medium"
             >
               {submitLabel}
@@ -358,11 +408,15 @@ export function QRScanner({
           <button
             onClick={() => {
               if (scanning) {
-                stopScanner();
+                void stopScanner();
               } else {
                 setError("");
-                setSelectedCamera("");
-                void listCameras();
+                setScannerEnabled(true);
+                if (selectedCamera) {
+                  void startScanner(selectedCamera);
+                } else {
+                  void listCameras();
+                }
               }
             }}
             className="text-sm text-emerald-600 hover:text-emerald-700 font-medium transition-colors"
@@ -375,7 +429,7 @@ export function QRScanner({
         {loading && (
           <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700 flex items-center gap-2">
             <span className="inline-block h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
-            Approving transaction...
+            Verifying Borrow ID...
           </div>
         )}
 
@@ -385,7 +439,8 @@ export function QRScanner({
           </div>
         )}
       </div>
-    </div>
+      </div>
+    </ModalLayer>
   );
 }
 

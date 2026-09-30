@@ -37,9 +37,15 @@ export const approveByQRCodeSchema = z.object({
   body: z.object({
     requestId: z.string().min(1).max(100),
     token: z.string().max(2048).optional(),
-    approvalCode: z.string().regex(/^BRW-\d{4}-\d{5}$/, 'Invalid approval code format').optional(),
+    approvalCode: z.string().regex(/^(?:\d{8}|BRW-\d{4}-\d{4})$/i, 'Invalid Borrow ID format').optional(),
   }).refine((body) => Boolean(body.token || body.approvalCode), {
     message: 'Either token or approvalCode is required',
+  }),
+});
+
+export const verifyBorrowRequestSchema = z.object({
+  body: z.object({
+    borrowId: z.string().trim().regex(/^(?:\d{8}|BRW-\d{4}-\d{4})$/i, 'Enter a valid Borrow ID'),
   }),
 });
 

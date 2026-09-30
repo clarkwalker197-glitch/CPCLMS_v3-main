@@ -8,6 +8,7 @@ import api from "@/lib/api";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Sidebar from "@/components/Sidebar";
 import EditProfileModal from "@/components/EditProfileModal";
+import { ModalLayer } from "@/components/ModalLayer";
 import {
   Pencil,
   Lock,
@@ -394,7 +395,8 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-labelledby="change-password-title">
+    <ModalLayer>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-labelledby="change-password-title">
       <div className="w-full max-w-md rounded-2xl border border-zinc-700 bg-zinc-900 shadow-2xl">
         <div className="flex items-center justify-between border-b border-zinc-800 px-6 py-5">
           <h2 id="change-password-title" className="text-lg font-semibold text-white">Change Password</h2>
@@ -413,7 +415,8 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
           </div>
         </form>
       </div>
-    </div>
+      </div>
+    </ModalLayer>
   );
 }
 

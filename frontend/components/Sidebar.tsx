@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "@/lib/auth-context";
+import { ModalLayer } from "@/components/ModalLayer";
 import {
   LayoutDashboard,
   BookOpen,
@@ -172,6 +173,7 @@ export default function Sidebar() {
       </nav>
 
       {moreOpen && (
+        <ModalLayer>
         <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-labelledby="mobile-more-title">
           <button
             type="button"
@@ -232,6 +234,7 @@ export default function Sidebar() {
             </div>
           </div>
         </div>
+        </ModalLayer>
       )}
     </>
   );

@@ -15,26 +15,33 @@ import { env } from '../config/env';
 import { NotFoundError, BadRequestError, ConflictError } from '../utils/errors';
 import { getPaginationParams, buildPaginationMeta } from '../utils/pagination';
 import { getSortParams } from '../utils/sorting';
-import { generateQRCode, generateQRFromText } from '../utils/qrcode';
+import { generateQRFromText } from '../utils/qrcode';
 import { policyService } from './policy.service';
 import { notificationService } from './notification.service';
 import { Role } from '@prisma/client';
 import crypto from 'crypto';
-import jwt, { JwtPayload as JsonWebTokenPayload } from 'jsonwebtoken';
-
-const QR_TOKEN_TTL_SECONDS = 10 * 60;
-
-function generateApprovalCode(): string {
-  const value = crypto.randomInt(0, 1_000_000_000).toString().padStart(9, '0');
-  return `BRW-${value.slice(0, 4)}-${value.slice(4)}`;
-}
 
 function generateTransactionId(): string {
   return crypto.randomInt(0, 100_000_000).toString().padStart(8, '0');
 }
 
-function hashQrToken(token: string): string {
-  return crypto.createHash('sha256').update(token).digest('hex');
+function normalizeBorrowId(value: string): string {
+  const input = value.trim().toUpperCase();
+  const formattedMatch = /^BRW-(\d{4})-(\d{4})$/.exec(input);
+  const transactionId = formattedMatch ? `${formattedMatch[1]}${formattedMatch[2]}` : input;
+  if (!/^\d{8}$/.test(transactionId)) {
+    throw new BadRequestError('Enter a valid 8-digit Borrow ID');
+  }
+  return transactionId;
+}
+
+function formatBorrowId(transactionId: string): string {
+  return `BRW-${transactionId.slice(0, 4)}-${transactionId.slice(4)}`;
+}
+
+function buildBorrowVerificationUrl(transactionId: string): string {
+  const frontendUrl = (Array.isArray(env.FRONTEND_URL) ? env.FRONTEND_URL[0] : env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
+  return `${frontendUrl}/scan-approve?borrowId=${encodeURIComponent(formatBorrowId(transactionId))}`;
 }
 
 export class TransactionService {
@@ -62,7 +69,7 @@ export class TransactionService {
   }
 
   private async generateUniqueTransactionId(tx: Prisma.TransactionClient): Promise<string> {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(2026093001::bigint)`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(2026093001::bigint)`;
     for (let attempt = 0; attempt < 20; attempt++) {
       const candidate = generateTransactionId();
       const [existingRequest, existingTransaction] = await Promise.all([
@@ -140,7 +147,7 @@ export class TransactionService {
         where: {
           userId,
           bookId: { in: uniqueBookIds },
-          status: { in: ['PENDING', 'APPROVED'] },
+          status: { in: ['PENDING', 'AWAITING_PICKUP', 'APPROVED'] },
         },
       });
 
@@ -257,128 +264,13 @@ export class TransactionService {
   async approveRequest(requestId: string, librarianId: string) {
     const request = await prisma.borrowRequest.findUnique({
       where: { id: requestId },
-      include: {
-        book: true,
-        user: true,
-      },
+      select: { id: true, requestBatchId: true, transactionId: true },
     });
     if (!request) throw new NotFoundError('Borrow request');
-    if (request.status !== 'PENDING') {
-      throw new BadRequestError('Request has already been processed');
-    }
-    if (request.requestBatchId || request.transactionId) {
-      return this.approveTransactionBatch(request.requestBatchId || request.transactionId!, librarianId);
-    }
-    if (request.book.availableCopies < 1) {
-      throw new BadRequestError('No copies available for this book');
-    }
-
-    // Calculate from the exact borrow date that will be stored.
-    const borrowDate = new Date();
-    const dueDate = await this.calculateBorrowDueDate(request.user, borrowDate);
-
-    let approvalCode = generateApprovalCode();
-    let attempts = 0;
-    while (attempts < 5) {
-      const existing = await prisma.borrowRequest.findUnique({
-        where: { approvalCode },
-      });
-      if (!existing) break;
-      approvalCode = generateApprovalCode();
-      attempts++;
-    }
-
-    // Generate QR code payload with transaction ID
-    const qrPayload = {
-      txnId: approvalCode,
-      accessionNo: request.book.accessionNo,
-      userId: request.userId,
-      issuedAt: new Date().toISOString(),
-    };
-    const qrCodeDataUrl = await generateQRCode(qrPayload);
-
-    // Execute transactional updates
-    const [transaction] = await prisma.$transaction([
-      prisma.borrowTransaction.create({
-        data: {
-          userId: request.userId,
-          bookId: request.bookId,
-          borrowDate,
-          dueDate,
-          status: 'ACTIVE',
-          notes: request.notes || undefined,
-          qrCode: qrCodeDataUrl,
-        },
-        include: {
-          book: { select: { title: true, accessionNo: true, isbn: true, shelf: true, row: true } },
-          user: { select: { id: true, firstName: true, lastName: true, libraryId: true, avatar: true, role: true } },
-        },
-      }),
-      prisma.borrowRequest.update({
-        where: { id: requestId },
-          data: {
-            status: 'APPROVED',
-            approvalCode,
-            approvalTokenUsedAt: new Date(),
-            processedById: librarianId,
-            processedAt: new Date(),
-          },
-      }),
-      prisma.book.update({
-        where: { id: request.bookId },
-        data: {
-          availableCopies: { decrement: 1 },
-          status: request.book.availableCopies - 1 <= 0 ? 'BORROWED' : 'AVAILABLE',
-        },
-      }),
-      prisma.notification.create({
-        data: {
-          userId: request.userId,
-          type: 'REQUEST_APPROVED',
-          title: 'Borrow Request Approved',
-          message: `Your request to borrow "${request.book.title}" has been approved. Due date: ${dueDate.toLocaleDateString()}. Show the QR code when picking up.`,
-          link: `/transactions`, // Will be replaced with actual ID after creation
-        },
-      }),
-      prisma.activityLog.create({
-        data: {
-          userId: librarianId,
-          action: 'APPROVE_REQUEST',
-          entity: 'BorrowRequest',
-          entityId: requestId,
-          details: {
-            bookTitle: request.book.title,
-            borrowerName: `${request.user.firstName} ${request.user.lastName}`,
-            dueDate,
-          },
-        },
-      }),
-    ]);
-
-    // If this book was reserved, mark the first active reservation as fulfilled
-    const activeReservation = await prisma.reservation.findFirst({
-      where: { bookId: request.bookId, status: 'ACTIVE', userId: request.userId },
-    });
-    if (activeReservation) {
-      await prisma.reservation.update({
-        where: { id: activeReservation.id },
-        data: { status: 'FULFILLED', notified: true },
-      });
-    }
-
-    // Recalculate queue positions for remaining reservations
-    const remainingReservations = await prisma.reservation.findMany({
-      where: { bookId: request.bookId, status: 'ACTIVE' },
-      orderBy: { queuePosition: 'asc' },
-    });
-    for (let i = 0; i < remainingReservations.length; i++) {
-      await prisma.reservation.update({
-        where: { id: remainingReservations[i].id },
-        data: { queuePosition: i + 1 },
-      });
-    }
-
-    return { ...transaction, qrCode: qrCodeDataUrl, approvalCode };
+    return this.approveTransactionBatch(
+      request.requestBatchId || request.transactionId || request.id,
+      librarianId
+    );
   }
 
   async approveTransactionBatch(requestBatchId: string, librarianId: string) {
@@ -386,6 +278,7 @@ export class TransactionService {
       OR: [
         { requestBatchId },
         { transactionId: requestBatchId },
+        { id: requestBatchId },
       ],
     };
     const requests = await prisma.borrowRequest.findMany({
@@ -397,20 +290,81 @@ export class TransactionService {
       orderBy: { requestDate: 'asc' },
     });
     if (!requests.length) throw new NotFoundError('Borrow transaction request');
+    if (requests.length > TransactionService.MAX_BOOKS_PER_TRANSACTION) {
+      throw new BadRequestError('This transaction exceeds the maximum of 3 books');
+    }
+    const user = requests[0].user;
+    if (requests.some((request) => request.userId !== user.id)) {
+      throw new BadRequestError('Transaction request contains multiple members');
+    }
+    if (requests.every((request) => request.status === 'AWAITING_PICKUP')) {
+      const transactionId = requests[0].transactionId;
+      if (!transactionId || requests.some((request) => request.transactionId !== transactionId)) {
+        throw new BadRequestError('This request batch has an invalid Borrow ID');
+      }
+      return {
+        transactionId,
+        qrCode: await generateQRFromText(buildBorrowVerificationUrl(transactionId)),
+        requests,
+      };
+    }
     if (requests.some((request) => request.status !== 'PENDING')) {
       throw new BadRequestError('This transaction has already been processed');
+    }
+
+    const transactionId = await prisma.$transaction(async (tx) => {
+      const allocatedId = await this.generateUniqueTransactionId(tx);
+      const claimed = await tx.borrowRequest.updateMany({
+        where: { ...requestBatchWhere, status: 'PENDING' },
+        data: {
+          transactionId: allocatedId,
+          status: 'AWAITING_PICKUP',
+          processedById: librarianId,
+          processedAt: null,
+        },
+      });
+      if (claimed.count !== requests.length) {
+        throw new BadRequestError('This transaction has already been processed');
+      }
+      return allocatedId;
+    });
+    const stagedRequests = await prisma.borrowRequest.findMany({
+      where: { transactionId },
+      include: {
+        book: { select: { id: true, title: true, accessionNo: true } },
+        user: { select: { id: true, firstName: true, lastName: true, libraryId: true } },
+      },
+      orderBy: { requestDate: 'asc' },
+    });
+
+    return {
+      transactionId,
+      qrCode: await generateQRFromText(buildBorrowVerificationUrl(transactionId)),
+      requests: stagedRequests,
+    };
+  }
+
+  async verifyBorrowRequest(borrowId: string, userId: string) {
+    const transactionId = normalizeBorrowId(borrowId);
+    const requests = await prisma.borrowRequest.findMany({
+      where: { transactionId },
+      include: {
+        book: true,
+        user: { select: { id: true, firstName: true, lastName: true, libraryId: true, role: true, maxBorrowDays: true, maxBooksAllowed: true } },
+      },
+      orderBy: { requestDate: 'asc' },
+    });
+    if (!requests.length || requests.some((request) => request.userId !== userId)) {
+      throw new NotFoundError('Awaiting-pickup Borrow ID');
+    }
+    if (requests.some((request) => request.status !== 'AWAITING_PICKUP')) {
+      throw new BadRequestError('This Borrow ID is not awaiting pickup or has already been verified');
     }
     if (requests.length > TransactionService.MAX_BOOKS_PER_TRANSACTION) {
       throw new BadRequestError('This transaction exceeds the maximum of 3 books');
     }
 
     const user = requests[0].user;
-    if (requests.some((request) => request.userId !== user.id)) {
-      throw new BadRequestError('Transaction request contains multiple members');
-    }
-    const bookIds = requests.map((request) => request.bookId);
-    let transactionId = '';
-    let qrCode = '';
     const borrowDate = new Date();
     const dueDate = await this.calculateBorrowDueDate(user, borrowDate);
     const maxBooks = user.role === Role.STUDENT
@@ -418,16 +372,15 @@ export class TransactionService {
       : user.role === Role.FACULTY
         ? user.maxBooksAllowed ?? await policyService.getNumber('FACULTY_MAX_BOOKS', 10)
         : 999;
+    const bookIds = requests.map((request) => request.bookId);
 
     const transactions = await prisma.$transaction(async (tx) => {
-      transactionId = await this.generateUniqueTransactionId(tx);
-      qrCode = await generateQRFromText(transactionId);
       const claimed = await tx.borrowRequest.updateMany({
-        where: { ...requestBatchWhere, status: 'PENDING' },
-        data: { transactionId, status: 'APPROVED', processedById: librarianId, processedAt: borrowDate },
+        where: { transactionId, userId, status: 'AWAITING_PICKUP' },
+        data: { status: 'APPROVED', processedAt: borrowDate },
       });
       if (claimed.count !== requests.length) {
-        throw new BadRequestError('This transaction has already been processed');
+        throw new BadRequestError('This Borrow ID has already been verified');
       }
 
       const books = await tx.$queryRaw<Array<{ id: string; title: string; availableCopies: number }>>`
@@ -446,16 +399,16 @@ export class TransactionService {
       }
 
       const activeCount = await tx.borrowTransaction.count({
-        where: { userId: user.id, status: { in: ['ACTIVE', 'OVERDUE'] } },
+        where: { userId, status: { in: ['ACTIVE', 'OVERDUE'] } },
       });
       if (activeCount + requests.length > maxBooks) {
-        throw new BadRequestError(`The member has reached the maximum limit of ${maxBooks} active borrows`);
+        throw new BadRequestError(`You have reached the maximum limit of ${maxBooks} active borrows`);
       }
 
       const createdTransactions = await Promise.all(requests.map((request) =>
         tx.borrowTransaction.create({
           data: {
-            userId: request.userId,
+            userId,
             bookId: request.bookId,
             transactionId,
             borrowDate,
@@ -480,7 +433,7 @@ export class TransactionService {
 
       await tx.notification.create({
         data: {
-          userId: user.id,
+          userId,
           type: 'REQUEST_APPROVED',
           title: 'Borrow Transaction Approved',
           message: `Your request for ${requests.length} book(s) is approved. Due date: ${dueDate.toLocaleDateString()}.`,
@@ -489,7 +442,7 @@ export class TransactionService {
       });
       await tx.activityLog.create({
         data: {
-          userId: librarianId,
+          userId,
           action: 'APPROVE_REQUEST',
           entity: 'BorrowRequest',
           entityId: transactionId,
@@ -501,13 +454,12 @@ export class TransactionService {
           },
         },
       });
-
       return createdTransactions;
     }, { timeout: 20000, maxWait: 20000 });
 
     for (const request of requests) {
       const reservation = await prisma.reservation.findFirst({
-        where: { bookId: request.bookId, status: 'ACTIVE', userId: request.userId },
+        where: { bookId: request.bookId, status: 'ACTIVE', userId },
       });
       if (reservation) {
         await prisma.reservation.update({
@@ -527,7 +479,7 @@ export class TransactionService {
       }
     }
 
-    return { transactionId, qrCode, dueDate, transactions };
+    return { transactionId, dueDate, transactions };
   }
 
   /**
@@ -539,20 +491,22 @@ export class TransactionService {
       include: { book: true },
     });
     if (!request) throw new NotFoundError('Borrow request');
-    if (request.status !== 'PENDING') throw new BadRequestError('Request already processed');
+    if (!['PENDING', 'AWAITING_PICKUP'].includes(request.status)) {
+      throw new BadRequestError('Request already processed');
+    }
 
     if (request.transactionId) {
       const requests = await prisma.borrowRequest.findMany({
         where: { transactionId: request.transactionId },
         include: { book: { select: { title: true } } },
       });
-      if (requests.some((entry) => entry.status !== 'PENDING')) {
+      if (requests.some((entry) => entry.status !== request.status)) {
         throw new BadRequestError('This transaction has already been processed');
       }
       const bookTitles = requests.map((entry) => entry.book.title).join(', ');
       await prisma.$transaction([
         prisma.borrowRequest.updateMany({
-          where: { transactionId: request.transactionId, status: 'PENDING' },
+          where: { transactionId: request.transactionId, status: request.status },
           data: { status: 'REJECTED', processedById: librarianId, processedAt: new Date(), notes: reason },
         }),
         prisma.notification.create({
@@ -707,7 +661,12 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
       grouped.set(key, group);
     }
 
-    const statusOrder: Record<string, number> = { PENDING: 0, APPROVED: 1, REJECTED: 2 };
+    const statusOrder: Record<string, number> = {
+      PENDING: 0,
+      AWAITING_PICKUP: 1,
+      APPROVED: 2,
+      REJECTED: 3,
+    };
     const direction = order === 'asc' ? 1 : -1;
     const requests = Array.from(grouped.values()).map((group) => {
       group.sort((a, b) => a.requestDate.getTime() - b.requestDate.getTime());
@@ -1120,157 +1079,46 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
     });
   }
 
-  /**
-   * Generate a unique QR code for a pending borrow request.
-   * The QR encodes a deep-link URL that the borrower scans with their phone.
-   * Opening the URL (with a signed, unique token) is what confirms approval —
-   * the request is NOT approved when the QR is merely generated.
-   */
+  /** Stage the request and return its Borrow ID QR without activating a borrow. */
   async generateApprovalQR(requestId: string, librarianId: string) {
     const request = await prisma.borrowRequest.findUnique({
       where: { id: requestId },
-      include: {
-        book: { select: { id: true, title: true, accessionNo: true } },
-        user: { select: { id: true, firstName: true, lastName: true, libraryId: true } },
-      },
+      select: { id: true, requestBatchId: true, transactionId: true },
     });
     if (!request) throw new NotFoundError('Borrow request');
-    if (request.status !== 'PENDING') {
-      throw new BadRequestError('Request has already been processed');
-    }
-
-    // Generate the same nine-digit Transaction ID used by direct approvals.
-    let approvalCode = '';
-    let isUnique = false;
-    while (!isUnique) {
-      approvalCode = generateApprovalCode();
-      
-      const existing = await prisma.borrowRequest.findUnique({
-        where: { approvalCode },
-      });
-      isUnique = !existing;
-    }
-
-    const token = jwt.sign(
-      {
-        requestId: request.id,
-        approvalCode,
-        issuerId: librarianId,
-        jti: crypto.randomUUID(),
-      },
-      env.JWT_SECRET,
-      { expiresIn: QR_TOKEN_TTL_SECONDS }
+    const receipt = await this.approveTransactionBatch(
+      request.requestBatchId || request.transactionId || request.id,
+      librarianId
     );
-    const tokenExpiresAt = new Date(Date.now() + QR_TOKEN_TTL_SECONDS * 1000);
-
-    await prisma.borrowRequest.update({
-      where: { id: requestId },
-      data: {
-        approvalCode,
-        approvalTokenHash: hashQrToken(token),
-        approvalTokenExpiresAt: tokenExpiresAt,
-        approvalTokenUsedAt: null,
-        approvalTokenIssuedById: librarianId,
-      },
-    });
-    const frontendUrl = (Array.isArray(env.FRONTEND_URL) ? env.FRONTEND_URL[0] : env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
-
-    // The deep link the borrower opens on their phone to confirm approval.
-    // Include approval code as parameter for manual entry fallback
-    const approveUrl = `${frontendUrl}/scan-approve?request=${request.id}&token=${token}&code=${approvalCode}`;
-    const qrCodeDataUrl = await generateQRFromText(approveUrl);
+    const firstRequest = receipt.requests[0];
 
     return {
       requestId: request.id,
-      approvalCode,
-      bookTitle: request.book.title,
-      accessionNo: request.book.accessionNo,
-      memberName: `${request.user.firstName} ${request.user.lastName}`,
-      libraryId: request.user.libraryId,
-      qrCode: qrCodeDataUrl,
-      approveUrl,
-      issuedAt: new Date().toISOString(),
-      expiresAt: tokenExpiresAt.toISOString(),
+      transactionId: receipt.transactionId,
+      approvalCode: formatBorrowId(receipt.transactionId),
+      bookTitle: firstRequest.book.title,
+      accessionNo: firstRequest.book.accessionNo,
+      memberName: `${firstRequest.user.firstName} ${firstRequest.user.lastName}`,
+      libraryId: firstRequest.user.libraryId,
+      qrCode: receipt.qrCode,
     };
   }
 
-  /**
-   * Confirm approval of a borrow request via a scanned QR token or approval code.
-   * This is called when the borrower opens the deep link from their phone OR
-   * manually enters the transaction ID (approval code).
-   * Applies the same logic as approveRequest but is authorized purely by the
-   * matching (single-use style) token or approval code.
-   */
-  async approveByQRCode(requestId: string, token: string, approvalCode?: string) {
+  /** Confirm the Borrow ID for the authenticated borrower and activate the batch. */
+  async approveByQRCode(requestId: string, _token: string | undefined, approvalCode: string | undefined, userId: string) {
     const request = await prisma.borrowRequest.findUnique({
       where: { id: requestId },
-      include: { book: true, user: true },
+      select: { id: true, userId: true, status: true, transactionId: true },
     });
     if (!request) throw new NotFoundError('Borrow request');
-
-    if (request.status !== 'PENDING') {
-      throw new BadRequestError('Request has already been processed');
+    if (request.userId !== userId) throw new NotFoundError('Awaiting-pickup Borrow ID');
+    if (!approvalCode || request.status !== 'AWAITING_PICKUP' || !request.transactionId) {
+      throw new BadRequestError('This request is not awaiting pickup');
     }
-
-    if (approvalCode && request.approvalCode !== approvalCode) {
-      throw new BadRequestError('Invalid transaction ID');
+    if (normalizeBorrowId(approvalCode) !== request.transactionId) {
+      throw new BadRequestError('Invalid Borrow ID');
     }
-
-    let issuerId = request.approvalTokenIssuedById;
-    if (token) {
-      let claims: JsonWebTokenPayload;
-      try {
-        const decoded = jwt.verify(token, env.JWT_SECRET);
-        if (typeof decoded === 'string') throw new Error('Invalid token payload');
-        claims = decoded;
-      } catch {
-        throw new BadRequestError('Invalid or expired QR token');
-      }
-      if (
-        claims.requestId !== request.id ||
-        claims.approvalCode !== request.approvalCode ||
-        claims.issuerId !== request.approvalTokenIssuedById ||
-        !request.approvalTokenHash ||
-        request.approvalTokenHash !== hashQrToken(token) ||
-        !request.approvalTokenExpiresAt ||
-        request.approvalTokenExpiresAt <= new Date() ||
-        request.approvalTokenUsedAt
-      ) {
-        throw new BadRequestError('Invalid, expired, or already used QR token');
-      }
-    } else if (
-      !approvalCode ||
-      !issuerId ||
-      !request.approvalTokenExpiresAt ||
-      request.approvalTokenExpiresAt <= new Date() ||
-      request.approvalTokenUsedAt
-    ) {
-      throw new BadRequestError('Invalid, expired, or already used approval code');
-    }
-
-    if (!issuerId) throw new BadRequestError('QR approval issuer is missing');
-
-    const issuer = await prisma.user.findUnique({
-      where: { id: issuerId },
-      select: { id: true, role: true, isActive: true },
-    });
-    if (!issuer || !issuer.isActive || issuer.role !== Role.LIBRARIAN) {
-      throw new BadRequestError('QR approval was not issued by an active librarian');
-    }
-
-    const claimed = await prisma.borrowRequest.updateMany({
-      where: {
-        id: request.id,
-        status: 'PENDING',
-        approvalCode: request.approvalCode,
-        approvalTokenUsedAt: null,
-        ...(token ? { approvalTokenHash: hashQrToken(token) } : {}),
-      },
-      data: { approvalTokenUsedAt: new Date() },
-    });
-    if (claimed.count !== 1) throw new BadRequestError('QR approval has already been used');
-
-    return this.approveRequest(request.id, issuer.id);
+    return this.verifyBorrowRequest(approvalCode, userId);
   }
 
   // ============================================================

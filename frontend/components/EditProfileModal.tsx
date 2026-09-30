@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/auth-context";
 import api from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/api";
 import UserAvatar from "@/components/UserAvatar";
+import { ModalLayer } from "@/components/ModalLayer";
 import { isValidName, nameValidationMessage, sanitizeNameInput } from "@/lib/name-validation";
 
 type EditProfileModalProps = {
@@ -107,7 +108,8 @@ export default function EditProfileModal({ onClose, onSaved }: EditProfileModalP
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-labelledby="edit-profile-title">
+    <ModalLayer>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-labelledby="edit-profile-title">
       <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-zinc-700 bg-zinc-900 shadow-2xl">
         <div className="flex items-center justify-between border-b border-zinc-800 px-6 py-5">
           <div>
@@ -160,7 +162,8 @@ export default function EditProfileModal({ onClose, onSaved }: EditProfileModalP
           </div>
         </form>
       </div>
-    </div>
+      </div>
+    </ModalLayer>
   );
 }
 

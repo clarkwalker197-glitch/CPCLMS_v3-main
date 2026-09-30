@@ -48,7 +48,7 @@ export const approveRequest = asyncHandler(
       req.params.id,
       req.user!.userId
     );
-    sendSuccess(res, result, 'Borrow request approved');
+    sendSuccess(res, result, 'Borrow request is awaiting pickup verification');
   }
 );
 
@@ -85,7 +85,17 @@ export const approveBorrowRequestBatch = asyncHandler(
       req.params.batchId,
       req.user!.userId
     );
-    sendSuccess(res, result, 'Borrow transaction approved');
+    sendSuccess(res, result, 'Borrow transaction is awaiting pickup verification');
+  }
+);
+
+export const verifyBorrowRequest = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const result = await transactionService.verifyBorrowRequest(
+      req.body.borrowId,
+      req.user!.userId
+    );
+    sendSuccess(res, result, 'Borrow ID verified; request approved');
   }
 );
 
@@ -101,8 +111,7 @@ export const generateRequestQR = asyncHandler(
   }
 );
 
-// Confirm approval after the borrower scans the QR on their phone or enters code manually.
-// Public deep-link endpoint — authorized by the embedded token or approval code, not a role.
+// Confirm approval after the authenticated borrower scans the QR or enters the Borrow ID.
 export const approveByQRCode = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const { requestId, token, approvalCode } = req.body;
@@ -114,7 +123,12 @@ export const approveByQRCode = asyncHandler(
       res.status(400).json({ success: false, error: 'Either token or approvalCode is required' });
       return;
     }
-    const result = await transactionService.approveByQRCode(requestId, token, approvalCode);
+    const result = await transactionService.approveByQRCode(
+      requestId,
+      token,
+      approvalCode,
+      req.user!.userId
+    );
     sendSuccess(res, result, 'Borrow request approved');
   }
 );

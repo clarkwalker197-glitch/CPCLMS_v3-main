@@ -5,6 +5,7 @@ import { User, getUser, isAuthenticated as checkAuth } from './auth';
 import api from './api';
 import { clearOfflineData } from './offline-db';
 import { syncNow } from './offline-sync';
+import { ModalLayer } from '@/components/ModalLayer';
 
 const IDLE_TIMEOUT_MS = 7 * 24 * 60 * 60 * 1000;
 const IDLE_WARNING_MS = IDLE_TIMEOUT_MS - 60 * 1000;
@@ -324,7 +325,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     >
       {children}
       {user && showIdleWarning && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4">
+        <ModalLayer>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4">
           <div
             role="alertdialog"
             aria-modal="true"
@@ -351,7 +353,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               Continue session
             </button>
           </div>
-        </div>
+          </div>
+        </ModalLayer>
       )}
     </AuthContext.Provider>
   );

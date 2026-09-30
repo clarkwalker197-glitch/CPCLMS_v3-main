@@ -42,13 +42,11 @@ const txnStatusLabel: Record<string, string> = {
 // ── Request status styling ──
 const reqStatusBadge: Record<string, string> = {
   PENDING: "bg-amber-500/15 text-amber-400 ring-amber-500/30",
-  AWAITING_PICKUP: "bg-orange-500/15 text-orange-300 ring-orange-500/30",
   APPROVED: "bg-emerald-500/15 text-emerald-400 ring-emerald-500/30",
   REJECTED: "bg-red-500/15 text-red-400 ring-red-500/30",
 };
 const reqStatusLabel: Record<string, string> = {
   PENDING: "Pending",
-  AWAITING_PICKUP: "Awaiting Pickup",
   APPROVED: "Approved",
   REJECTED: "Rejected",
 };
@@ -320,7 +318,7 @@ export default function RequestsPage() {
         return;
       }
       setApprovalReceipt(response.data);
-      setSuccessMsg(`Borrow ID ${formatBorrowId(response.data?.transactionId || "")}: QR generated. Awaiting pickup verification.`);
+      setSuccessMsg(`Borrow ID ${formatBorrowId(response.data?.transactionId || "")}: QR generated. Request remains Pending until the borrower verifies it.`);
       loadRequests();
       setTimeout(() => setSuccessMsg(""), 4000);
     } catch {
@@ -564,7 +562,6 @@ export default function RequestsPage() {
                 >
                   <option value="" className="bg-zinc-900 text-white">All Status</option>
                   <option value="PENDING" className="bg-zinc-900 text-white">Pending</option>
-                  <option value="AWAITING_PICKUP" className="bg-zinc-900 text-white">Awaiting Pickup</option>
                   <option value="APPROVED" className="bg-zinc-900 text-white">Approved</option>
                   <option value="REJECTED" className="bg-zinc-900 text-white">Rejected</option>
                 </select>
@@ -649,7 +646,7 @@ export default function RequestsPage() {
                                     disabled={actionLoadingId === req.id}
                                     className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
                                   >
-                                    <CheckCircle2 className="w-3.5 h-3.5" /> {actionLoadingId === req.id ? "Generating QR..." : req.requestBatchId || req.transactionId ? "Approve & Generate QR" : "Approve via QR"}
+                                    <CheckCircle2 className="w-3.5 h-3.5" /> {actionLoadingId === req.id ? "Generating QR..." : req.transactionId ? "View QR / Borrow ID" : "Approve & Generate QR"}
                                   </button>
                                   <button
                                     onClick={() => openRejectModal(req)}
@@ -658,14 +655,6 @@ export default function RequestsPage() {
                                     <XCircle className="w-3.5 h-3.5" /> Reject
                                   </button>
                                 </>
-                              )}
-                              {isLibrarian && req.status === "AWAITING_PICKUP" && (
-                                <button
-                                  onClick={() => openRejectModal(req)}
-                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-red-500/15 hover:bg-red-500/25 text-red-400 text-xs font-medium rounded-lg transition-colors"
-                                >
-                                  <XCircle className="w-3.5 h-3.5" /> Reject
-                                </button>
                               )}
                               {!isLibrarian && (
                                 <span className="text-xs text-zinc-500">—</span>
@@ -694,13 +683,10 @@ export default function RequestsPage() {
                         {isLibrarian && req.status === "PENDING" && (
                           <>
                             <button disabled={actionLoadingId === req.id} onClick={() => approveListedBatch(req)} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-50">
-                              {actionLoadingId === req.id ? "Generating QR..." : req.requestBatchId || req.transactionId ? "Approve & Generate QR" : "Approve via QR"}
+                              {actionLoadingId === req.id ? "Generating QR..." : req.transactionId ? "View QR / Borrow ID" : "Approve & Generate QR"}
                             </button>
                             <button onClick={() => openRejectModal(req)} className="rounded-lg bg-red-500/15 px-3 py-2 text-xs font-medium text-red-400">Reject</button>
                           </>
-                        )}
-                        {isLibrarian && req.status === "AWAITING_PICKUP" && (
-                          <button onClick={() => openRejectModal(req)} className="rounded-lg bg-red-500/15 px-3 py-2 text-xs font-medium text-red-400">Reject</button>
                         )}
                       </div>
                     </div>

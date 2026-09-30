@@ -32,7 +32,6 @@ enum BookStatus {
 
 enum RequestStatus {
   PENDING
-  AWAITING_PICKUP
   APPROVED
   REJECTED
   CANCELLED

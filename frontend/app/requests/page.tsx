@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 
 const PAGE_SIZE = 10;
+const REQUEST_PAGE_SIZE = 5;
 
 const txnStatusBadge: Record<string, string> = {
   ACTIVE: "bg-blue-500/15 text-blue-400 ring-blue-500/30",
@@ -190,7 +191,7 @@ export default function RequestsPage() {
     try {
       const params: Record<string, string> = {
         page: String(reqPage),
-        limit: String(PAGE_SIZE),
+        limit: String(REQUEST_PAGE_SIZE),
       };
       if (debouncedReqSearch) params.search = debouncedReqSearch;
       if (debouncedReqStatus) params.status = debouncedReqStatus;
@@ -399,7 +400,7 @@ export default function RequestsPage() {
   const formatDate = (d?: string) =>
     d ? new Date(d).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" }) : "—";
 
-  const reqTotalPages = Math.max(1, Math.ceil(reqTotal / PAGE_SIZE));
+  const reqTotalPages = Math.max(1, Math.ceil(reqTotal / REQUEST_PAGE_SIZE));
 
   const getReqPageNumbers = () => {
     const pages: number[] = [];
@@ -701,7 +702,7 @@ export default function RequestsPage() {
                 <p className="text-sm text-zinc-500">
                   Showing{" "}
                   <span className="text-zinc-300">
-                    {(reqPage - 1) * PAGE_SIZE + 1}–{Math.min(reqPage * PAGE_SIZE, reqTotal)}
+                    {(reqPage - 1) * REQUEST_PAGE_SIZE + 1}–{Math.min(reqPage * REQUEST_PAGE_SIZE, reqTotal)}
                   </span>{" "}
                   of <span className="text-zinc-300">{reqTotal}</span> transactions
                 </p>

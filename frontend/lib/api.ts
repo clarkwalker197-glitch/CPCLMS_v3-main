@@ -535,6 +535,10 @@ async createBorrowRequest(data: {
     return this.put(`/transactions/requests/transaction/${encodeURIComponent(batchId)}/approve`);
   }
 
+  async verifyBorrowRequest(borrowId: string): Promise<ApiResponse<any>> {
+    return this.post('/transactions/requests/verify', { borrowId });
+  }
+
   async getBorrowRequests(params?: Record<string, string>): Promise<ApiResponse<any[]>> {
     const query = params ? '?' + new URLSearchParams(params).toString() : '';
     return this.get(`/transactions/requests${query}`);

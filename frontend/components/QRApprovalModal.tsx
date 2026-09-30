@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import api from "@/lib/api";
+import { ModalLayer } from "@/components/ModalLayer";
 import { QrCode, Loader2, X, RefreshCw } from "lucide-react";
 
 interface QRApprovalModalProps {
@@ -85,7 +86,8 @@ export function QRApprovalModal({ request, onClose, onApproved }: QRApprovalModa
   }, [qrData, checkStatus]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <ModalLayer>
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
       <div className="relative z-50 w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl shadow-black/50">
         {/* Header */}
@@ -179,6 +181,7 @@ export function QRApprovalModal({ request, onClose, onApproved }: QRApprovalModa
           </button>
         </div>
       </div>
-    </div>
+      </div>
+    </ModalLayer>
   );
 }

@@ -221,8 +221,8 @@ export default function EBooksPage() {
                 />
               </div>
 
-              <div className="flex items-center gap-2 sm:hidden">
-                <MobileBookTypeSelect current="ebook" className="min-w-0 flex-1" />
+              <div className="flex w-full items-center gap-2 sm:w-auto lg:hidden">
+                <MobileBookTypeSelect current="ebook" className="min-w-0 flex-1 sm:w-[180px] sm:flex-none" />
                 <div className="flex shrink-0 items-center gap-1 rounded-xl border border-zinc-700 bg-zinc-950 p-1">
                   <button
                     onClick={() => setView('grid')}

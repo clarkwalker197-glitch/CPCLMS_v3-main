@@ -12,6 +12,8 @@ import { SortHeader, SortSelect, nextSortOrder, type SortOption } from "@/compon
 import BorrowHistoryCard from "@/components/BorrowHistoryCard";
 import { QRDisplayModal } from "@/components/QRDisplayModal";
 import { QRScanner } from "@/components/QRScanner";
+import { ModalLayer } from "@/components/ModalLayer";
+import { formatBorrowId, normalizeBorrowId } from "@/lib/borrow-id";
 import {
   Search,
   BookOpen,
@@ -40,11 +42,13 @@ const txnStatusLabel: Record<string, string> = {
 // ── Request status styling ──
 const reqStatusBadge: Record<string, string> = {
   PENDING: "bg-amber-500/15 text-amber-400 ring-amber-500/30",
+  AWAITING_PICKUP: "bg-orange-500/15 text-orange-300 ring-orange-500/30",
   APPROVED: "bg-emerald-500/15 text-emerald-400 ring-emerald-500/30",
   REJECTED: "bg-red-500/15 text-red-400 ring-red-500/30",
 };
 const reqStatusLabel: Record<string, string> = {
   PENDING: "Pending",
+  AWAITING_PICKUP: "Awaiting Pickup",
   APPROVED: "Approved",
   REJECTED: "Rejected",
 };
@@ -111,6 +115,7 @@ export default function RequestsPage() {
   const [transactionLookupId, setTransactionLookupId] = useState("");
   const [transactionScannerOpen, setTransactionScannerOpen] = useState(false);
   const [transactionLookupError, setTransactionLookupError] = useState("");
+  const [verificationLoading, setVerificationLoading] = useState(false);
 
   const loadTransactions = useCallback(async () => {
     if (isLibrarian) return;
@@ -315,9 +320,8 @@ export default function RequestsPage() {
         return;
       }
       setApprovalReceipt(response.data);
-      setSuccessMsg(`${response.data?.transactionId}: ${response.data?.transactions?.length || request.books.length} book(s) approved`);
+      setSuccessMsg(`Borrow ID ${formatBorrowId(response.data?.transactionId || "")}: QR generated. Awaiting pickup verification.`);
       loadRequests();
-      loadActiveTransactions();
       setTimeout(() => setSuccessMsg(""), 4000);
     } catch {
       setError("Failed to approve borrow transaction");
@@ -332,33 +336,39 @@ export default function RequestsPage() {
     setRejectError("");
   };
 
-  const handleTransactionLookup = (event: React.FormEvent) => {
-    event.preventDefault();
-    const transactionId = transactionLookupId.trim();
-    if (/^\d{8}$/.test(transactionId)) {
-      router.push(`/transactions/lookup?transactionId=${encodeURIComponent(transactionId)}`);
-    } else {
-      setTransactionLookupError("Enter the 8-digit Transaction ID.");
-    }
-  };
-
-  const handleTransactionScan = async (value: string) => {
-    let transactionId = value.trim();
-    let scannedLookupUrl = false;
-    try {
-      const urlTransactionId = new URL(value).searchParams.get("transactionId");
-      if (urlTransactionId) {
-        transactionId = urlTransactionId;
-        scannedLookupUrl = true;
-      }
-    } catch {}
-    if (!scannedLookupUrl && !/^\d{8}$/.test(transactionId)) {
-      setTransactionLookupError("Scan a valid transaction QR or enter the 8-digit ID.");
+  const verifyBorrowId = async (value: string) => {
+    const borrowId = normalizeBorrowId(value);
+    if (!borrowId) {
+      setTransactionLookupError("Enter or scan a valid Borrow ID, such as BRW-1234-5678.");
       return;
     }
     setTransactionLookupError("");
-    setTransactionScannerOpen(false);
-    router.push(`/transactions/lookup?transactionId=${encodeURIComponent(transactionId)}`);
+    setVerificationLoading(true);
+    try {
+      const response = await api.verifyBorrowRequest(borrowId);
+      if (!response.success) {
+        setTransactionLookupError(response.error || "Could not verify this Borrow ID.");
+        return;
+      }
+      setTransactionScannerOpen(false);
+      setTransactionLookupId("");
+      setSuccessMsg(`Borrow ID ${formatBorrowId(borrowId)} verified. Your request is approved.`);
+      await Promise.all([loadRequests(), loadTransactions()]);
+      setTimeout(() => setSuccessMsg(""), 5000);
+    } catch {
+      setTransactionLookupError("Could not verify this Borrow ID. Please try again.");
+    } finally {
+      setVerificationLoading(false);
+    }
+  };
+
+  const handleTransactionLookup = async (event: React.FormEvent) => {
+    event.preventDefault();
+    await verifyBorrowId(transactionLookupId);
+  };
+
+  const handleTransactionScan = async (value: string) => {
+    await verifyBorrowId(value);
   };
 
   const handleReject = async () => {
@@ -515,16 +525,14 @@ export default function RequestsPage() {
                     <input
                       id="request-transaction-lookup"
                       value={transactionLookupId}
-                      onChange={(event) => setTransactionLookupId(event.target.value.replace(/\D/g, "").slice(0, 8))}
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      maxLength={8}
-                      placeholder="12345678"
+                      onChange={(event) => setTransactionLookupId(event.target.value.toUpperCase().slice(0, 13))}
+                      maxLength={13}
+                      placeholder="BRW-1234-5678"
                       className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2.5 font-mono text-sm text-white placeholder:font-sans placeholder:text-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
                     />
                   </div>
-                  <button type="submit" disabled={!/^\d{8}$/.test(transactionLookupId.trim())} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
-                    <Search className="h-4 w-4" /> Find
+                  <button type="submit" disabled={!normalizeBorrowId(transactionLookupId) || verificationLoading} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
+                    <Search className="h-4 w-4" /> {verificationLoading ? "Verifying..." : "Verify"}
                   </button>
                   <button type="button" onClick={() => { setTransactionLookupError(""); setTransactionScannerOpen(true); }} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm font-semibold text-zinc-200 hover:border-blue-500 hover:text-white">
                     <QrCode className="h-4 w-4" /> Scan QR
@@ -556,6 +564,7 @@ export default function RequestsPage() {
                 >
                   <option value="" className="bg-zinc-900 text-white">All Status</option>
                   <option value="PENDING" className="bg-zinc-900 text-white">Pending</option>
+                  <option value="AWAITING_PICKUP" className="bg-zinc-900 text-white">Awaiting Pickup</option>
                   <option value="APPROVED" className="bg-zinc-900 text-white">Approved</option>
                   <option value="REJECTED" className="bg-zinc-900 text-white">Rejected</option>
                 </select>
@@ -600,7 +609,7 @@ export default function RequestsPage() {
                       {records.map((req: any) => (
                         <tr key={req.id} className="border-t border-zinc-800/60 hover:bg-zinc-800/40 transition-colors">
                           <td className="px-6 py-4">
-                            {isLibrarian && req.transactionId && <p className="mb-1 font-mono text-xs text-blue-300">{req.transactionId}</p>}
+                            {isLibrarian && req.transactionId && <p className="mb-1 font-mono text-xs text-blue-300">{formatBorrowId(req.transactionId)}</p>}
                             <div className="space-y-1">
                               {(req.books || []).map((book: any) => (
                                 <div key={book.requestId || book.id}>
@@ -640,7 +649,7 @@ export default function RequestsPage() {
                                     disabled={actionLoadingId === req.id}
                                     className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
                                   >
-                                    <CheckCircle2 className="w-3.5 h-3.5" /> {actionLoadingId === req.id ? "Approving..." : req.requestBatchId || req.transactionId ? "Approve & Generate QR" : "Approve via QR"}
+                                    <CheckCircle2 className="w-3.5 h-3.5" /> {actionLoadingId === req.id ? "Generating QR..." : req.requestBatchId || req.transactionId ? "Approve & Generate QR" : "Approve via QR"}
                                   </button>
                                   <button
                                     onClick={() => openRejectModal(req)}
@@ -649,6 +658,14 @@ export default function RequestsPage() {
                                     <XCircle className="w-3.5 h-3.5" /> Reject
                                   </button>
                                 </>
+                              )}
+                              {isLibrarian && req.status === "AWAITING_PICKUP" && (
+                                <button
+                                  onClick={() => openRejectModal(req)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-red-500/15 hover:bg-red-500/25 text-red-400 text-xs font-medium rounded-lg transition-colors"
+                                >
+                                  <XCircle className="w-3.5 h-3.5" /> Reject
+                                </button>
                               )}
                               {!isLibrarian && (
                                 <span className="text-xs text-zinc-500">—</span>
@@ -665,11 +682,28 @@ export default function RequestsPage() {
                 records.map((req: any) => (
                   <article key={req.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-lg shadow-black/10">
                     <div className="border-b border-zinc-800/80 pb-3">
-                      {isLibrarian && req.transactionId && <p className="mb-2 break-all font-mono text-xs text-blue-300">{req.transactionId}</p>}
+                      {isLibrarian && req.transactionId && <p className="mb-2 break-all font-mono text-xs text-blue-300">{formatBorrowId(req.transactionId)}</p>}
                       {(req.books || []).map((book: any) => <div key={book.requestId || book.id} className="mb-2 last:mb-0"><p className="font-semibold text-zinc-100 break-words">{book.title || "Unknown"}</p><p className="mt-1 text-sm text-zinc-500">{book.accessionNo || ""}</p></div>)}
                     </div>
                     <div className="grid grid-cols-2 gap-3 py-4 text-sm"><div><p className="text-xs text-zinc-500">Member</p><p className="mt-1 break-words text-zinc-300">{req.user?.firstName} {req.user?.lastName}</p><p className="text-xs text-zinc-500">{req.user?.libraryId || ""}</p></div><div><p className="text-xs text-zinc-500">Request Date</p><p className="mt-1 text-zinc-300">{formatDate(req.requestDate)}</p></div><div className="col-span-2"><p className="text-xs text-zinc-500">Notes</p><p className="mt-1 whitespace-pre-wrap break-words text-zinc-300">{req.notes || "—"}</p></div></div>
-                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-800/80 pt-3"><span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${reqStatusBadge[req.status] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>{reqStatusLabel[req.status] || req.status}</span><div className="flex flex-wrap gap-2">{isLibrarian && req.status === "PENDING" && <><button disabled={actionLoadingId === req.id} onClick={() => approveListedBatch(req)} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-50">{actionLoadingId === req.id ? "Approving..." : req.requestBatchId || req.transactionId ? "Approve & Generate QR" : "Approve via QR"}</button><button onClick={() => openRejectModal(req)} className="rounded-lg bg-red-500/15 px-3 py-2 text-xs font-medium text-red-400">Reject</button></>}</div></div>
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-800/80 pt-3">
+                      <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${reqStatusBadge[req.status] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>
+                        {reqStatusLabel[req.status] || req.status}
+                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        {isLibrarian && req.status === "PENDING" && (
+                          <>
+                            <button disabled={actionLoadingId === req.id} onClick={() => approveListedBatch(req)} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-50">
+                              {actionLoadingId === req.id ? "Generating QR..." : req.requestBatchId || req.transactionId ? "Approve & Generate QR" : "Approve via QR"}
+                            </button>
+                            <button onClick={() => openRejectModal(req)} className="rounded-lg bg-red-500/15 px-3 py-2 text-xs font-medium text-red-400">Reject</button>
+                          </>
+                        )}
+                        {isLibrarian && req.status === "AWAITING_PICKUP" && (
+                          <button onClick={() => openRejectModal(req)} className="rounded-lg bg-red-500/15 px-3 py-2 text-xs font-medium text-red-400">Reject</button>
+                        )}
+                      </div>
+                    </div>
                   </article>
                 ))
               } />
@@ -864,7 +898,8 @@ export default function RequestsPage() {
       </div>
 
       {missingTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <ModalLayer>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={() => !missingLoading && setMissingTarget(null)} />
           <div className="relative z-50 w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl shadow-black/50">
             <div className="flex items-start gap-3 mb-4">
@@ -882,12 +917,14 @@ export default function RequestsPage() {
               <button onClick={handleDeclareMissing} disabled={missingLoading} className="flex-1 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold rounded-xl disabled:opacity-40">{missingLoading ? "Declaring..." : "Declare Missing"}</button>
             </div>
           </div>
-        </div>
+          </div>
+        </ModalLayer>
       )}
 
       {/* Reject Borrow Request modal (librarian only) */}
       {rejectTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <ModalLayer>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setRejectTarget(null)} />
           <div className="relative z-50 w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl shadow-black/50">
             <div className="flex items-start gap-3 mb-4">
@@ -939,7 +976,8 @@ export default function RequestsPage() {
               </button>
             </div>
           </div>
-        </div>
+          </div>
+        </ModalLayer>
       )}
 
       {approvalReceipt && (
@@ -948,8 +986,15 @@ export default function RequestsPage() {
           onClose={() => setApprovalReceipt(null)}
           qrCodeDataUrl={approvalReceipt.qrCode || ""}
           transactionId={approvalReceipt.transactionId}
-          title="Transaction Approved"
-          description="Share or print this QR code for the member. Scanning it opens their read-only transaction details."
+          borrowerName={approvalReceipt.requests?.[0]?.user
+            ? `${approvalReceipt.requests[0].user.firstName} ${approvalReceipt.requests[0].user.lastName}`.trim()
+            : undefined}
+          borrowerId={approvalReceipt.requests?.[0]?.user?.libraryId}
+          books={approvalReceipt.requests?.map((borrowRequest: any) => ({
+            title: borrowRequest.book?.title || "Book",
+            accessionNo: borrowRequest.book?.accessionNo,
+          }))}
+          title="Ready for Pickup"
         />
       )}
 
@@ -958,15 +1003,17 @@ export default function RequestsPage() {
           onScan={handleTransactionScan}
           onClose={() => setTransactionScannerOpen(false)}
           title="Scan / Find Transaction"
-          entryHint="Scan the librarian-issued QR code or enter the Transaction ID printed below it."
-          placeholder="12345678"
-          submitLabel="Find"
+          entryHint="Scan the librarian-issued QR code or enter the Borrow ID shown on it."
+          placeholder="BRW-1234-5678"
+          submitLabel="Verify"
           externalError={transactionLookupError}
+          loading={verificationLoading}
         />
       )}
 
       {selectedNote !== null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <ModalLayer>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setSelectedNote(null)} />
           <div className="relative z-50 w-full max-w-lg rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl shadow-black/50">
             <h3 className="text-lg font-semibold text-white">Borrower Note</h3>
@@ -975,7 +1022,8 @@ export default function RequestsPage() {
               <button type="button" onClick={() => setSelectedNote(null)} className="rounded-xl bg-zinc-800 px-4 py-2.5 text-sm font-medium text-zinc-200 hover:bg-zinc-700">Close</button>
             </div>
           </div>
-        </div>
+          </div>
+        </ModalLayer>
       )}
     </div>
   );

@@ -13,6 +13,7 @@ import {
   returnBookSchema,
   payFineSchema,
   approveByQRCodeSchema,
+  verifyBorrowRequestSchema,
 } from '../validators/transaction.schema';
 
 const router = Router();
@@ -21,9 +22,10 @@ const router = Router();
 router.use(authenticate);
 
 // ── Borrow Requests ──────────────────────────────────────
-router.post('/requests/approve-qr', authorize('LIBRARIAN'), qrApprovalLimiter, validate(approveByQRCodeSchema), transactionController.approveByQRCode);
+router.post('/requests/approve-qr', qrApprovalLimiter, validate(approveByQRCodeSchema), transactionController.approveByQRCode);
 router.post('/requests', validate(createBorrowRequestSchema), transactionController.createBorrowRequest);
 router.get('/requests', transactionController.listBorrowRequests);
+router.post('/requests/verify', qrApprovalLimiter, validate(verifyBorrowRequestSchema), transactionController.verifyBorrowRequest);
 router.get('/requests/transaction/:transactionId', transactionController.getBorrowRequestBatch);
 router.put('/requests/transaction/:batchId/approve', authorize('LIBRARIAN'), transactionController.approveBorrowRequestBatch);
 router.get('/requests/:id', transactionController.getBorrowRequest);

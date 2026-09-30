@@ -1,6 +1,14 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState } from "react";
+import { ModalLayer } from "@/components/ModalLayer";
+import { Check, Copy, UserRound, X } from "lucide-react";
+import { formatBorrowId } from "@/lib/borrow-id";
+
+interface QRDisplayBook {
+  title: string;
+  accessionNo?: string | null;
+}
 
 interface QRDisplayModalProps {
   open: boolean;
@@ -8,10 +16,9 @@ interface QRDisplayModalProps {
   qrCodeDataUrl: string;
   title: string;
   transactionId?: string;
-  description?: string;
-  bookTitle?: string;
-  dueDate?: string;
-  accessionNo?: string;
+  borrowerName?: string;
+  borrowerId?: string;
+  books?: QRDisplayBook[];
 }
 
 export function QRDisplayModal({
@@ -20,170 +27,130 @@ export function QRDisplayModal({
   qrCodeDataUrl,
   title,
   transactionId,
-  description,
-  bookTitle,
-  dueDate,
-  accessionNo,
+  borrowerName,
+  borrowerId,
+  books = [],
 }: QRDisplayModalProps) {
   const [copied, setCopied] = useState(false);
   const [imgError, setImgError] = useState(false);
-  const qrRef = useRef<HTMLDivElement>(null);
+  const formattedBorrowId = transactionId ? formatBorrowId(transactionId) : "";
 
   if (!open) return null;
 
   const handleCopy = async () => {
+    if (!formattedBorrowId) return;
     try {
-      // Try to copy the QR data URL as text
-      await navigator.clipboard.writeText(transactionId || qrCodeDataUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      await navigator.clipboard.writeText(formattedBorrowId);
     } catch {
-      // Fallback: copy the raw data
-      try {
-        const textToCopy = transactionId || (bookTitle
-          ? `Book: ${bookTitle}\nAccession: ${accessionNo || "N/A"}\nDue: ${dueDate || "N/A"}`
-          : qrCodeDataUrl);
-        await navigator.clipboard.writeText(textToCopy);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      } catch {
-        // Ignore if clipboard unavailable
-      }
+      const input = document.createElement("textarea");
+      input.value = formattedBorrowId;
+      input.setAttribute("readonly", "");
+      input.style.position = "fixed";
+      input.style.opacity = "0";
+      document.body.appendChild(input);
+      input.select();
+      const copiedToClipboard = document.execCommand("copy");
+      document.body.removeChild(input);
+      if (!copiedToClipboard) return;
     }
-  };
-
-  const handleDownload = () => {
-    try {
-      const link = document.createElement("a");
-      link.href = qrCodeDataUrl;
-      link.download = `qr-${transactionId || accessionNo || "book"}-${Date.now()}.png`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } catch {
-      // Fallback
-    }
-  };
-
-  const handlePrint = () => {
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) return;
-    printWindow.document.write(`
-      <html>
-        <head><title>QR Code - ${title}</title></head>
-        <body style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:sans-serif;padding:20px;">
-          <h2 style="margin-bottom:8px;color:#1a1a2e;">${title}</h2>
-          ${transactionId ? `<p style="margin-bottom:12px;color:#555;font-family:monospace;">${transactionId}</p>` : ""}
-          ${bookTitle ? `<p style="margin-bottom:4px;color:#555;">${bookTitle}</p>` : ""}
-          ${accessionNo ? `<p style="margin-bottom:16px;color:#888;font-size:14px;">Accession: ${accessionNo}</p>` : ""}
-          <img src="${qrCodeDataUrl}" style="width:300px;height:300px;image-rendering:pixelated;" />
-          ${dueDate ? `<p style="margin-top:16px;color:#555;">Due: ${dueDate}</p>` : ""}
-          <p style="margin-top:24px;color:#999;font-size:12px;">CPC Library Management System</p>
-          <script>
-            window.onload = function() { setTimeout(function() { window.print(); }, 500); };
-          <\/script>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <ModalLayer>
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="fixed inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative z-50 w-full max-w-sm rounded-xl bg-white shadow-lg p-6">
+      <div className="relative z-50 flex max-h-[92dvh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-zinc-800">{title}</h3>
+        <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-4 sm:px-6">
+          <h3 className="text-lg font-semibold text-zinc-900">{title}</h3>
           <button
             onClick={onClose}
-            className="p-1 rounded-lg hover:bg-zinc-100 text-zinc-400 transition-colors"
+            className="rounded-md p-2 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
             aria-label="Close"
+            title="Close"
           >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            <X className="h-5 w-5" />
           </button>
         </div>
 
-        {/* Book details */}
-        {bookTitle && (
-          <div className="bg-zinc-50 rounded-lg p-3 mb-4 text-sm">
-            <p className="font-medium text-zinc-800">{bookTitle}</p>
-            <div className="flex gap-3 mt-1 text-xs text-zinc-500">
-              {accessionNo && <span>ID: {accessionNo}</span>}
-              {dueDate && <span>Due: {dueDate}</span>}
-            </div>
-          </div>
-        )}
-        {transactionId && (
-          <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-center">
-            <p className="text-xs text-zinc-500">Transaction ID</p>
-            <p className="mt-1 break-all font-mono text-sm font-semibold text-blue-700">{transactionId}</p>
-          </div>
-        )}
-
-        {/* QR Code image */}
-        <div
-          ref={qrRef}
-          className="bg-white rounded-xl border-2 border-zinc-200 p-4 mb-4 flex items-center justify-center"
-          style={{ minHeight: "220px" }}
-        >
-          {imgError ? (
-            <div className="text-center text-zinc-400">
-              <p className="text-4xl mb-2">📱</p>
-              <p className="text-sm">QR code unavailable</p>
-            </div>
-          ) : (
-            <img
-              src={qrCodeDataUrl}
-              alt={`QR Code for ${transactionId || "book borrowing"}`}
-              className="max-w-full h-auto"
-              style={{ width: 200, height: 200, imageRendering: "pixelated" }}
-              onError={() => setImgError(true)}
-            />
+        <div className="space-y-4 overflow-y-auto p-4 sm:p-6">
+          {(borrowerName || borrowerId) && (
+            <section className="rounded-lg border border-zinc-200 bg-zinc-50 p-4" aria-label="Borrower information">
+              <div className="flex items-start gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-white text-zinc-600 ring-1 ring-zinc-200">
+                  <UserRound className="h-4 w-4" />
+                </div>
+                <div className="grid min-w-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium uppercase text-zinc-500">Borrower</p>
+                    <p className="mt-1 break-words text-sm font-semibold text-zinc-900">{borrowerName || "Member"}</p>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium uppercase text-zinc-500">Member ID</p>
+                    <p className="mt-1 break-all font-mono text-sm font-medium text-zinc-800">{borrowerId || "Not available"}</p>
+                  </div>
+                </div>
+              </div>
+            </section>
           )}
-        </div>
 
-        {/* Action buttons */}
-        <div className="grid grid-cols-3 gap-2">
-          <button
-            onClick={handleDownload}
-            className="flex flex-col items-center gap-1 p-2.5 rounded-lg bg-zinc-50 hover:bg-zinc-100 transition-colors border border-zinc-200"
-            title="Download QR Code"
-          >
-            <svg className="w-5 h-5 text-zinc-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-            </svg>
-            <span className="text-[10px] text-zinc-500">Download</span>
-          </button>
-          <button
-            onClick={handlePrint}
-            className="flex flex-col items-center gap-1 p-2.5 rounded-lg bg-zinc-50 hover:bg-zinc-100 transition-colors border border-zinc-200"
-            title="Print QR Code"
-          >
-            <svg className="w-5 h-5 text-zinc-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-            </svg>
-            <span className="text-[10px] text-zinc-500">Print</span>
-          </button>
-          <button
-            onClick={handleCopy}
-            className="flex flex-col items-center gap-1 p-2.5 rounded-lg bg-zinc-50 hover:bg-zinc-100 transition-colors border border-zinc-200"
-            title={copied ? "Copied!" : "Copy to clipboard"}
-          >
-            <svg className="w-5 h-5 text-zinc-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-            </svg>
-            <span className="text-[10px] text-zinc-500">{copied ? "Copied!" : "Copy"}</span>
-          </button>
-        </div>
+          <section className="rounded-lg border border-zinc-200 p-4 sm:p-5" aria-label="Transaction QR code">
+            <div
+              className="mx-auto flex w-fit items-center justify-center rounded-lg border border-zinc-200 bg-white p-3"
+              style={{ minHeight: "220px", minWidth: "220px" }}
+            >
+              {imgError ? (
+                <div className="text-center text-zinc-400">
+                  <p className="text-sm">QR code unavailable</p>
+                </div>
+              ) : (
+                <img
+                  src={qrCodeDataUrl}
+                  alt={`QR Code for ${formattedBorrowId || "book borrowing"}`}
+                  className="h-48 w-48 sm:h-52 sm:w-52"
+                  style={{ imageRendering: "pixelated" }}
+                  onError={() => setImgError(true)}
+                />
+              )}
+            </div>
+            {transactionId && (
+              <div className="mt-4 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+                <div className="min-w-0 text-center sm:text-left">
+                  <p className="text-xs font-medium uppercase text-zinc-500">Borrow ID</p>
+                  <p className="mt-1 break-all font-mono text-xl font-bold text-zinc-900 sm:text-2xl">{formattedBorrowId}</p>
+                </div>
+                <button
+                  onClick={handleCopy}
+                  className="inline-flex items-center justify-center gap-2 rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50"
+                  title="Copy Borrow ID"
+                >
+                  {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  {copied ? "Copied" : "Copy"}
+                </button>
+              </div>
+            )}
+          </section>
 
-        <p className="text-[10px] text-zinc-400 text-center mt-3">
-          {description || "Show this QR code or Transaction ID at the library counter once the request is approved."}
-        </p>
+          {books.length > 0 && (
+            <section className="rounded-lg border border-zinc-200 p-4" aria-label="Books in this transaction">
+              <h4 className="text-sm font-semibold text-zinc-900">Books in this transaction <span className="font-normal text-zinc-500">({books.length})</span></h4>
+              <ul className="mt-3 divide-y divide-zinc-100">
+                {books.map((book, index) => (
+                  <li key={`${book.title}-${book.accessionNo || index}`} className="flex items-start justify-between gap-3 py-2 first:pt-0 last:pb-0">
+                    <span className="text-sm text-zinc-800">{book.title}</span>
+                    {book.accessionNo && <span className="shrink-0 text-xs text-zinc-500">{book.accessionNo}</span>}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+        </div>
       </div>
-    </div>
+      </div>
+    </ModalLayer>
   );
 }
 

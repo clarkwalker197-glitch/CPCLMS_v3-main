@@ -48,7 +48,7 @@ export const approveRequest = asyncHandler(
       req.params.id,
       req.user!.userId
     );
-    sendSuccess(res, result, 'Borrow request is awaiting pickup verification');
+    sendSuccess(res, result, 'Borrow ID is ready for borrower verification');
   }
 );
 
@@ -85,7 +85,7 @@ export const approveBorrowRequestBatch = asyncHandler(
       req.params.batchId,
       req.user!.userId
     );
-    sendSuccess(res, result, 'Borrow transaction is awaiting pickup verification');
+    sendSuccess(res, result, 'Borrow ID is ready for borrower verification');
   }
 );
 

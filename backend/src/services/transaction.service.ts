@@ -147,7 +147,7 @@ export class TransactionService {
         where: {
           userId,
           bookId: { in: uniqueBookIds },
-          status: { in: ['PENDING', 'AWAITING_PICKUP', 'APPROVED'] },
+          status: { in: ['PENDING', 'APPROVED'] },
         },
       });
 
@@ -255,11 +255,7 @@ export class TransactionService {
   }
 
   /**
-   * Approve a borrow request (librarian only)
-   * - Generates QR code for the transaction
-  * - STUDENT due dates use STUDENT_BORROW_DAYS (default 3)
-  * - FACULTY due dates use FACULTY_BORROW_DAYS (default 120)
-   * - Handles reservation queue fulfillment
+  * Stage a Borrow ID for a pending request (librarian only) without activating the borrow.
    */
   async approveRequest(requestId: string, librarianId: string) {
     const request = await prisma.borrowRequest.findUnique({
@@ -297,33 +293,46 @@ export class TransactionService {
     if (requests.some((request) => request.userId !== user.id)) {
       throw new BadRequestError('Transaction request contains multiple members');
     }
-    if (requests.every((request) => request.status === 'AWAITING_PICKUP')) {
-      const transactionId = requests[0].transactionId;
-      if (!transactionId || requests.some((request) => request.transactionId !== transactionId)) {
+    if (requests.some((request) => request.status !== 'PENDING')) {
+      throw new BadRequestError('This transaction has already been processed');
+    }
+    const existingTransactionId = requests[0].transactionId;
+    if (existingTransactionId || requests.some((request) => request.transactionId)) {
+      if (!existingTransactionId || requests.some((request) => request.transactionId !== existingTransactionId)) {
         throw new BadRequestError('This request batch has an invalid Borrow ID');
       }
       return {
-        transactionId,
-        qrCode: await generateQRFromText(buildBorrowVerificationUrl(transactionId)),
+        transactionId: existingTransactionId,
+        qrCode: await generateQRFromText(buildBorrowVerificationUrl(existingTransactionId)),
         requests,
       };
-    }
-    if (requests.some((request) => request.status !== 'PENDING')) {
-      throw new BadRequestError('This transaction has already been processed');
     }
 
     const transactionId = await prisma.$transaction(async (tx) => {
       const allocatedId = await this.generateUniqueTransactionId(tx);
       const claimed = await tx.borrowRequest.updateMany({
-        where: { ...requestBatchWhere, status: 'PENDING' },
+        where: { ...requestBatchWhere, status: 'PENDING', transactionId: null },
         data: {
           transactionId: allocatedId,
-          status: 'AWAITING_PICKUP',
           processedById: librarianId,
           processedAt: null,
         },
       });
       if (claimed.count !== requests.length) {
+        const currentRequests = await tx.borrowRequest.findMany({
+          where: requestBatchWhere,
+          select: { status: true, transactionId: true },
+        });
+        const currentTransactionId = currentRequests[0]?.transactionId;
+        if (
+          currentRequests.length === requests.length &&
+          currentTransactionId &&
+          currentRequests.every((currentRequest) =>
+            currentRequest.status === 'PENDING' && currentRequest.transactionId === currentTransactionId
+          )
+        ) {
+          return currentTransactionId;
+        }
         throw new BadRequestError('This transaction has already been processed');
       }
       return allocatedId;
@@ -355,10 +364,10 @@ export class TransactionService {
       orderBy: { requestDate: 'asc' },
     });
     if (!requests.length || requests.some((request) => request.userId !== userId)) {
-      throw new NotFoundError('Awaiting-pickup Borrow ID');
+      throw new NotFoundError('Pending Borrow ID');
     }
-    if (requests.some((request) => request.status !== 'AWAITING_PICKUP')) {
-      throw new BadRequestError('This Borrow ID is not awaiting pickup or has already been verified');
+    if (requests.some((request) => request.status !== 'PENDING')) {
+      throw new BadRequestError('This Borrow ID is not pending or has already been verified');
     }
     if (requests.length > TransactionService.MAX_BOOKS_PER_TRANSACTION) {
       throw new BadRequestError('This transaction exceeds the maximum of 3 books');
@@ -376,7 +385,7 @@ export class TransactionService {
 
     const transactions = await prisma.$transaction(async (tx) => {
       const claimed = await tx.borrowRequest.updateMany({
-        where: { transactionId, userId, status: 'AWAITING_PICKUP' },
+        where: { transactionId, userId, status: 'PENDING' },
         data: { status: 'APPROVED', processedAt: borrowDate },
       });
       if (claimed.count !== requests.length) {
@@ -491,7 +500,7 @@ export class TransactionService {
       include: { book: true },
     });
     if (!request) throw new NotFoundError('Borrow request');
-    if (!['PENDING', 'AWAITING_PICKUP'].includes(request.status)) {
+    if (request.status !== 'PENDING') {
       throw new BadRequestError('Request already processed');
     }
 
@@ -617,7 +626,14 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
     const { sort, order } = getSortParams(query, ['requestDate', 'status', 'memberName'] as const, 'status', 'asc');
     const where: any = {};
     if (userId) where.userId = userId;
-    if (query.status) where.status = query.status;
+    if (query.status) {
+      const requestedStatus = String(query.status).trim().toUpperCase();
+      const normalizedStatus = requestedStatus === 'AWAITING_PICKUP' ? 'PENDING' : requestedStatus;
+      if (!['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED'].includes(normalizedStatus)) {
+        throw new BadRequestError('Invalid borrow request status');
+      }
+      where.status = normalizedStatus;
+    }
 
     // Search by book title/accession no OR member name/library id
     if (query.search) {
@@ -663,9 +679,8 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
 
     const statusOrder: Record<string, number> = {
       PENDING: 0,
-      AWAITING_PICKUP: 1,
-      APPROVED: 2,
-      REJECTED: 3,
+      APPROVED: 1,
+      REJECTED: 2,
     };
     const direction = order === 'asc' ? 1 : -1;
     const requests = Array.from(grouped.values()).map((group) => {
@@ -1111,9 +1126,9 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
       select: { id: true, userId: true, status: true, transactionId: true },
     });
     if (!request) throw new NotFoundError('Borrow request');
-    if (request.userId !== userId) throw new NotFoundError('Awaiting-pickup Borrow ID');
-    if (!approvalCode || request.status !== 'AWAITING_PICKUP' || !request.transactionId) {
-      throw new BadRequestError('This request is not awaiting pickup');
+    if (request.userId !== userId) throw new NotFoundError('Pending Borrow ID');
+    if (!approvalCode || request.status !== 'PENDING' || !request.transactionId) {
+      throw new BadRequestError('This request is not pending or has no Borrow ID');
     }
     if (normalizeBorrowId(approvalCode) !== request.transactionId) {
       throw new BadRequestError('Invalid Borrow ID');

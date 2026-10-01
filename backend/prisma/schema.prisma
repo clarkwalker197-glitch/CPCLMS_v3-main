@@ -78,38 +78,38 @@ enum EBookFormat {
 
 /// Registered users of the library system (students, faculty, librarians)
 model User {
-  id            String   @id @default(cuid())
-  libraryId     String   @unique @map("library_id") /// Auto-generated library card number (e.g., LIB-2024-0001)
-  firstName     String   @map("first_name")
-  lastName      String   @map("last_name")
-  email         String   @unique
-  googleId      String?  @unique @map("google_id")
-  password      String
-  role          Role     @default(STUDENT)
-  department    String?
-  yearSection  String?  @map("year_section") /// e.g., "3-BSIT" — relevant for students
-  phone         String?
-  avatar        String?
-  notificationsEnabled Boolean @default(true) @map("notifications_enabled")
-  isActive      Boolean  @default(true) @map("is_active")
-  archivedAt    DateTime? @map("archived_at")
-  maxBorrowDays Int?     @map("max_borrow_days") /// Per-user override (overrides policy)
-  maxBooksAllowed Int?   @map("max_books_allowed") /// Per-user override
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  id                   String    @id @default(cuid())
+  libraryId            String    @unique @map("library_id") @db.VarChar(30) /// Auto-generated library card number (e.g., LIB-2024-0001)
+  firstName            String    @map("first_name") @db.VarChar(100)
+  lastName             String    @map("last_name") @db.VarChar(100)
+  email                String    @unique @db.VarChar(255)
+  googleId             String?   @unique @map("google_id") @db.VarChar(255)
+  password             String    @db.VarChar(255)
+  role                 Role      @default(STUDENT)
+  department           String?   @db.VarChar(150)
+  yearSection          String?   @map("year_section") @db.VarChar(50) /// e.g., "3-BSIT" — relevant for students
+  phone                String?   @db.VarChar(30)
+  avatar               String?   @db.VarChar(500)
+  notificationsEnabled Boolean   @default(true) @map("notifications_enabled")
+  isActive             Boolean   @default(true) @map("is_active")
+  archivedAt           DateTime? @map("archived_at")
+  maxBorrowDays        Int?      @map("max_borrow_days") /// Per-user override (overrides policy)
+  maxBooksAllowed      Int?      @map("max_books_allowed") /// Per-user override
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
 
   // Relations
-  borrowRequests      BorrowRequest[]
-  borrowTransactions  BorrowTransaction[]
-  reservations        Reservation[]
-  notifications       Notification[]
-  activityLogs        ActivityLog[]
-  processedBorrowRequests BorrowRequest[] @relation("ProcessedBy")
-  refreshTokens       RefreshToken[]
-  passwordResetTokens PasswordResetToken[]
-  faqsCreated         Faq[] @relation("FaqCreatedBy")
-  suggestions         Suggestion[]
-  acquisitionRequests AcquisitionRequest[]
+  borrowRequests          BorrowRequest[]
+  borrowTransactions      BorrowTransaction[]
+  reservations            Reservation[]
+  notifications           Notification[]
+  activityLogs            ActivityLog[]
+  processedBorrowRequests BorrowRequest[]      @relation("ProcessedBy")
+  refreshTokens           RefreshToken[]
+  passwordResetTokens     PasswordResetToken[]
+  faqsCreated             Faq[]                @relation("FaqCreatedBy")
+  suggestions             Suggestion[]
+  acquisitionRequests     AcquisitionRequest[]
 
   @@map("users")
 }
@@ -117,9 +117,9 @@ model User {
 /// Book categories with optional parent-child hierarchy
 model Category {
   id          String     @id @default(cuid())
-  name        String     @unique
-  description String?
-  slug        String     @unique
+  name        String     @unique @db.VarChar(100)
+  description String?    @db.VarChar(500)
+  slug        String     @unique @db.VarChar(150)
   parentId    String?    @map("parent_id")
   parent      Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
   children    Category[] @relation("CategoryHierarchy")
@@ -135,30 +135,30 @@ model Category {
 
 /// Physical books in the library inventory
 model Book {
-  id              String     @id @default(cuid())
-  isbn            String     @map("isbn")
-  accessionNo     String     @unique @map("accession_no") /// Unique accession number for each physical copy
-  title           String
-  author          String
-  publisher       String?
-  publishYear     Int?       @map("publish_year")
-  edition         String?
-  pages           Int?
-  categoryId      String?    @map("category_id")
-  category        Category?  @relation(fields: [categoryId], references: [id])
-  classificationNumber String? @map("classification_number")
-  description     String?
-  coverImage      String?    @map("cover_image")
-  language        String     @default("English")
-  shelf           String?    /// Location: shelf identifier
-  row             String?    /// Location: row identifier
-  copies          Int        @default(1) /// Total copies of this title
-  availableCopies Int        @map("available_copies") /// Copies currently available for borrowing
-  status          BookStatus @default(AVAILABLE)
-  deletedAt       DateTime?  @map("deleted_at")
-  archivedAt      DateTime?  @map("archived_at")
-  createdAt       DateTime   @default(now()) @map("created_at")
-  updatedAt       DateTime   @updatedAt @map("updated_at")
+  id                   String     @id @default(cuid())
+  isbn                 String     @map("isbn") @db.VarChar(20)
+  accessionNo          String     @unique @map("accession_no") @db.VarChar(50) /// Unique accession number for each physical copy
+  title                String     @db.VarChar(255)
+  author               String     @db.VarChar(255)
+  publisher            String?    @db.VarChar(255)
+  publishYear          Int?       @map("publish_year")
+  edition              String?    @db.VarChar(100)
+  pages                Int?
+  categoryId           String?    @map("category_id")
+  category             Category?  @relation(fields: [categoryId], references: [id])
+  classificationNumber String?    @map("classification_number") @db.VarChar(50)
+  description          String?    @db.VarChar(2000)
+  coverImage           String?    @map("cover_image") @db.VarChar(500)
+  language             String     @default("English") @db.VarChar(50)
+  shelf                String?    @db.VarChar(50) /// Location: shelf identifier
+  row                  String?    @db.VarChar(50) /// Location: row identifier
+  copies               Int        @default(1) /// Total copies of this title
+  availableCopies      Int        @map("available_copies") /// Copies currently available for borrowing
+  status               BookStatus @default(AVAILABLE)
+  deletedAt            DateTime?  @map("deleted_at")
+  archivedAt           DateTime?  @map("archived_at")
+  createdAt            DateTime   @default(now()) @map("created_at")
+  updatedAt            DateTime   @updatedAt @map("updated_at")
 
   // Relations
   borrowRequests     BorrowRequest[]
@@ -176,27 +176,27 @@ model Book {
 
 /// Digital / electronic books
 model EBook {
-  id          String     @id @default(cuid())
-  isbn        String     @map("isbn")
-  title       String
-  author      String
-  publisher   String?
-  publishYear Int?       @map("publish_year")
-  edition     String?
-  categoryId  String?    @map("category_id")
-  category    Category?  @relation(fields: [categoryId], references: [id])
-  classificationNumber String? @map("classification_number")
-  description String?
-  coverImage  String?    @map("cover_image")
-  language    String     @default("English")
-  fileUrl     String     @map("file_url")
-  fileSize    Int?       @map("file_size") /// Size in bytes
-  format      EBookFormat @default(PDF)
-  status      BookStatus @default(AVAILABLE)
-  deletedAt   DateTime? @map("deleted_at")
-  archivedAt  DateTime? @map("archived_at")
-  createdAt   DateTime   @default(now()) @map("created_at")
-  updatedAt   DateTime   @updatedAt @map("updated_at")
+  id                   String      @id @default(cuid())
+  isbn                 String      @map("isbn") @db.VarChar(20)
+  title                String      @db.VarChar(255)
+  author               String      @db.VarChar(255)
+  publisher            String?     @db.VarChar(255)
+  publishYear          Int?        @map("publish_year")
+  edition              String?     @db.VarChar(100)
+  categoryId           String?     @map("category_id")
+  category             Category?   @relation(fields: [categoryId], references: [id])
+  classificationNumber String?     @map("classification_number") @db.VarChar(50)
+  description          String?     @db.VarChar(2000)
+  coverImage           String?     @map("cover_image") @db.VarChar(500)
+  language             String      @default("English") @db.VarChar(50)
+  fileUrl              String      @map("file_url") @db.VarChar(1000)
+  fileSize             Int?        @map("file_size") /// Size in bytes
+  format               EBookFormat @default(PDF)
+  status               BookStatus  @default(AVAILABLE)
+  deletedAt            DateTime?   @map("deleted_at")
+  archivedAt           DateTime?   @map("archived_at")
+  createdAt            DateTime    @default(now()) @map("created_at")
+  updatedAt            DateTime    @updatedAt @map("updated_at")
 
   @@index([isbn])
   @@index([title])
@@ -207,26 +207,26 @@ model EBook {
 
 /// Requests to borrow a physical book (initiated by user)
 model BorrowRequest {
-  id            String        @id @default(cuid())
-  userId        String        @map("user_id")
-  user          User          @relation(fields: [userId], references: [id])
-  bookId        String        @map("book_id")
-  book          Book          @relation(fields: [bookId], references: [id])
-  requestDate   DateTime      @default(now()) @map("request_date")
-  status        RequestStatus @default(PENDING)
-  requestBatchId String?      @map("request_batch_id")
-  transactionId String?       @map("transaction_id")
-  notes         String?
-  approvalCode  String?       @unique @map("approval_code") /// Transaction ID (e.g. BRW-1234-567) for QR approval
-  approvalTokenHash      String?   @map("approval_token_hash")
-  approvalTokenExpiresAt  DateTime? @map("approval_token_expires_at")
-  approvalTokenUsedAt     DateTime? @map("approval_token_used_at")
-  approvalTokenIssuedById String?   @map("approval_token_issued_by_id")
-  processedById String?       @map("processed_by_id")
-  processedBy   User?         @relation("ProcessedBy", fields: [processedById], references: [id])
-  processedAt   DateTime?     @map("processed_at")
-  createdAt     DateTime      @default(now()) @map("created_at")
-  updatedAt     DateTime      @updatedAt @map("updated_at")
+  id                      String        @id @default(cuid())
+  userId                  String        @map("user_id")
+  user                    User          @relation(fields: [userId], references: [id])
+  bookId                  String        @map("book_id")
+  book                    Book          @relation(fields: [bookId], references: [id])
+  requestDate             DateTime      @default(now()) @map("request_date")
+  status                  RequestStatus @default(PENDING)
+  requestBatchId          String?       @map("request_batch_id") @db.VarChar(100)
+  transactionId           String?       @map("transaction_id") @db.VarChar(100)
+  notes                   String?       @db.VarChar(1000)
+  approvalCode            String?       @unique @map("approval_code") @db.VarChar(100) /// Transaction ID (e.g. BRW-1234-567) for QR approval
+  approvalTokenHash       String?       @map("approval_token_hash") @db.VarChar(255)
+  approvalTokenExpiresAt  DateTime?     @map("approval_token_expires_at")
+  approvalTokenUsedAt     DateTime?     @map("approval_token_used_at")
+  approvalTokenIssuedById String?       @map("approval_token_issued_by_id") @db.VarChar(30)
+  processedById           String?       @map("processed_by_id") @db.VarChar(30)
+  processedBy             User?         @relation("ProcessedBy", fields: [processedById], references: [id])
+  processedAt             DateTime?     @map("processed_at")
+  createdAt               DateTime      @default(now()) @map("created_at")
+  updatedAt               DateTime      @updatedAt @map("updated_at")
 
   @@index([userId])
   @@index([bookId])
@@ -240,23 +240,23 @@ model BorrowRequest {
 
 /// Active and historical borrowing transactions
 model BorrowTransaction {
-  id         String            @id @default(cuid())
-  userId     String            @map("user_id")
-  user       User              @relation(fields: [userId], references: [id])
-  bookId     String            @map("book_id")
-  book       Book              @relation(fields: [bookId], references: [id])
-  borrowDate DateTime          @default(now()) @map("borrow_date")
-  dueDate    DateTime          @map("due_date")
-  returnDate DateTime?         @map("return_date")
-  status     TransactionStatus @default(ACTIVE)
-  transactionId String?        @map("transaction_id")
-  fineAmount Float?            @default(0) @map("fine_amount")
-  finePaid   Boolean           @default(false) @map("fine_paid")
-  notes      String?
-  qrCode     String?           @map("qr_code") /// Base64 PNG QR code for this transaction
-  qrScanned  Boolean           @default(false) @map("qr_scanned") /// Whether QR was scanned at return
-  createdAt  DateTime          @default(now()) @map("created_at")
-  updatedAt  DateTime          @updatedAt @map("updated_at")
+  id            String            @id @default(cuid())
+  userId        String            @map("user_id")
+  user          User              @relation(fields: [userId], references: [id])
+  bookId        String            @map("book_id")
+  book          Book              @relation(fields: [bookId], references: [id])
+  borrowDate    DateTime          @default(now()) @map("borrow_date")
+  dueDate       DateTime          @map("due_date")
+  returnDate    DateTime?         @map("return_date")
+  status        TransactionStatus @default(ACTIVE)
+  transactionId String?           @map("transaction_id") @db.VarChar(100)
+  fineAmount    Float?            @default(0) @map("fine_amount")
+  finePaid      Boolean           @default(false) @map("fine_paid")
+  notes         String?           @db.VarChar(1000)
+  qrCode        String?           @map("qr_code") @db.VarChar(12000) /// Base64 PNG QR code for this transaction
+  qrScanned     Boolean           @default(false) @map("qr_scanned") /// Whether QR was scanned at return
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
 
   @@index([userId])
   @@index([bookId])
@@ -269,24 +269,24 @@ model BorrowTransaction {
 
 /// Reservations for books that are currently borrowed/unavailable
 model Reservation {
-  id            String            @id @default(cuid())
-  userId        String            @map("user_id")
-  user          User              @relation(fields: [userId], references: [id])
-  bookId        String            @map("book_id")
-  book          Book              @relation(fields: [bookId], references: [id])
-  reservationDate DateTime        @default(now()) @map("reservation_date")
-  expiryDate    DateTime          @map("expiry_date")
-  status        ReservationStatus @default(ACTIVE)
-  queuePosition Int               @map("queue_position") /// Position in the reservation queue
-  notified      Boolean           @default(false) /// Whether user has been notified about availability
-  createdAt     DateTime          @default(now()) @map("created_at")
-  updatedAt     DateTime          @updatedAt @map("updated_at")
+  id              String            @id @default(cuid())
+  userId          String            @map("user_id")
+  user            User              @relation(fields: [userId], references: [id])
+  bookId          String            @map("book_id")
+  book            Book              @relation(fields: [bookId], references: [id])
+  reservationDate DateTime          @default(now()) @map("reservation_date")
+  expiryDate      DateTime          @map("expiry_date")
+  status          ReservationStatus @default(ACTIVE)
+  queuePosition   Int               @map("queue_position") /// Position in the reservation queue
+  notified        Boolean           @default(false) /// Whether user has been notified about availability
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
 
+  @@unique([userId, bookId, status], name: "unique_active_reservation") /// One active reservation per user per book
   @@index([userId])
   @@index([bookId])
   @@index([status])
   @@index([reservationDate])
-  @@unique([userId, bookId, status], name: "unique_active_reservation") /// One active reservation per user per book
   @@map("reservations")
 }
 
@@ -295,11 +295,11 @@ model ActivityLog {
   id        String   @id @default(cuid())
   userId    String?  @map("user_id")
   user      User?    @relation(fields: [userId], references: [id])
-  action    String   /// e.g., "BORROW", "RETURN", "CREATE_USER", "UPDATE_BOOK"
-  entity    String   /// e.g., "BorrowTransaction", "User", "Book"
-  entityId  String?  @map("entity_id")
-  details   Json?    /// Flexible payload for additional context
-  ipAddress String?  @map("ip_address")
+  action    String   @db.VarChar(100) /// e.g., "BORROW", "RETURN", "CREATE_USER", "UPDATE_BOOK"
+  entity    String   @db.VarChar(100) /// e.g., "BorrowTransaction", "User", "Book"
+  entityId  String?  @map("entity_id") @db.VarChar(100)
+  details   Json? /// Flexible payload for additional context
+  ipAddress String?  @map("ip_address") @db.VarChar(45)
   createdAt DateTime @default(now()) @map("created_at")
 
   @@index([userId])
@@ -315,10 +315,10 @@ model Notification {
   userId    String           @map("user_id")
   user      User             @relation(fields: [userId], references: [id])
   type      NotificationType
-  title     String
-  message   String?
+  title     String           @db.VarChar(255)
+  message   String?          @db.VarChar(1000)
   isRead    Boolean          @default(false) @map("is_read")
-  link      String?          /// Optional deep link (e.g., /transactions/xxx)
+  link      String?          @db.VarChar(500) /// Optional deep link (e.g., /transactions/xxx)
   createdAt DateTime         @default(now()) @map("created_at")
 
   @@index([userId])
@@ -329,12 +329,12 @@ model Notification {
 
 /// Stored refresh tokens for JWT authentication
 model RefreshToken {
-  id        String   @id @default(cuid())
-  userId    String   @map("user_id")
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  token     String   @unique
-  expiresAt DateTime @map("expires_at")
-  createdAt DateTime @default(now()) @map("created_at")
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String    @unique @db.VarChar(500)
+  expiresAt DateTime  @map("expires_at")
+  createdAt DateTime  @default(now()) @map("created_at")
   revokedAt DateTime? @map("revoked_at")
 
   @@index([userId])
@@ -343,13 +343,13 @@ model RefreshToken {
 }
 
 model PasswordResetToken {
-  id        String   @id @default(cuid())
-  userId    String   @map("user_id")
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tokenHash String   @unique @map("token_hash")
-  expiresAt DateTime @map("expires_at")
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique @map("token_hash") @db.VarChar(255)
+  expiresAt DateTime  @map("expires_at")
   usedAt    DateTime? @map("used_at")
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime  @default(now()) @map("created_at")
 
   @@index([userId])
   @@index([expiresAt])
@@ -359,9 +359,9 @@ model PasswordResetToken {
 /// Configurable system policies and settings
 model Policy {
   id          String   @id @default(cuid())
-  key         String   @unique /// e.g., "MAX_BORROW_DAYS", "MAX_BOOKS_PER_USER", "FINE_PER_DAY"
-  value       String   /// Stored as string, parsed by application logic
-  description String?
+  key         String   @unique @db.VarChar(100) /// e.g., "MAX_BORROW_DAYS", "MAX_BOOKS_PER_USER", "FINE_PER_DAY"
+  value       String   @db.VarChar(2000) /// Stored as string, parsed by application logic
+  description String?  @db.VarChar(500)
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   @@map("policies")
@@ -369,9 +369,9 @@ model Policy {
 
 model Faq {
   id          String   @id @default(cuid())
-  question    String
-  answer      String
-  category    String?
+  question    String   @db.VarChar(500)
+  answer      String   @db.VarChar(3000)
+  category    String?  @db.VarChar(100)
   sortOrder   Int      @default(0) @map("sort_order")
   isPublished Boolean  @default(true) @map("is_published")
   createdById String?  @map("created_by_id")
@@ -387,10 +387,10 @@ model Suggestion {
   id        String   @id @default(cuid())
   userId    String   @map("user_id")
   user      User     @relation(fields: [userId], references: [id])
-  subject   String
-  message   String
-  status    String   @default("PENDING")
-  adminNote String?  @map("admin_note")
+  subject   String   @db.VarChar(255)
+  message   String   @db.VarChar(3000)
+  status    String   @default("PENDING") @db.VarChar(50)
+  adminNote String?  @map("admin_note") @db.VarChar(2000)
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -403,12 +403,12 @@ model AcquisitionRequest {
   id        String   @id @default(cuid())
   userId    String   @map("user_id")
   user      User     @relation(fields: [userId], references: [id])
-  title     String
-  author    String?
-  isbn      String?
-  details   String?
-  status    String   @default("PENDING")
-  adminNote String?  @map("admin_note")
+  title     String   @db.VarChar(255)
+  author    String?  @db.VarChar(255)
+  isbn      String?  @db.VarChar(20)
+  details   String?  @db.VarChar(3000)
+  status    String   @default("PENDING") @db.VarChar(50)
+  adminNote String?  @map("admin_note") @db.VarChar(2000)
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -416,4 +416,3 @@ model AcquisitionRequest {
   @@index([status])
   @@map("acquisition_requests")
 }
-

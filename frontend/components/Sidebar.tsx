@@ -147,7 +147,7 @@ export default function Sidebar() {
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/CPClogo.png" alt="Cordova Public College Logo" className="h-11 w-11 shrink-0 object-contain" />
-        <div aria-hidden={isCollapsed} className={`min-w-0 overflow-hidden whitespace-nowrap text-left transition-[max-width,opacity,transform] duration-200 ease-in-out ${isCollapsed ? "max-w-0 translate-x-1 opacity-0" : "max-w-48 translate-x-0 opacity-100"}`}>
+        <div aria-hidden={isCollapsed} className={`min-w-0 overflow-hidden text-left transition-[max-width,opacity,transform] duration-200 ease-in-out ${isCollapsed ? "max-w-0 translate-x-1 opacity-0" : "max-w-48 translate-x-0 opacity-100"}`}>
           <p className="font-bold leading-tight text-white">Cordova Public College</p>
           <p className="text-xs text-blue-300">Library Management System</p>
         </div>

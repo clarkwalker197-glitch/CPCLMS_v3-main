@@ -3,10 +3,12 @@
 // ============================================================
 
 import { Request, Response } from 'express';
+import { prisma } from '../config';
 import { bookService } from '../services';
 import { asyncHandler } from '../utils/asyncHandler';
 import { sendSuccess, sendError } from '../utils/helpers';
 import { storeCoverImage, tryDeleteNewCoverImage, tryDeleteUnreferencedCoverImage } from '../services/cover-image-storage.service';
+import { AuthenticatedRequest } from '../types';
 
 // ============================================================
 // Physical Books
@@ -48,13 +50,23 @@ export const createBook = asyncHandler(async (req: Request, res: Response) => {
 /**
  * PUT /api/books/:id
  */
-export const updateBook = asyncHandler(async (req: Request, res: Response) => {
+export const updateBook = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const existingBook = req.file ? await bookService.getBookById(req.params.id) : null;
   const uploadedCover = req.file ? await storeCoverImage(req.file) : undefined;
   try {
     const book = await bookService.updateBook(req.params.id, {
       ...req.body,
       ...(uploadedCover ? { coverImage: uploadedCover } : {}),
+    });
+    await prisma.activityLog.create({
+      data: {
+        userId: req.user!.userId,
+        action: 'UPDATE_BOOK',
+        entity: 'Book',
+        entityId: book.id,
+        ipAddress: req.ip,
+        details: { bookTitle: book.title, accessionNo: book.accessionNo, ...(req.get('user-agent') ? { userAgent: req.get('user-agent')! } : {}) },
+      },
     });
     if (uploadedCover && existingBook?.coverImage !== uploadedCover) {
       await tryDeleteUnreferencedCoverImage(existingBook?.coverImage);

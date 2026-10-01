@@ -732,6 +732,41 @@ async payFine(id: string, amount: number): Promise<ApiResponse<any>> {
     const token = this.getToken();
     return `${this.baseUrl}/reports/${type}?format=${format}&token=${token}`;
   }
+
+  async downloadReport(type: string, format: 'pdf' | 'xlsx' = 'pdf'): Promise<void> {
+    const endpoint = `/reports/${encodeURIComponent(type)}?format=${format}`;
+    const request = () => fetch(`${this.baseUrl}${endpoint}`, {
+      headers: this.getToken() ? { Authorization: `Bearer ${this.getToken()}` } : {},
+    });
+    let response = await request();
+
+    if (response.status === 401 && this.getRefreshToken()) {
+      if (await this.refreshToken()) {
+        response = await request();
+      } else {
+        this.clearTokens();
+        window.location.href = '/login';
+        throw new Error('Your session has expired. Please sign in again.');
+      }
+    }
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || response.statusText || 'Report download failed.');
+    }
+
+    const blob = await response.blob();
+    const disposition = response.headers.get('Content-Disposition');
+    const filename = disposition?.match(/filename="?([^";]+)"?/i)?.[1] || `cpc-library-${type}.${format}`;
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
 }
 
 export const api = new ApiClient(API_BASE_URL);

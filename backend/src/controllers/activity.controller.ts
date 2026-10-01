@@ -26,7 +26,9 @@ const where: any = {};
 
   // Action filter (excludes system actions)
   if (req.query.action) {
-    where.action = { equals: req.query.action as string, notIn: SYSTEM_ACTIONS };
+    where.action = req.query.action === 'LOGIN'
+      ? { in: ['LOGIN', 'LOGIN_GOOGLE'] }
+      : { equals: req.query.action as string, notIn: SYSTEM_ACTIONS };
   } else {
     where.action = { notIn: SYSTEM_ACTIONS };
   }

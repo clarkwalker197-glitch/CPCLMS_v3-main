@@ -41,18 +41,55 @@
    ============================================================ */
 
 /* ---------- LIGHT MODE OVERRIDES ---------- */
+:root {
+  --cpc-background: #0f172a;
+  --cpc-surface: #1e293b;
+  --cpc-text-primary: #f1f5f9;
+  --cpc-text-secondary: #94a3b8;
+  --cpc-accent: #3b82f6;
+  --cpc-accent-hover: #2563eb;
+  --cpc-accent-light: #1e3a5f;
+  --cpc-border: #334155;
+  --cpc-request-pending-bg: #3b3320;
+  --cpc-request-pending-text: #f2c96d;
+  --cpc-request-pending-border: #74633a;
+  --cpc-request-approved-bg: #203a32;
+  --cpc-request-approved-text: #8fd5b0;
+  --cpc-request-approved-border: #3e755c;
+  --cpc-request-rejected-bg: #3a2730;
+  --cpc-request-rejected-text: #e7a3b2;
+  --cpc-request-rejected-border: #784453;
+}
+
 html {
   color-scheme: dark;
 }
 
 html.light {
+  --cpc-background: #faf9f6;
+  --cpc-surface: #ffffff;
+  --cpc-text-primary: #1f2937;
+  --cpc-text-secondary: #6b7280;
+  --cpc-accent: #1e5aa8;
+  --cpc-accent-hover: #174a8a;
+  --cpc-accent-light: #e8f0fa;
+  --cpc-border: #d1d5db;
+  --cpc-request-pending-bg: #fff4d6;
+  --cpc-request-pending-text: #81530d;
+  --cpc-request-pending-border: #e8c875;
+  --cpc-request-approved-bg: #eaf5ef;
+  --cpc-request-approved-text: #276749;
+  --cpc-request-approved-border: #a7d7bb;
+  --cpc-request-rejected-bg: #feedf0;
+  --cpc-request-rejected-text: #9f3344;
+  --cpc-request-rejected-border: #e7a7b0;
   color-scheme: light;
 }
 
 html.light,
 html.light body {
-  background-color: #f4f4f5 !important;
-  color: #18181b !important;
+  background-color: var(--cpc-background) !important;
+  color: var(--cpc-text-primary) !important;
 }
 
 /* General surfaces: cards, sheets, sidebars, panels */
@@ -63,7 +100,16 @@ html.light .bg-zinc-950\/80:not(.landing-hero):not(.landing-hero *),
 html.light .bg-zinc-950\/70:not(.landing-hero):not(.landing-hero *),
 html.light .bg-zinc-950\/60:not(.landing-hero):not(.landing-hero *),
 html.light .bg-zinc-950\/50:not(.landing-hero):not(.landing-hero *),
-html.light .bg-zinc-950\/40:not(.landing-hero):not(.landing-hero *),
+html.light .bg-zinc-950\/40:not(.landing-hero):not(.landing-hero *) {
+  background-color: var(--cpc-background) !important;
+}
+
+html.light input.bg-zinc-950,
+html.light textarea.bg-zinc-950,
+html.light select.bg-zinc-950 {
+  background-color: var(--cpc-surface) !important;
+}
+
 html.light .bg-zinc-900:not(.landing-hero):not(.landing-hero *),
 html.light .bg-zinc-900\/95:not(.landing-hero):not(.landing-hero *),
 html.light .bg-zinc-900\/90:not(.landing-hero):not(.landing-hero *),
@@ -85,7 +131,7 @@ html.light .bg-zinc-700\/80:not(.landing-hero):not(.landing-hero *),
 html.light .bg-zinc-700\/60:not(.landing-hero):not(.landing-hero *),
 html.light .bg-zinc-700\/40:not(.landing-hero):not(.landing-hero *),
 html.light .bg-zinc-600:not(.landing-hero):not(.landing-hero *) {
-  background-color: #ffffff !important;
+  background-color: var(--cpc-surface) !important;
 }
 
 html.light .bg-zinc-900\/30:not(.landing-hero):not(.landing-hero *),
@@ -96,7 +142,7 @@ html.light .bg-zinc-800\/20:not(.landing-hero):not(.landing-hero *),
 html.light .bg-zinc-800\/10:not(.landing-hero):not(.landing-hero *),
 html.light .bg-zinc-700\/30:not(.landing-hero):not(.landing-hero *),
 html.light .bg-zinc-700\/20:not(.landing-hero):not(.landing-hero *) {
-  background-color: #f5f5f5 !important;
+  background-color: var(--cpc-accent-light) !important;
 }
 
 /* Surface accent blocks when they need to remain subtle */
@@ -105,7 +151,7 @@ html.light .from-blue-900\/30:not(.landing-hero):not(.landing-hero *),
 html.light .to-indigo-900\/30:not(.landing-hero):not(.landing-hero *),
 html.light .from-blue-500\/10:not(.landing-hero):not(.landing-hero *),
 html.light .to-blue-700\/10:not(.landing-hero):not(.landing-hero *) {
-  background-color: #f8fafc !important;
+  background-color: var(--cpc-accent-light) !important;
   background-image: none !important;
 }
 
@@ -120,35 +166,48 @@ html.light .text-zinc-600:not(.landing-hero):not(.landing-hero *),
 html.light .text-zinc-700:not(.landing-hero):not(.landing-hero *),
 html.light .text-zinc-800:not(.landing-hero):not(.landing-hero *),
 html.light .text-zinc-900:not(.landing-hero):not(.landing-hero *) {
-  color: #18181b !important;
+  color: var(--cpc-text-primary) !important;
 }
 
 html.light .text-zinc-400:not(.landing-hero):not(.landing-hero *),
 html.light .text-zinc-500:not(.landing-hero):not(.landing-hero *),
 html.light .text-zinc-600:not(.landing-hero):not(.landing-hero *),
 html.light .text-zinc-700:not(.landing-hero):not(.landing-hero *) {
-  color: #3f3f46 !important;
+  color: var(--cpc-text-secondary) !important;
 }
 
 html.light .text-zinc-500:not(.landing-hero):not(.landing-hero *) {
-  color: #52525b !important;
+  color: var(--cpc-text-secondary) !important;
 }
 
 html.light .text-zinc-400:not(.landing-hero):not(.landing-hero *) {
-  color: #52525b !important;
+  color: var(--cpc-text-secondary) !important;
 }
 
 html.light .text-blue-400:not(.landing-hero):not(.landing-hero *),
 html.light .text-blue-500:not(.landing-hero):not(.landing-hero *),
 html.light .text-blue-600:not(.landing-hero):not(.landing-hero *),
-html.light .text-blue-300:not(.landing-hero):not(.landing-hero *),
-html.light .text-cyan-400:not(.landing-hero):not(.landing-hero *),
-html.light .text-emerald-400:not(.landing-hero):not(.landing-hero *),
-html.light .text-amber-400:not(.landing-hero):not(.landing-hero *),
+html.light .text-blue-300:not(.landing-hero):not(.landing-hero *) {
+  color: var(--cpc-accent) !important;
+}
+
+html.light .text-emerald-400:not(.landing-hero):not(.landing-hero *) {
+  color: #047857 !important;
+}
+
+html.light .text-amber-400:not(.landing-hero):not(.landing-hero *) {
+  color: #b45309 !important;
+}
+
 html.light .text-red-400:not(.landing-hero):not(.landing-hero *),
+html.light .text-rose-400:not(.landing-hero):not(.landing-hero *) {
+  color: #b91c1c !important;
+}
+
+html.light .text-cyan-400:not(.landing-hero):not(.landing-hero *),
 html.light .text-violet-400:not(.landing-hero):not(.landing-hero *),
 html.light .text-indigo-400:not(.landing-hero):not(.landing-hero *) {
-  color: #1d4ed8 !important;
+  color: var(--cpc-accent) !important;
 }
 
 /* Borders and dividers */
@@ -163,12 +222,12 @@ html.light .divide-zinc-700:not(.landing-hero):not(.landing-hero *),
 html.light .ring-zinc-700:not(.landing-hero):not(.landing-hero *),
 html.light .ring-zinc-500:not(.landing-hero):not(.landing-hero *),
 html.light .ring-zinc-800:not(.landing-hero):not(.landing-hero *) {
-  border-color: #e4e4e7 !important;
+  border-color: var(--cpc-border) !important;
   box-shadow: none !important;
 }
 
 html.light .border-zinc-900:not(.landing-hero):not(.landing-hero *) {
-  border-color: #f3f4f6 !important;
+  border-color: var(--cpc-border) !important;
 }
 
 /* Hover states */
@@ -178,48 +237,45 @@ html.light .hover\:bg-zinc-800\/60:hover:not(.landing-hero):not(.landing-hero *)
 html.light .hover\:bg-zinc-700:hover:not(.landing-hero):not(.landing-hero *),
 html.light .hover\:bg-zinc-700\/50:hover:not(.landing-hero):not(.landing-hero *),
 html.light .hover\:border-zinc-700:hover:not(.landing-hero):not(.landing-hero *) {
-  background-color: #f3f4f6 !important;
-  border-color: #d4d4d8 !important;
+  background-color: var(--cpc-accent-light) !important;
+  border-color: var(--cpc-accent) !important;
 }
 
 html.light .hover\:text-white:hover:not(.landing-hero):not(.landing-hero *),
 html.light .hover\:text-zinc-200:hover:not(.landing-hero):not(.landing-hero *),
 html.light .hover\:text-zinc-300:hover:not(.landing-hero):not(.landing-hero *),
 html.light .hover\:text-zinc-400:hover:not(.landing-hero):not(.landing-hero *) {
-  color: #18181b !important;
+  color: var(--cpc-accent-hover) !important;
 }
 
 /* Inputs and form controls */
 html.light input,
 html.light textarea,
 html.light select,
-html.light option,
-html.light button,
-html.light .bg-white,
-html.light .bg-slate-50 {
-  background-color: #ffffff !important;
-  color: #18181b !important;
-  border-color: #e4e4e7 !important;
+html.light option {
+  background-color: var(--cpc-surface) !important;
+  color: var(--cpc-text-primary) !important;
+  border-color: var(--cpc-border) !important;
 }
 
 html.light input::placeholder,
 html.light textarea::placeholder {
-  color: #71717a !important;
+  color: var(--cpc-text-secondary) !important;
 }
 
 html.light table thead {
-  background-color: #fafafa !important;
+  background-color: var(--cpc-accent-light) !important;
 }
 html.light table tbody tr {
-  border-color: #e4e4e7 !important;
+  border-color: var(--cpc-border) !important;
 }
 html.light table tbody tr:hover {
-  background-color: #f5f5f5 !important;
+  background-color: var(--cpc-accent-light) !important;
 }
 
 /* Loading skeletons */
 html.light .animate-pulse {
-  background-color: #e4e4e7 !important;
+  background-color: var(--cpc-accent-light) !important;
 }
 
 /* Prevent dark branding cards from becoming light */
@@ -238,42 +294,311 @@ html.light .from-slate-900 .text-blue-300 {
 }
 
 html.light .from-slate-900 {
-  background-image: linear-gradient(to bottom, #0f172a, #172554, #1e3a8a) !important;
+  background-image: linear-gradient(to bottom, #0f172a, #1e293b, #1e3a5f) !important;
 }
 
 html.light .auth-brand-panel {
-  background-color: #dbeafe !important;
-  background-image: linear-gradient(145deg, #eff6ff 0%, #dbeafe 55%, #bfdbfe 100%) !important;
-  color: #0f172a !important;
+  background-color: var(--cpc-accent-light) !important;
+  background-image: linear-gradient(145deg, #ffffff 0%, var(--cpc-accent-light) 100%) !important;
+  color: var(--cpc-text-primary) !important;
 }
 
 html.light .auth-brand-panel .auth-brand-school,
 html.light .auth-brand-panel .auth-brand-title {
-  color: #0f172a !important;
+  color: var(--cpc-text-primary) !important;
 }
 
 html.light .auth-brand-panel .auth-brand-subtitle,
 html.light .auth-brand-panel .auth-brand-title .auth-brand-title-accent {
-  color: #1e40af !important;
+  color: var(--cpc-accent) !important;
 }
 
 html.light .auth-brand-panel .auth-brand-description {
-  color: #334155 !important;
+  color: var(--cpc-text-secondary) !important;
 }
 
 html.light .auth-brand-feature {
   background-color: rgba(255, 255, 255, 0.78) !important;
-  border: 1px solid #93c5fd !important;
-  box-shadow: 0 4px 14px rgba(30, 64, 175, 0.12) !important;
+  border: 1px solid var(--cpc-accent) !important;
+  box-shadow: 0 4px 14px rgba(30, 90, 168, 0.12) !important;
 }
 
 html.light .auth-brand-feature-icon {
-  background-color: #bfdbfe !important;
+  background-color: var(--cpc-accent-light) !important;
 }
 
 html.light .auth-brand-panel .auth-brand-feature .auth-brand-feature-icon-glyph,
 html.light .auth-brand-panel .auth-brand-feature .auth-brand-feature-text {
-  color: #1e3a8a !important;
+  color: var(--cpc-accent) !important;
+}
+
+/* ---------- OFFICIAL PALETTE MAPPING ---------- */
+html:not(.light),
+html:not(.light) body {
+  background-color: var(--cpc-background);
+  color: var(--cpc-text-primary);
+}
+
+html:not(.light) .bg-zinc-950,
+html:not(.light) .bg-zinc-950\/95,
+html:not(.light) .bg-zinc-950\/90,
+html:not(.light) .bg-zinc-950\/80,
+html:not(.light) .bg-zinc-950\/70,
+html:not(.light) .bg-zinc-950\/60,
+html:not(.light) .bg-zinc-950\/50,
+html:not(.light) .bg-zinc-950\/40 {
+  background-color: var(--cpc-background) !important;
+}
+
+html:not(.light) .bg-zinc-900,
+html:not(.light) .bg-zinc-900\/95,
+html:not(.light) .bg-zinc-900\/90,
+html:not(.light) .bg-zinc-900\/80,
+html:not(.light) .bg-zinc-900\/70,
+html:not(.light) .bg-zinc-900\/60,
+html:not(.light) .bg-zinc-900\/50,
+html:not(.light) .bg-zinc-900\/40,
+html:not(.light) .bg-zinc-800,
+html:not(.light) .bg-zinc-800\/95,
+html:not(.light) .bg-zinc-800\/90,
+html:not(.light) .bg-zinc-800\/80,
+html:not(.light) .bg-zinc-800\/70,
+html:not(.light) .bg-zinc-800\/60,
+html:not(.light) .bg-zinc-800\/50,
+html:not(.light) .bg-zinc-800\/40,
+html:not(.light) .bg-zinc-700,
+html:not(.light) .bg-zinc-700\/80,
+html:not(.light) .bg-zinc-700\/60,
+html:not(.light) .bg-zinc-700\/40,
+html:not(.light) .bg-zinc-600 {
+  background-color: var(--cpc-surface) !important;
+}
+
+html:not(.light) .bg-zinc-900\/30,
+html:not(.light) .bg-zinc-900\/20,
+html:not(.light) .bg-zinc-900\/10,
+html:not(.light) .bg-zinc-800\/30,
+html:not(.light) .bg-zinc-800\/20,
+html:not(.light) .bg-zinc-800\/10,
+html:not(.light) .bg-zinc-700\/30,
+html:not(.light) .bg-zinc-700\/20 {
+  background-color: var(--cpc-accent-light) !important;
+}
+
+html:not(.light) .text-white,
+html:not(.light) .text-zinc-100,
+html:not(.light) .text-zinc-200,
+html:not(.light) .text-zinc-300 {
+  color: var(--cpc-text-primary) !important;
+}
+
+html:not(.light) .text-zinc-400,
+html:not(.light) .text-zinc-500,
+html:not(.light) .text-zinc-600,
+html:not(.light) .text-zinc-700,
+html:not(.light) .text-zinc-800,
+html:not(.light) .text-zinc-900 {
+  color: var(--cpc-text-secondary) !important;
+}
+
+html:not(.light) .text-blue-300,
+html:not(.light) .text-blue-400,
+html:not(.light) .text-blue-500,
+html:not(.light) .text-blue-600,
+html:not(.light) .text-cyan-400,
+html:not(.light) .text-violet-400,
+html:not(.light) .text-indigo-400 {
+  color: var(--cpc-accent) !important;
+}
+
+html:not(.light) .border-zinc-800,
+html:not(.light) .border-zinc-800\/60,
+html:not(.light) .border-zinc-800\/70,
+html:not(.light) .border-zinc-700,
+html:not(.light) .border-zinc-700\/50,
+html:not(.light) .divide-zinc-800,
+html:not(.light) .divide-zinc-800\/60,
+html:not(.light) .divide-zinc-700,
+html:not(.light) .ring-zinc-700,
+html:not(.light) .ring-zinc-500,
+html:not(.light) .ring-zinc-800 {
+  border-color: var(--cpc-border) !important;
+}
+
+html:not(.light) .bg-blue-500,
+html:not(.light) .bg-blue-600 {
+  background-color: var(--cpc-accent) !important;
+}
+
+html:not(.light) .bg-blue-500\/10,
+html:not(.light) .bg-blue-500\/15,
+html:not(.light) .bg-blue-600\/10,
+html:not(.light) .bg-blue-600\/15 {
+  background-color: var(--cpc-accent-light) !important;
+}
+
+html:not(.light) .hover\:bg-blue-600:hover,
+html:not(.light) .hover\:bg-blue-700:hover,
+html:not(.light) .hover\:bg-blue-800:hover {
+  background-color: var(--cpc-accent-hover) !important;
+}
+
+html:not(.light) .hover\:text-blue-300:hover,
+html:not(.light) .hover\:text-blue-400:hover {
+  color: var(--cpc-accent-hover) !important;
+}
+
+html:not(.light) .bg-blue-700,
+html:not(.light) .bg-blue-800 {
+  background-color: var(--cpc-accent-hover) !important;
+}
+
+html:not(.light) .bg-blue-500\/20,
+html:not(.light) .bg-blue-600\/20,
+html:not(.light) .bg-blue-600\/\[0\.07\],
+html:not(.light) .bg-blue-600\/\[0\.12\] {
+  background-color: var(--cpc-accent-light) !important;
+}
+
+html:not(.light) .border-blue-500,
+html:not(.light) .border-blue-500\/25,
+html:not(.light) .border-blue-500\/30,
+html:not(.light) .border-blue-500\/40,
+html:not(.light) .focus\:border-blue-500:focus {
+  border-color: var(--cpc-accent) !important;
+}
+
+html:not(.light) .ring-blue-500,
+html:not(.light) .ring-blue-500\/30,
+html:not(.light) .focus\:ring-blue-500:focus,
+html:not(.light) .focus\:ring-blue-500\/30:focus {
+  --tw-ring-color: var(--cpc-accent);
+}
+
+html:not(.light) .hover\:border-blue-500\/40:hover {
+  border-color: var(--cpc-accent) !important;
+}
+
+html.light .bg-blue-500,
+html.light .bg-blue-600 {
+  background-color: var(--cpc-accent) !important;
+  border-color: var(--cpc-accent) !important;
+}
+
+html.light .bg-blue-500\/10,
+html.light .bg-blue-500\/15,
+html.light .bg-blue-600\/10,
+html.light .bg-blue-600\/15 {
+  background-color: var(--cpc-accent-light) !important;
+}
+
+html.light .hover\:bg-blue-600:hover,
+html.light .hover\:bg-blue-700:hover,
+html.light .hover\:bg-blue-800:hover {
+  background-color: var(--cpc-accent-hover) !important;
+  border-color: var(--cpc-accent-hover) !important;
+}
+
+html.light .hover\:text-blue-300:hover,
+html.light .hover\:text-blue-400:hover {
+  color: var(--cpc-accent-hover) !important;
+}
+
+html.light .bg-blue-700,
+html.light .bg-blue-800 {
+  background-color: var(--cpc-accent-hover) !important;
+}
+
+html.light .bg-blue-500\/20,
+html.light .bg-blue-600\/20,
+html.light .bg-blue-600\/\[0\.07\],
+html.light .bg-blue-600\/\[0\.12\],
+html.light .hover\:bg-blue-500\/20:hover {
+  background-color: var(--cpc-accent-light) !important;
+}
+
+html.light .border-blue-500,
+html.light .border-blue-500\/25,
+html.light .border-blue-500\/30,
+html.light .border-blue-500\/40,
+html.light .focus\:border-blue-500:focus {
+  border-color: var(--cpc-accent) !important;
+}
+
+html.light .ring-blue-500,
+html.light .ring-blue-500\/30,
+html.light .focus\:ring-blue-500:focus,
+html.light .focus\:ring-blue-500\/30:focus {
+  --tw-ring-color: var(--cpc-accent);
+}
+
+html.light .hover\:border-blue-500\/40:hover {
+  border-color: var(--cpc-accent-hover) !important;
+}
+
+html.light .bg-blue-500.text-white,
+html.light .bg-blue-600.text-white,
+html.light .bg-blue-500 .text-white,
+html.light .bg-blue-600 .text-white,
+html.light .bg-blue-500.text-white:not(.landing-hero):not(.landing-hero *),
+html.light .bg-blue-600.text-white:not(.landing-hero):not(.landing-hero *),
+html.light .bg-blue-500 .text-white:not(.landing-hero):not(.landing-hero *),
+html.light .bg-blue-600 .text-white:not(.landing-hero):not(.landing-hero *) {
+  color: #ffffff !important;
+}
+
+html.light input,
+html.light textarea,
+html.light select,
+html.light option {
+  background-color: var(--cpc-surface) !important;
+  color: var(--cpc-text-primary) !important;
+  border-color: var(--cpc-border) !important;
+}
+
+html.light button {
+  color: var(--cpc-text-primary);
+}
+
+html.light input::placeholder,
+html.light textarea::placeholder {
+  color: var(--cpc-text-secondary) !important;
+}
+
+html.light table thead,
+html.light table tbody tr:hover {
+  background-color: var(--cpc-accent-light) !important;
+}
+
+html.light .animate-pulse {
+  background-color: var(--cpc-accent-light) !important;
+}
+
+html:not(.light) .auth-brand-panel {
+  background-color: var(--cpc-background) !important;
+  background-image: linear-gradient(to bottom, var(--cpc-background), var(--cpc-surface), var(--cpc-accent-light)) !important;
+}
+
+.request-status-badge {
+  border: 1px solid;
+}
+
+.request-status-pending {
+  background-color: var(--cpc-request-pending-bg) !important;
+  border-color: var(--cpc-request-pending-border) !important;
+  color: var(--cpc-request-pending-text) !important;
+}
+
+.request-status-approved {
+  background-color: var(--cpc-request-approved-bg) !important;
+  border-color: var(--cpc-request-approved-border) !important;
+  color: var(--cpc-request-approved-text) !important;
+}
+
+.request-status-rejected {
+  background-color: var(--cpc-request-rejected-bg) !important;
+  border-color: var(--cpc-request-rejected-border) !important;
+  color: var(--cpc-request-rejected-text) !important;
 }
 
 /* Scrollbar (optional, subtle) */

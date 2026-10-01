@@ -79,14 +79,18 @@ export default function LoginPage() {
 
               {/* Logo + Institution + Heading */}
               <div className="relative z-10 flex flex-col gap-8">
-                <div className="flex items-center gap-3">
+                <Link
+                  href="/"
+                  aria-label="Cordova Public College Library Management System home"
+                  className="flex items-center gap-3 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-300"
+                >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src="/CPClogo.png" alt="Cordova Public College Logo" className="w-12 h-12 object-contain shrink-0" />
                   <div>
                     <p className="auth-brand-school font-bold text-lg leading-tight text-white">Cordova Public College</p>
                     <p className="auth-brand-subtitle text-blue-200 text-sm">Library Management System</p>
                   </div>
-                </div>
+                </Link>
 
                 {/* Heading + Subtitle */}
                 <div className="max-w-md">

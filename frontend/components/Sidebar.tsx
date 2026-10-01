@@ -26,7 +26,7 @@ import {
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/analytics", label: "Analytics", icon: BarChart3, librarianOnly: true },
+  { href: "/analytics", label: "Report", icon: BarChart3, librarianOnly: true },
   {
     label: "Books",
     icon: BookOpen,
@@ -199,7 +199,7 @@ export default function Sidebar() {
             <div className="space-y-1">
               {(user?.role === "LIBRARIAN"
                 ? [
-                  { href: "/analytics", label: "Analytics", icon: BarChart3 },
+                  { href: "/analytics", label: "Report", icon: BarChart3 },
                     { href: "/members", label: "Members", icon: Users },
                     { href: "/archive", label: "Archive", icon: Archive },
                     { href: "/activities", label: "Activity Logs", icon: ScrollText },

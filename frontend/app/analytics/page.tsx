@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, BarChart3, BookMarked, ClipboardList, Coins, Package, TrendingUp } from "lucide-react";
+import { AlertTriangle, BarChart3, BookMarked, ClipboardList, Coins, Download, Package, TrendingUp } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -19,8 +18,6 @@ import {
 } from "recharts";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Sidebar from "@/components/Sidebar";
-import NotificationBell from "@/components/NotificationBell";
-import UserAvatar from "@/components/UserAvatar";
 import { StatCard } from "@/components/StatCard";
 import { useAuth } from "@/lib/auth-context";
 import api from "@/lib/api";
@@ -54,6 +51,7 @@ export default function AnalyticsPage() {
   const { user } = useAuth();
   const router = useRouter();
   const [range, setRange] = useState("all");
+  const [isDownloading, setIsDownloading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<any>(null);
   const [trends, setTrends] = useState<any[]>([]);
@@ -67,6 +65,18 @@ export default function AnalyticsPage() {
   const [departmentFilter, setDepartmentFilter] = useState("");
   const [departmentBooks, setDepartmentBooks] = useState<any[]>([]);
   const [error, setError] = useState("");
+
+  const handleDownloadReport = async () => {
+    setIsDownloading(true);
+    setError("");
+    try {
+      await api.downloadReport("monthly", "xlsx");
+    } catch {
+      setError("Unable to download the monthly report right now.");
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   useEffect(() => {
     if (user && user.role !== "LIBRARIAN") {
@@ -134,17 +144,17 @@ export default function AnalyticsPage() {
           <div className="mx-auto max-w-7xl px-4 py-8 pb-[calc(5rem+env(safe-area-inset-bottom))] sm:px-6 lg:px-8 lg:pb-8">
             <header className="mb-8 flex items-center justify-between gap-4">
               <div>
-                <h1 className="text-2xl font-bold text-white">Analytics</h1>
+                <h1 className="text-2xl font-bold text-white">Report</h1>
                 <p className="mt-1 text-sm text-zinc-400">Library performance and borrowing insights</p>
               </div>
-              <div className="flex items-center gap-3">
-                <select value={range} onChange={(event) => setRange(event.target.value)} aria-label="Analytics date range" className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <div className="flex flex-wrap items-center justify-end gap-3">
+                <select value={range} onChange={(event) => setRange(event.target.value)} aria-label="Report date range" className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
                   {ranges.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                 </select>
-                <NotificationBell />
-                <Link href="/profile" aria-label="Open profile" className="flex h-10 w-10 items-center justify-center rounded-xl shadow-lg shadow-blue-600/30">
-                  <UserAvatar firstName={user?.firstName} lastName={user?.lastName} avatar={user?.avatar} className="h-10 w-10" />
-                </Link>
+                <button type="button" onClick={handleDownloadReport} disabled={isDownloading} className="inline-flex items-center gap-2 rounded-xl border border-blue-500/40 bg-blue-500/10 px-3 py-2 text-xs font-medium text-blue-300 transition-colors hover:bg-blue-500/20 disabled:cursor-wait disabled:opacity-60">
+                  <Download className="h-4 w-4" aria-hidden="true" />
+                  {isDownloading ? "Preparing report..." : "Download Monthly Report"}
+                </button>
               </div>
             </header>
 

@@ -6,7 +6,7 @@ import { prisma } from '../config';
 import { DEPARTMENTS } from '../constants/departments';
 import { transactionService } from './transaction.service';
 
-type AnalyticsRange = '7d' | '30d' | '90d' | 'semester' | 'all';
+type AnalyticsRange = '7d' | '30d' | '90d' | 'semester' | 'month' | 'all';
 
 function getRangeStart(range: string = 'all'): Date | undefined {
   const selectedRange = range as AnalyticsRange;
@@ -18,6 +18,7 @@ function getRangeStart(range: string = 'all'): Date | undefined {
   else if (selectedRange === '30d') start.setDate(start.getDate() - 30);
   else if (selectedRange === '90d') start.setDate(start.getDate() - 90);
   else if (selectedRange === 'semester') start.setMonth(now.getMonth() < 6 ? 0 : 6, 1);
+  else if (selectedRange === 'month') start.setDate(1);
   else return undefined;
   start.setHours(0, 0, 0, 0);
   return start;
@@ -350,7 +351,7 @@ interface TopBookRaw { bookId: string; _count: { bookId: number } }
    * Get the most borrowed Dewey categories.
    */
   async getMostBorrowedCategories(range: string = 'all', requestedLimit: number = 10) {
-    const validRanges = new Set(['all', '30d', '90d', 'semester']);
+    const validRanges = new Set(['all', '30d', '90d', 'semester', 'month']);
     const selectedRange = validRanges.has(range) ? range : 'all';
     const limit = Math.min(50, Math.max(1, Number.isFinite(requestedLimit) ? Math.floor(requestedLimit) : 10));
     const mainCategories: Record<string, { name: string; slug: string }> = {

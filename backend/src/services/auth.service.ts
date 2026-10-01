@@ -26,7 +26,7 @@ import { OAuth2Client } from 'google-auth-library';
 import { isDepartmentCode } from '../constants/departments';
 
 export class AuthService {
-  async googleLogin(credential: string, ipAddress?: string) {
+  async googleLogin(credential: string, ipAddress?: string, userAgent?: string) {
     if (!env.GOOGLE_CLIENT_ID) throw new BadRequestError('Google authentication is not configured.');
     const ticket = await new OAuth2Client(env.GOOGLE_CLIENT_ID).verifyIdToken({
       idToken: credential,
@@ -56,7 +56,7 @@ export class AuthService {
 
     const accessToken = this.generateAccessToken(user.id, user.libraryId, user.role);
     const refreshToken = await this.generateRefreshToken(user.id);
-    await this.logActivity(user.id, 'LOGIN_GOOGLE', 'User', user.id, ipAddress);
+    await this.logActivity(user.id, 'LOGIN_GOOGLE', 'User', user.id, ipAddress, userAgent ? { userAgent } : undefined);
     return { accessToken, refreshToken: refreshToken.token, expiresIn: 15 * 60, user: this.sanitizeUser(user) };
   }
 
@@ -112,7 +112,7 @@ export class AuthService {
   // ────────────────────────────────────────
   //  PUBLIC: LOGIN
   // ────────────────────────────────────────
-  async login(identifier: string, password: string, ipAddress?: string) {
+  async login(identifier: string, password: string, ipAddress?: string, userAgent?: string) {
     const normalized = (identifier || '').trim().toLowerCase();
     let user;
     try {
@@ -149,7 +149,7 @@ export class AuthService {
     const refreshToken = await this.generateRefreshToken(user.id);
 
     // Log activity
-    await this.logActivity(user.id, 'LOGIN', 'User', user.id, ipAddress);
+    await this.logActivity(user.id, 'LOGIN', 'User', user.id, ipAddress, userAgent ? { userAgent } : undefined);
 
     return {
       accessToken,
@@ -162,7 +162,7 @@ export class AuthService {
   // ────────────────────────────────────────
   //  PUBLIC: REGISTER (self-registration → STUDENT role)
   // ────────────────────────────────────────
-async register(input: RegisterInput, ipAddress?: string) {
+async register(input: RegisterInput, ipAddress?: string, userAgent?: string) {
     const existing = await prisma.user.findFirst({
       where: {
         OR: [{ email: input.email }, { libraryId: input.libraryId }],
@@ -199,7 +199,7 @@ const user = await prisma.user.create({
     const accessToken = this.generateAccessToken(user.id, user.libraryId, user.role);
     const refreshToken = await this.generateRefreshToken(user.id);
 
-    await this.logActivity(user.id, 'REGISTER', 'User', user.id, ipAddress);
+    await this.logActivity(user.id, 'REGISTER', 'User', user.id, ipAddress, userAgent ? { userAgent } : undefined);
 
     return {
       accessToken,
@@ -212,7 +212,7 @@ const user = await prisma.user.create({
   // ────────────────────────────────────────
   //  ADMIN: Create user with any role (LIBRARIAN only)
   // ────────────────────────────────────────
-  async createUser(adminId: string, input: CreateUserInput, ipAddress?: string) {
+  async createUser(adminId: string, input: CreateUserInput, ipAddress?: string, userAgent?: string) {
     const actingUser = await prisma.user.findUnique({ where: { id: adminId } });
     if (!actingUser) {
       throw new NotFoundError('User account');
@@ -259,7 +259,12 @@ const user = await prisma.user.create({
       },
     });
 
-    await this.logActivity(adminId, 'CREATE_USER', 'User', user.id, ipAddress);
+    await this.logActivity(adminId, 'CREATE_USER', 'User', user.id, ipAddress, {
+      createdUserName: `${user.firstName} ${user.lastName}`,
+      createdUserLibraryId: user.libraryId,
+      createdUserRole: user.role,
+      ...(userAgent ? { userAgent } : {}),
+    });
 
     return this.sanitizeUser(user);
   }
@@ -572,7 +577,7 @@ const user = await prisma.user.create({
 // ────────────────────────────────────────
   //  TOGGLE USER ACTIVE STATUS (admin)
   // ────────────────────────────────────────
-  async deleteUser(targetUserId: string, adminId: string) {
+  async deleteUser(targetUserId: string, adminId: string, ipAddress?: string, userAgent?: string) {
     if (targetUserId === adminId) {
       throw new BadRequestError('You cannot delete your own account');
     }
@@ -587,7 +592,13 @@ const user = await prisma.user.create({
       prisma.user.update({ where: { id: targetUserId }, data: { isActive: false, archivedAt } }),
     ]);
 
-    await this.logActivity(adminId, 'DELETE_USER', 'User', targetUserId);
+    await this.logActivity(adminId, 'DELETE_USER', 'User', targetUserId, ipAddress, {
+      deletedUserName: `${user.firstName} ${user.lastName}`,
+      deletedUserLibraryId: user.libraryId,
+      deletedUserRole: user.role,
+      status: 'Archived',
+      ...(userAgent ? { userAgent } : {}),
+    });
     return { id: targetUserId };
   }
 
@@ -697,11 +708,12 @@ const user = await prisma.user.create({
     action: string,
     entity: string,
     entityId: string,
-    ipAddress?: string
+    ipAddress?: string,
+    details?: Record<string, string>
   ) {
     try {
       await prisma.activityLog.create({
-        data: { userId, action, entity, entityId, ipAddress },
+        data: { userId, action, entity, entityId, ipAddress, details },
       });
     } catch {
       // Non-critical — don't block auth flow if logging fails

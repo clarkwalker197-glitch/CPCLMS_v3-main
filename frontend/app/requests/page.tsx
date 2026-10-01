@@ -42,9 +42,9 @@ const txnStatusLabel: Record<string, string> = {
 
 // ── Request status styling ──
 const reqStatusBadge: Record<string, string> = {
-  PENDING: "bg-amber-500/15 text-amber-400 ring-amber-500/30",
-  APPROVED: "bg-emerald-500/15 text-emerald-400 ring-emerald-500/30",
-  REJECTED: "bg-red-500/15 text-red-400 ring-red-500/30",
+  PENDING: "request-status-badge request-status-pending",
+  APPROVED: "request-status-badge request-status-approved",
+  REJECTED: "request-status-badge request-status-rejected",
 };
 const reqStatusLabel: Record<string, string> = {
   PENDING: "Pending",
@@ -634,7 +634,7 @@ export default function RequestsPage() {
                             ) : "—"}
                           </td>
                           <td className="px-6 py-4">
-                            <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${reqStatusBadge[req.status] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>
+                            <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${reqStatusBadge[req.status] || "bg-zinc-500/15 text-zinc-400 ring-1 ring-zinc-500/30"}`}>
                               {reqStatusLabel[req.status] || req.status}
                             </span>
                           </td>
@@ -647,7 +647,7 @@ export default function RequestsPage() {
                                     disabled={actionLoadingId === req.id}
                                     className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
                                   >
-                                    <CheckCircle2 className="w-3.5 h-3.5" /> {actionLoadingId === req.id ? "Generating QR..." : req.transactionId ? "View QR / Borrow ID" : "Approve & Generate QR"}
+                                    <CheckCircle2 className="w-3.5 h-3.5" /> {actionLoadingId === req.id ? "Generating QR..." : req.transactionId ? "View QR / Borrow ID" : "Approve via QR"}
                                   </button>
                                   <button
                                     onClick={() => openRejectModal(req)}
@@ -677,14 +677,14 @@ export default function RequestsPage() {
                     </div>
                     <div className="grid grid-cols-2 gap-3 py-4 text-sm"><div><p className="text-xs text-zinc-500">Member</p><p className="mt-1 break-words text-zinc-300">{req.user?.firstName} {req.user?.lastName}</p><p className="text-xs text-zinc-500">{req.user?.libraryId || ""}</p></div><div><p className="text-xs text-zinc-500">Request Date</p><p className="mt-1 text-zinc-300">{formatDate(req.requestDate)}</p></div><div className="col-span-2"><p className="text-xs text-zinc-500">Notes</p><p className="mt-1 whitespace-pre-wrap break-words text-zinc-300">{req.notes || "—"}</p></div></div>
                     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-800/80 pt-3">
-                      <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${reqStatusBadge[req.status] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>
+                      <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${reqStatusBadge[req.status] || "bg-zinc-500/15 text-zinc-400 ring-1 ring-zinc-500/30"}`}>
                         {reqStatusLabel[req.status] || req.status}
                       </span>
                       <div className="flex flex-wrap gap-2">
                         {isLibrarian && req.status === "PENDING" && (
                           <>
                             <button disabled={actionLoadingId === req.id} onClick={() => approveListedBatch(req)} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-50">
-                              {actionLoadingId === req.id ? "Generating QR..." : req.transactionId ? "View QR / Borrow ID" : "Approve & Generate QR"}
+                              {actionLoadingId === req.id ? "Generating QR..." : req.transactionId ? "View QR / Borrow ID" : "Approve via QR"}
                             </button>
                             <button onClick={() => openRejectModal(req)} className="rounded-lg bg-red-500/15 px-3 py-2 text-xs font-medium text-red-400">Reject</button>
                           </>

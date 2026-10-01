@@ -19,7 +19,7 @@ export const getDepartments = asyncHandler(async (_req: Request, res: Response) 
 export const login = asyncHandler(async (req: Request, res: Response) => {
   const { identifier, password } = req.body;
   const ipAddress = req.ip;
-  const result = await authService.login(identifier, password, ipAddress);
+  const result = await authService.login(identifier, password, ipAddress, req.get('user-agent'));
   sendSuccess(res, result, 'Login successful');
 });
 
@@ -34,7 +34,7 @@ export const verifyPasswordReset = asyncHandler(async (req: Request, res: Respon
 });
 
 export const googleLogin = asyncHandler(async (req: Request, res: Response) => {
-  const result = await authService.googleLogin(req.body.credential, req.ip);
+  const result = await authService.googleLogin(req.body.credential, req.ip, req.get('user-agent'));
   sendSuccess(res, result, 'Google login successful');
 });
 
@@ -48,7 +48,7 @@ export const resetPassword = asyncHandler(async (req: Request, res: Response) =>
  */
 export const register = asyncHandler(async (req: Request, res: Response) => {
   const ipAddress = req.ip;
-  const result = await authService.register(req.body, ipAddress);
+  const result = await authService.register(req.body, ipAddress, req.get('user-agent'));
   sendSuccess(res, result, 'Registration successful', 201);
 });
 
@@ -57,7 +57,7 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
  */
 export const createUser = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const ipAddress = req.ip;
-  const user = await authService.createUser(req.user!.userId, req.body, ipAddress);
+  const user = await authService.createUser(req.user!.userId, req.body, ipAddress, req.get('user-agent'));
   sendSuccess(res, user, 'User created successfully', 201);
 });
 
@@ -137,7 +137,7 @@ export const listUsers = asyncHandler(async (req: AuthenticatedRequest, res: Res
  * DELETE /api/auth/users/:id  (LIBRARIAN only)
  */
 export const deleteUser = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const user = await authService.deleteUser(req.params.id, req.user!.userId);
+  const user = await authService.deleteUser(req.params.id, req.user!.userId, req.ip, req.get('user-agent'));
   sendSuccess(res, user, 'User deleted successfully');
 });
 

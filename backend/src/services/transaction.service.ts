@@ -21,6 +21,8 @@ import { notificationService } from './notification.service';
 import { Role } from '@prisma/client';
 import crypto from 'crypto';
 
+type ActivityRequestContext = { ipAddress?: string; userAgent?: string };
+
 function generateTransactionId(): string {
   return crypto.randomInt(0, 100_000_000).toString().padStart(8, '0');
 }
@@ -95,8 +97,9 @@ export class TransactionService {
     userId: string;
     bookIds: string[];
     notes?: string;
+    auditContext?: ActivityRequestContext;
   }) {
-    const { userId, bookIds, notes } = input;
+    const { userId, bookIds, notes, auditContext } = input;
     const uniqueBookIds = Array.from(new Set(bookIds));
 
     // Enforce per-transaction limit of 3 books
@@ -236,7 +239,15 @@ export class TransactionService {
             action: 'BORROW_REQUEST',
             entity: 'BorrowRequest',
             entityId: request.id,
-            details: { bookTitle: request.book.title, bookId: request.bookId, requestBatchId },
+            ipAddress: auditContext?.ipAddress,
+            details: {
+              bookTitle: request.book.title,
+              bookId: request.bookId,
+              requestBatchId,
+              ...(notes ? { notes } : {}),
+              ...(auditContext?.userAgent ? { userAgent: auditContext.userAgent } : {}),
+              status: 'PENDING',
+            },
           },
         })
       )
@@ -257,7 +268,7 @@ export class TransactionService {
   /**
   * Stage a Borrow ID for a pending request (librarian only) without activating the borrow.
    */
-  async approveRequest(requestId: string, librarianId: string) {
+  async approveRequest(requestId: string, librarianId: string, auditContext?: ActivityRequestContext) {
     const request = await prisma.borrowRequest.findUnique({
       where: { id: requestId },
       select: { id: true, requestBatchId: true, transactionId: true },
@@ -265,11 +276,12 @@ export class TransactionService {
     if (!request) throw new NotFoundError('Borrow request');
     return this.approveTransactionBatch(
       request.requestBatchId || request.transactionId || request.id,
-      librarianId
+      librarianId,
+      auditContext
     );
   }
 
-  async approveTransactionBatch(requestBatchId: string, librarianId: string) {
+  async approveTransactionBatch(requestBatchId: string, librarianId: string, auditContext?: ActivityRequestContext) {
     const requestBatchWhere = {
       OR: [
         { requestBatchId },
@@ -345,6 +357,22 @@ export class TransactionService {
       },
       orderBy: { requestDate: 'asc' },
     });
+    await prisma.activityLog.create({
+      data: {
+        userId: librarianId,
+        action: 'APPROVE_REQUEST',
+        entity: 'BorrowRequest',
+        entityId: transactionId,
+        ipAddress: auditContext?.ipAddress,
+        details: {
+          transactionId,
+          borrowerName: `${user.firstName} ${user.lastName}`,
+          bookTitles: stagedRequests.map((request) => request.book.title),
+          status: 'Awaiting borrower verification',
+          ...(auditContext?.userAgent ? { userAgent: auditContext.userAgent } : {}),
+        },
+      },
+    });
 
     return {
       transactionId,
@@ -353,7 +381,7 @@ export class TransactionService {
     };
   }
 
-  async verifyBorrowRequest(borrowId: string, userId: string) {
+  async verifyBorrowRequest(borrowId: string, userId: string, auditContext?: ActivityRequestContext) {
     const transactionId = normalizeBorrowId(borrowId);
     const requests = await prisma.borrowRequest.findMany({
       where: { transactionId },
@@ -452,14 +480,17 @@ export class TransactionService {
       await tx.activityLog.create({
         data: {
           userId,
-          action: 'APPROVE_REQUEST',
+          action: 'BORROW_CONFIRMATION',
           entity: 'BorrowRequest',
           entityId: transactionId,
+          ipAddress: auditContext?.ipAddress,
           details: {
             transactionId,
             borrowerName: `${user.firstName} ${user.lastName}`,
             bookTitles: requests.map((request) => request.book.title),
             dueDate,
+            status: 'Verified',
+            ...(auditContext?.userAgent ? { userAgent: auditContext.userAgent } : {}),
           },
         },
       });
@@ -494,7 +525,7 @@ export class TransactionService {
   /**
    * Reject a borrow request (with reason)
    */
-  async rejectRequest(requestId: string, librarianId: string, reason: string) {
+  async rejectRequest(requestId: string, librarianId: string, reason: string, auditContext?: ActivityRequestContext) {
     const request = await prisma.borrowRequest.findUnique({
       where: { id: requestId },
       include: { book: true },
@@ -533,7 +564,14 @@ export class TransactionService {
             action: 'REJECT_REQUEST',
             entity: 'BorrowRequest',
             entityId: request.transactionId,
-            details: { transactionId: request.transactionId, bookTitles, reason },
+            ipAddress: auditContext?.ipAddress,
+            details: {
+              transactionId: request.transactionId,
+              bookTitles,
+              reason,
+              status: 'Rejected',
+              ...(auditContext?.userAgent ? { userAgent: auditContext.userAgent } : {}),
+            },
           },
         }),
       ]);
@@ -560,7 +598,13 @@ export class TransactionService {
           action: 'REJECT_REQUEST',
           entity: 'BorrowRequest',
           entityId: requestId,
-          details: { bookTitle: request.book.title, reason },
+          ipAddress: auditContext?.ipAddress,
+          details: {
+            bookTitle: request.book.title,
+            reason,
+            status: 'Rejected',
+            ...(auditContext?.userAgent ? { userAgent: auditContext.userAgent } : {}),
+          },
         },
       }),
     ]);
@@ -729,7 +773,7 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
    * - Updates book availability
    * - Notifies next in reservation queue
    */
-  async returnBook(transactionIdOrQr: string) {
+  async returnBook(transactionIdOrQr: string, actorUserId?: string, auditContext?: ActivityRequestContext) {
     await this.synchronizeOverdueTransactions();
     let transaction;
 
@@ -804,15 +848,18 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
       }),
       prisma.activityLog.create({
         data: {
-          userId: transaction.userId,
+          userId: actorUserId || transaction.userId,
           action: 'RETURN_BOOK',
           entity: 'BorrowTransaction',
           entityId: transaction.id,
+          ipAddress: auditContext?.ipAddress,
           details: {
             bookTitle: transaction.book.title,
             accessionNo: transaction.book.accessionNo,
             isOverdue,
             fineAmount,
+            status: 'Returned',
+            ...(auditContext?.userAgent ? { userAgent: auditContext.userAgent } : {}),
           },
         },
       }),
@@ -1146,7 +1193,7 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
    * - Respects queue limit
    * - Auto-positions in queue
    */
-  async reserveBook(userId: string, bookId: string) {
+  async reserveBook(userId: string, bookId: string, auditContext?: ActivityRequestContext) {
     const book = await prisma.book.findUnique({ where: { id: bookId } });
     if (!book) throw new NotFoundError('Book');
 
@@ -1195,7 +1242,13 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
         action: 'RESERVE_BOOK',
         entity: 'Reservation',
         entityId: reservation.id,
-        details: { bookTitle: book.title, queuePosition: reservation.queuePosition },
+        ipAddress: auditContext?.ipAddress,
+        details: {
+          bookTitle: book.title,
+          queuePosition: reservation.queuePosition,
+          status: 'Reserved',
+          ...(auditContext?.userAgent ? { userAgent: auditContext.userAgent } : {}),
+        },
       },
     });
 
@@ -1206,7 +1259,7 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
    * Cancel a reservation
    * - Recalculates queue positions
    */
-  async cancelReservation(reservationId: string, userId: string) {
+  async cancelReservation(reservationId: string, userId: string, auditContext?: ActivityRequestContext) {
     const reservation = await prisma.reservation.findUnique({
       where: { id: reservationId },
       include: { book: { select: { title: true } } },
@@ -1226,7 +1279,12 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
           action: 'CANCEL_RESERVATION',
           entity: 'Reservation',
           entityId: reservationId,
-          details: { bookTitle: reservation.book.title },
+          ipAddress: auditContext?.ipAddress,
+          details: {
+            bookTitle: reservation.book.title,
+            status: 'Cancelled',
+            ...(auditContext?.userAgent ? { userAgent: auditContext.userAgent } : {}),
+          },
         },
       }),
     ]);

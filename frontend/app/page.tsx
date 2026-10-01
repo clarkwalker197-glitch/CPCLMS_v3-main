@@ -145,7 +145,7 @@ export default function Home() {
                 alt="Melecio Paes"
                 className="w-24 h-24 rounded-full object-cover mx-auto mb-6 ring-1 ring-blue-500/20"
               />
-              <h3 className="text-lg font-semibold text-white">Melecio Paes</h3>
+              <h3 className="text-lg font-semibold text-white">Melecio Paes III</h3>
               <p className="text-base text-zinc-500 mt-2">Frontend Developer</p>
             </div>
           </div>

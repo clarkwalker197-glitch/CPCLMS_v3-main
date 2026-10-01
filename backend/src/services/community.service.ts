@@ -9,26 +9,34 @@ export class CommunityService {
   async listFaqs(includeUnpublished = false) {
     return prisma.faq.findMany({
       where: includeUnpublished ? undefined : { isPublished: true },
+      ...(includeUnpublished ? {
+        include: { createdBy: { select: { firstName: true, lastName: true, role: true } } },
+      } : {}),
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
     });
   }
 
-  async createFaq(input: { question: string; answer: string; category?: string; sortOrder?: number; isPublished?: boolean; createdById: string }) {
-    const faq = await prisma.faq.create({ data: { ...input, category: input.category || undefined } });
-    if (faq.isPublished) {
-      await notificationService.notifyStudentsAndFaculty(
-        'FAQ_PUBLISHED',
-        'New FAQ',
-        `New FAQ: "${faq.question}"`,
-        '/faq'
-      );
-    }
-    return faq;
+  async submitFaqQuestion(question: string, createdById: string) {
+    const trimmedQuestion = question?.trim();
+    if (!trimmedQuestion) throw new BadRequestError('Question is required');
+    if (trimmedQuestion.length > 1000) throw new BadRequestError('Question must be 1000 characters or fewer');
+
+    return prisma.faq.create({
+      data: {
+        question: trimmedQuestion,
+        answer: '',
+        isPublished: false,
+        createdById,
+      },
+    });
   }
 
   async updateFaq(id: string, input: Partial<{ question: string; answer: string; category: string; sortOrder: number; isPublished: boolean }>) {
     const existing = await prisma.faq.findUnique({ where: { id } });
     if (!existing) throw new NotFoundError('FAQ');
+    if (input.isPublished && !(input.answer ?? existing.answer).trim()) {
+      throw new BadRequestError('An answer is required before publishing this FAQ');
+    }
     const faq = await prisma.faq.update({ where: { id }, data: input });
     if (!existing.isPublished && faq.isPublished) {
       await notificationService.notifyStudentsAndFaculty(

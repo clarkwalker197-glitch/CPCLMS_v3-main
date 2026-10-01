@@ -271,14 +271,20 @@ class ApiClient {
     }
   }
 
-  async login(identifier: string, password: string): Promise<ApiResponse<{ user: any; accessToken: string; refreshToken: string }>> {
-    const response = await this.request<{ user: any; accessToken: string; refreshToken: string }>(
-      '/auth/login',
-      {
-        method: 'POST',
-        body: JSON.stringify({ identifier, password }),
-      }
-    );
+  async login(
+    identifier: string,
+    password: string
+  ): Promise<ApiResponse<{ user: any; accessToken: string; refreshToken: string }>> {
+  const response = await this.request<{ user: any; accessToken: string; refreshToken: string }>(
+    '/auth/login',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        identifier,
+        password,
+      }),
+    }
+  );
 
     if (response.success && response.data) {
       this.setTokens(response.data.accessToken, response.data.refreshToken);

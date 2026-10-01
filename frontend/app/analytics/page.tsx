@@ -38,6 +38,13 @@ const chartStyle = {
   color: "#fff",
 };
 
+const departmentPalette = [
+  { code: "BSIT", color: "#FACC15" },
+  { code: "BSHM", color: "#F97316" },
+  { code: "BEED", color: "#22D3EE" },
+  { code: "BSED", color: "#3B82F6" },
+];
+
 function Panel({ title, children, className = "" }: { title: string; children: React.ReactNode; className?: string }) {
   return (
     <section className={`rounded-2xl border border-zinc-800 bg-zinc-900/70 p-6 ${className}`}>
@@ -135,6 +142,20 @@ export default function AnalyticsPage() {
     { title: "Pending Requests", value: requests.pending ?? overview.pendingRequests ?? 0, icon: ClipboardList, accent: "bg-blue-500/15 text-blue-400" },
     { title: "On-time Return Rate", value: `${Number(returns.onTimeRate || 0).toFixed(1)}%`, icon: BarChart3, accent: "bg-emerald-500/15 text-emerald-400" },
   ];
+  const pipelineStages = [
+    { label: "Pending", value: Number(requests.pending || 0), color: "#F59E0B" },
+    { label: "Approved", value: Number(requests.approved || 0), color: "#10B981" },
+    { label: "Rejected", value: Number(requests.rejected || 0), color: "#F87171" },
+  ];
+  const maxPipelineCount = Math.max(1, ...pipelineStages.map((stage) => stage.value));
+  const totalBooks = Number(overview.totalBooks || 0);
+  const inventoryMetrics = [
+    { label: "Low stock", value: Number(inventory.lowStockCount || 0), color: "#F59E0B" },
+    { label: "Unavailable", value: Number(inventory.unavailableCount || 0), color: "#F87171" },
+    { label: "Never borrowed", value: Number(inventory.neverBorrowedCount || 0), color: "#22D3EE" },
+  ];
+  const lowStockItems = (inventory.lowStock || []).slice(0, 3);
+  const neverBorrowedItems = (inventory.neverBorrowed || []).slice(0, 3);
 
   return (
     <ProtectedRoute roles={["LIBRARIAN"]}>
@@ -168,7 +189,15 @@ export default function AnalyticsPage() {
                 {trends.length === 0 ? <div className="flex h-72 items-center justify-center text-sm text-zinc-500">No trend data for this range</div> : <div className="h-72"><ResponsiveContainer width="100%" height="100%"><LineChart data={trends}><CartesianGrid strokeDasharray="3 3" stroke="#27272a" /><XAxis dataKey="month" stroke="#71717a" fontSize={11} tickLine={false} axisLine={false} /><YAxis stroke="#71717a" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} /><Tooltip contentStyle={chartStyle} /><Line type="monotone" dataKey="borrows" stroke="#3b82f6" strokeWidth={2} dot={false} name="Borrows" /><Line type="monotone" dataKey="returns" stroke="#10b981" strokeWidth={2} dot={false} name="Returns" /><Line type="monotone" dataKey="overdues" stroke="#ef4444" strokeWidth={2} dot={false} name="Overdue" /></LineChart></ResponsiveContainer></div>}
               </Panel>
               <Panel title="Department Borrowing Comparison">
-                {departments.length === 0 ? <div className="flex h-72 items-center justify-center text-sm text-zinc-500">No department data for this range</div> : <div className="h-72"><ResponsiveContainer width="100%" height="100%"><BarChart data={departments} margin={{ bottom: 28, left: 8, right: 8 }}><CartesianGrid strokeDasharray="3 3" stroke="#27272a" /><XAxis dataKey="code" stroke="#71717a" fontSize={11} tickLine={false} axisLine={false} interval={0} angle={-25} textAnchor="end" height={52} /><YAxis stroke="#71717a" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} /><Tooltip contentStyle={chartStyle} formatter={(value) => [`${value} borrows`, "Total"]} /><Bar dataKey="value" radius={[6, 6, 0, 0]}>{departments.map((entry) => <Cell key={entry.code} fill={getDepartmentColor(entry.code || entry.shortName)} />)}</Bar></BarChart></ResponsiveContainer></div>}
+                <div className="mb-4 flex flex-wrap gap-x-5 gap-y-2">
+                  {departmentPalette.map(({ code, color }) => (
+                    <span key={code} className="inline-flex items-center gap-2 text-xs text-zinc-400">
+                      <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: color }} />
+                      {code}
+                    </span>
+                  ))}
+                </div>
+                {departments.length === 0 ? <div className="flex h-64 items-center justify-center text-sm text-zinc-500">No department data for this range</div> : <div className="h-64"><ResponsiveContainer width="100%" height="100%"><BarChart data={departments} margin={{ top: 8, bottom: 8, left: 0, right: 8 }}><CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#27272a" /><XAxis dataKey="code" stroke="#71717a" fontSize={11} tickLine={false} axisLine={false} interval={0} /><YAxis stroke="#71717a" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} width={32} /><Tooltip contentStyle={chartStyle} formatter={(value) => [`${value} borrows`, "Total"]} /><Bar dataKey="value" radius={[5, 5, 0, 0]} maxBarSize={42}>{departments.map((entry) => <Cell key={entry.code} fill={getDepartmentColor(entry.code || entry.shortName)} />)}</Bar></BarChart></ResponsiveContainer></div>}
               </Panel>
             </div>
 
@@ -182,19 +211,102 @@ export default function AnalyticsPage() {
             </div>
 
             <Panel title="Most Borrowed Books by Department" className="mb-6">
-              <div className="mb-5 flex justify-end">
+              <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-zinc-500">Ranked by borrow count within each department</p>
                 <select value={departmentFilter} onChange={(event) => setDepartmentFilter(event.target.value)} aria-label="Department filter" className="rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-xs text-zinc-300">
                   <option value="">All departments</option>
                   {departments.map((department) => <option key={department.code} value={department.code}>{department.name}</option>)}
                 </select>
               </div>
-              {departmentBooks.length === 0 ? <p className="text-sm text-zinc-500">No department borrowing data for this range.</p> : <div className="grid grid-cols-1 gap-5 md:grid-cols-2">{departmentBooks.map((group) => <div key={group.department} className="rounded-xl border border-zinc-800 p-4"><h3 className="mb-3 font-medium text-white">{group.department}</h3><div className="space-y-2">{group.topBooks.map((book: any) => <div key={`${group.department}-${book.title}`} className="flex items-center justify-between gap-3 text-sm"><span className="truncate text-zinc-300">{book.title}</span><span className="shrink-0 text-blue-400">{book.borrowCount}</span></div>)}</div></div>)}</div>}
+              {departmentBooks.length === 0 ? <p className="text-sm text-zinc-500">No department borrowing data for this range.</p> : <div className="grid grid-cols-1 gap-x-10 gap-y-8 md:grid-cols-2">{departmentBooks.map((group) => {
+                const departmentColor = getDepartmentColor(group.department);
+                const maxBorrowCount = Math.max(1, ...group.topBooks.map((book: any) => Number(book.borrowCount || 0)));
+                return (
+                  <section key={group.department} aria-label={`${group.department} most borrowed books`}>
+                    <div className="mb-4 flex items-center justify-between border-b border-zinc-800 pb-3">
+                      <div className="flex items-center gap-2.5">
+                        <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: departmentColor }} />
+                        <h3 className="font-semibold text-white">{group.department}</h3>
+                      </div>
+                      <span className="text-xs text-zinc-500">{group.topBooks.length} titles</span>
+                    </div>
+                    <div className="space-y-4">
+                      {group.topBooks.map((book: any, index: number) => {
+                        const borrowCount = Number(book.borrowCount || 0);
+                        const barWidth = borrowCount ? Math.max(4, (borrowCount / maxBorrowCount) * 100) : 0;
+                        return (
+                          <div key={`${group.department}-${book.title}`}>
+                            <div className="mb-1.5 flex items-start gap-3 text-sm">
+                              <span className="w-5 shrink-0 pt-0.5 text-xs text-zinc-600">{String(index + 1).padStart(2, "0")}</span>
+                              <span className="min-w-0 flex-1 break-words text-zinc-300">{book.title}</span>
+                              <span className="shrink-0 font-semibold text-zinc-100">{borrowCount}</span>
+                            </div>
+                            <div className="ml-8 h-1.5 overflow-hidden rounded-full bg-zinc-800" role="progressbar" aria-label={`${book.title} borrows`} aria-valuenow={borrowCount} aria-valuemin={0} aria-valuemax={maxBorrowCount}>
+                              <div className="h-full rounded-full" style={{ width: `${barWidth}%`, backgroundColor: departmentColor }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+                );
+              })}</div>}
             </Panel>
 
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-              <Panel title="Request Pipeline"><div className="grid grid-cols-2 gap-4 text-sm"><div><p className="text-zinc-500">Pending</p><p className="text-xl font-semibold text-amber-400">{requests.pending ?? 0}</p></div><div><p className="text-zinc-500">Approved</p><p className="text-xl font-semibold text-emerald-400">{requests.approved ?? 0}</p></div><div><p className="text-zinc-500">Rejected</p><p className="text-xl font-semibold text-red-400">{requests.rejected ?? 0}</p></div><div><p className="text-zinc-500">Approval rate</p><p className="text-xl font-semibold text-blue-400">{Number(requests.approvalRate || 0).toFixed(1)}%</p></div></div><p className="mt-4 text-xs text-zinc-500">Average processing time: {Number(requests.averageApprovalHours || 0).toFixed(1)} hours</p></Panel>
-              <Panel title="Inventory Health"><div className="mb-4 flex items-center gap-2"><Package className="h-4 w-4 text-amber-400" /><span className="text-sm text-zinc-300">{inventory.lowStockCount ?? 0} low-stock, {inventory.unavailableCount ?? 0} unavailable, {inventory.neverBorrowedCount ?? 0} never borrowed</span></div><div className="space-y-2">{(inventory.lowStock || []).slice(0, 6).map((book: any) => <div key={book.id} className="flex justify-between gap-3 text-xs"><span className="truncate text-zinc-300">{book.title}</span><span className="text-amber-400">{book.availableCopies} left</span></div>)}</div></Panel>
-              <Panel title="Fine Disposition"><div className="mb-3 grid grid-cols-2 gap-2 text-xs"><span className="text-amber-400">Unpaid ₱{Number(fines.unpaid || 0).toFixed(2)}</span><span className="text-emerald-400">Paid ₱{Number(fines.paid || 0).toFixed(2)}</span></div>{(fines.monthly || []).length === 0 ? <p className="text-sm text-zinc-500">No fines for this range</p> : <div className="h-40"><ResponsiveContainer width="100%" height="100%"><BarChart data={fines.monthly}><CartesianGrid strokeDasharray="3 3" stroke="#27272a" /><XAxis dataKey="month" stroke="#71717a" fontSize={10} tickLine={false} axisLine={false} /><YAxis stroke="#71717a" fontSize={10} tickLine={false} axisLine={false} /><Tooltip contentStyle={chartStyle} /><Bar dataKey="unpaid" stackId="fines" fill="#f59e0b" name="Unpaid" /><Bar dataKey="paid" stackId="fines" fill="#10b981" name="Paid" /></BarChart></ResponsiveContainer></div>}</Panel>
+              <Panel title="Request Pipeline">
+                <div className="mb-5 grid grid-cols-2 gap-3 border-b border-zinc-800 pb-4">
+                  <div><p className="text-xs text-zinc-500">Approval rate</p><p className="mt-1 text-xl font-semibold text-blue-300">{Number(requests.approvalRate || 0).toFixed(1)}%</p></div>
+                  <div><p className="text-xs text-zinc-500">Avg. processing</p><p className="mt-1 text-xl font-semibold text-zinc-100">{Number(requests.averageApprovalHours || 0).toFixed(1)}<span className="ml-1 text-xs font-normal text-zinc-500">hrs</span></p></div>
+                </div>
+                <div className="space-y-4">
+                  {pipelineStages.map((stage) => (
+                    <div key={stage.label}>
+                      <div className="mb-1.5 flex items-center justify-between text-xs"><span className="text-zinc-400">{stage.label}</span><span className="font-semibold text-zinc-100">{stage.value}</span></div>
+                      <div className="h-2 overflow-hidden rounded-full bg-zinc-800" role="progressbar" aria-label={`${stage.label} requests`} aria-valuenow={stage.value} aria-valuemin={0} aria-valuemax={maxPipelineCount}>
+                        <div className="h-full rounded-full transition-[width] duration-500" style={{ width: `${stage.value ? Math.max(4, (stage.value / maxPipelineCount) * 100) : 0}%`, backgroundColor: stage.color }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Panel>
+              <Panel title="Inventory Health">
+                <div className="mb-5 flex items-baseline justify-between border-b border-zinc-800 pb-4">
+                  <p className="text-xs text-zinc-500">Collection health checks</p>
+                  <p className="text-xs text-zinc-400">{totalBooks} books</p>
+                </div>
+                <div className="space-y-4">
+                  {inventoryMetrics.map((metric) => {
+                    const percent = totalBooks ? Math.min(100, (metric.value / totalBooks) * 100) : 0;
+                    return (
+                      <div key={metric.label}>
+                        <div className="mb-1.5 flex items-center justify-between text-xs"><span className="text-zinc-400">{metric.label}</span><span className="font-semibold text-zinc-100">{metric.value}</span></div>
+                        <div className="h-2 overflow-hidden rounded-full bg-zinc-800" role="progressbar" aria-label={metric.label} aria-valuenow={metric.value} aria-valuemin={0} aria-valuemax={totalBooks || 1}>
+                          <div className="h-full rounded-full" style={{ width: `${percent}%`, backgroundColor: metric.color }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="mt-5 grid grid-cols-2 gap-4 border-t border-zinc-800 pt-4 text-xs">
+                  <div>
+                    <h3 className="mb-2 font-medium text-zinc-300">Low stock</h3>
+                    {lowStockItems.length ? <ul className="space-y-2">{lowStockItems.map((book: any) => <li key={book.id} className="flex items-start justify-between gap-2"><span className="line-clamp-2 text-zinc-500">{book.title}</span><span className="shrink-0 text-amber-300">{book.availableCopies} left</span></li>)}</ul> : <p className="text-zinc-600">None</p>}
+                  </div>
+                  <div>
+                    <h3 className="mb-2 font-medium text-zinc-300">Never borrowed</h3>
+                    {neverBorrowedItems.length ? <ul className="space-y-2">{neverBorrowedItems.map((book: any) => <li key={book.id} className="line-clamp-2 text-zinc-500">{book.title}</li>)}</ul> : <p className="text-zinc-600">None</p>}
+                  </div>
+                </div>
+              </Panel>
+              <Panel title="Fine Distribution">
+                <div className="mb-4 grid grid-cols-3 gap-2 border-b border-zinc-800 pb-4 text-xs">
+                  <div><p className="text-zinc-500">Unpaid</p><p className="mt-1 font-semibold text-amber-300">₱{Number(fines.unpaid || 0).toFixed(2)}</p></div>
+                  <div><p className="text-zinc-500">Paid</p><p className="mt-1 font-semibold text-emerald-300">₱{Number(fines.paid || 0).toFixed(2)}</p></div>
+                  <div><p className="text-zinc-500">Total</p><p className="mt-1 font-semibold text-zinc-100">₱{(Number(fines.unpaid || 0) + Number(fines.paid || 0)).toFixed(2)}</p></div>
+                </div>
+                {(fines.monthly || []).length === 0 ? <div className="flex h-36 items-center justify-center text-sm text-zinc-500">No fines for this range</div> : <div className="h-40"><ResponsiveContainer width="100%" height="100%"><BarChart data={fines.monthly} margin={{ top: 4, right: 4, left: -18, bottom: 0 }}><CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#27272a" /><XAxis dataKey="month" stroke="#71717a" fontSize={10} tickLine={false} axisLine={false} /><YAxis stroke="#71717a" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(value: number) => `₱${value}`} /><Tooltip contentStyle={chartStyle} formatter={(value) => [`₱${Number(value || 0).toFixed(2)}`, ""]} /><Bar dataKey="unpaid" stackId="fines" fill="#F59E0B" radius={[0, 0, 0, 0]} name="Unpaid" /><Bar dataKey="paid" stackId="fines" fill="#10B981" radius={[4, 4, 0, 0]} name="Paid" /></BarChart></ResponsiveContainer></div>}
+              </Panel>
             </div>
           </div>
         </main>

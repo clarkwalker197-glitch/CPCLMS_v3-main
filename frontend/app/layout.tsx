@@ -5,6 +5,7 @@ import { AuthProvider } from "@/lib/auth-context";
 import { ThemeProvider } from "@/components/theme-provider";
 import { SWSelfHeal } from "@/components/SWSelfHeal";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
+import SiteFooter from "@/components/SiteFooter";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -82,9 +83,7 @@ export default function RootLayout({
             <SWSelfHeal />
             <OfflineIndicator />
             <main className="flex-1">{children}</main>
-            <footer className="w-full shrink-0 border-t border-zinc-800 bg-zinc-950 px-4 py-5 text-center text-xs text-zinc-500">
-              © 2026 Cordova Public College. All rights reserved.
-            </footer>
+            <SiteFooter />
           </AuthProvider>
         </ThemeProvider>
       </body>

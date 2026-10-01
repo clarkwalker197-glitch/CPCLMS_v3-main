@@ -15,7 +15,11 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   isAuthenticated: boolean;
-  login: (identifier: string, password: string) => Promise<{ success: boolean; error?: string; user?: User }>;
+  login: (identifier: string, password: string) => Promise<{
+    success: boolean;
+    error?: string;
+    user?: User;
+  }>;
   googleLogin: (credential: string) => Promise<{ success: boolean; error?: string; user?: User }>;
   register: (data: RegisterData) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
@@ -144,8 +148,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [refreshUser]);
 
   const login = async (identifier: string, password: string) => {
-    try {
-      const res = await api.login(identifier, password);
+  try {
+    const res = await api.login(identifier, password);
       if (res.success && res.data) {
         const nextUser = res.data.user;
         setUser(nextUser);
@@ -326,32 +330,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       {user && showIdleWarning && (
         <ModalLayer>
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4">
-          <div
-            role="alertdialog"
-            aria-modal="true"
-            aria-labelledby="idle-warning-title"
-            className="w-full max-w-sm rounded-2xl border border-zinc-700 bg-zinc-900 p-6 text-center shadow-2xl"
-          >
-            <h2 id="idle-warning-title" className="text-lg font-semibold text-white">
-              Still there?
-            </h2>
-            <p className="mt-2 text-sm text-zinc-400">
-              You will be logged out in 1 minute due to inactivity.
-            </p>
-            <button
-              type="button"
-              onClick={() => {
-                const now = Date.now();
-                lastActivityRef.current = now;
-                setStoredLastActivity(now);
-                setShowIdleWarning(false);
-                scheduleIdleTimers();
-              }}
-              className="mt-5 w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+            <div
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="idle-warning-title"
+              className="w-full max-w-sm rounded-2xl border border-zinc-700 bg-zinc-900 p-6 text-center shadow-2xl"
             >
-              Continue session
-            </button>
-          </div>
+              <h2 id="idle-warning-title" className="text-lg font-semibold text-white">
+                Still there?
+              </h2>
+              <p className="mt-2 text-sm text-zinc-400">
+                You will be logged out in 1 minute due to inactivity.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  const now = Date.now();
+                  lastActivityRef.current = now;
+                  setStoredLastActivity(now);
+                  setShowIdleWarning(false);
+                  scheduleIdleTimers();
+                }}
+                className="mt-5 w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+              >
+                Continue session
+              </button>
+            </div>
           </div>
         </ModalLayer>
       )}

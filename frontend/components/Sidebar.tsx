@@ -48,6 +48,7 @@ const navItems = [
 export default function Sidebar() {
   const pathname = usePathname();
   const { user } = useAuth();
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>(() => {
     // Auto-open parent if a child route is active on first render
@@ -70,7 +71,7 @@ export default function Sidebar() {
   });
 
   const renderNav = () => (
-    <nav className="flex-1 px-4 py-6 space-y-1.5 overflow-y-auto">
+    <nav className="flex-1 overflow-y-auto px-3 py-6 space-y-1.5 transition-[padding] duration-300 ease-in-out">
       {visibleNavItems.map((item) => {
         const Icon = item.icon;
         const hasChildren = !!item.children;
@@ -83,15 +84,26 @@ export default function Sidebar() {
           return (
             <div key={item.label}>
               <button
-                onClick={() => toggleMenu(item.label)}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors ${childActive ? "text-white" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}
-                aria-expanded={isOpen}
+                onClick={() => {
+                  if (isCollapsed) {
+                    setIsCollapsed(false);
+                    setOpenMenus((prev) => ({ ...prev, [item.label]: true }));
+                  } else {
+                    toggleMenu(item.label);
+                  }
+                }}
+                aria-label={item.label}
+                title={isCollapsed ? item.label : undefined}
+                className={`w-full flex items-center ${isCollapsed ? "gap-0" : "gap-3"} px-3 py-3 rounded-xl text-sm font-medium transition-[gap,color,background-color] duration-200 ease-in-out ${childActive ? "text-white" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}
+                aria-expanded={isOpen && !isCollapsed}
               >
-                <Icon className="w-5 h-5" />
-                <span className="flex-1 text-left">{item.label}</span>
-                <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                <Icon className="h-5 w-5 shrink-0" />
+                <span aria-hidden={isCollapsed} className={`min-w-0 flex-1 overflow-hidden whitespace-nowrap text-left transition-[max-width,opacity,transform] duration-200 ease-in-out ${isCollapsed ? "max-w-0 translate-x-1 opacity-0" : "max-w-48 translate-x-0 opacity-100"}`}>
+                  {item.label}
+                </span>
+                <ChevronDown aria-hidden={isCollapsed} className={`h-4 w-4 shrink-0 transition-[width,opacity,transform] duration-200 ease-in-out ${isCollapsed ? "w-0 opacity-0" : isOpen ? "rotate-180 opacity-100" : "opacity-100"}`} />
               </button>
-              {isOpen && (
+              {isOpen && !isCollapsed && (
                 <div className="mt-1 mb-1 ml-4 pl-3 border-l border-zinc-800 space-y-0.5">
                   {item.children.map((child: any) => {
                     const ChildIcon = child.icon;
@@ -111,9 +123,11 @@ export default function Sidebar() {
 
         const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
         return (
-          <Link key={item.label} href={item.href} className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors ${isActive ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}>
-            <Icon className="w-5 h-5" />
-            {item.label}
+          <Link key={item.label} href={item.href} aria-label={item.label} title={isCollapsed ? item.label : undefined} className={`flex items-center ${isCollapsed ? "gap-0" : "gap-3"} px-3 py-3 rounded-xl text-sm font-medium transition-[gap,color,background-color] duration-200 ease-in-out ${isActive ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}>
+            <Icon className="h-5 w-5 shrink-0" />
+            <span aria-hidden={isCollapsed} className={`min-w-0 flex-1 overflow-hidden whitespace-nowrap transition-[max-width,opacity,transform] duration-200 ease-in-out ${isCollapsed ? "max-w-0 translate-x-1 opacity-0" : "max-w-48 translate-x-0 opacity-100"}`}>
+              {item.label}
+            </span>
           </Link>
         );
       })}
@@ -122,19 +136,40 @@ export default function Sidebar() {
 
   return (
     <>
-      <aside className="hidden lg:flex w-64 shrink-0 flex-col border-r border-zinc-800 bg-zinc-900/60 sticky top-0 h-screen">
-      {/* Logo */}
-      <div className="flex items-center gap-3 px-6 py-6 border-b border-zinc-800">
+      <aside className={`hidden lg:flex ${isCollapsed ? "w-20" : "w-64"} shrink-0 flex-col border-r border-zinc-800 bg-zinc-900/60 sticky top-0 h-screen overflow-hidden transition-[width] duration-300 ease-in-out`}>
+      <button
+        type="button"
+        onClick={() => setIsCollapsed((collapsed) => !collapsed)}
+        aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+        aria-expanded={!isCollapsed}
+        title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+        className={`flex w-full shrink-0 items-center overflow-hidden border-b border-zinc-800 py-6 transition-[gap,padding] duration-300 ease-in-out ${isCollapsed ? "justify-center gap-0 px-4" : "gap-3 px-6"}`}
+      >
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/CPClogo.png" alt="Cordova Public College Logo" className="w-11 h-11 object-contain" />
-        <div>
-          <p className="font-bold text-white leading-tight">Cordova Public College</p>
+        <img src="/CPClogo.png" alt="Cordova Public College Logo" className="h-11 w-11 shrink-0 object-contain" />
+        <div aria-hidden={isCollapsed} className={`min-w-0 overflow-hidden whitespace-nowrap text-left transition-[max-width,opacity,transform] duration-200 ease-in-out ${isCollapsed ? "max-w-0 translate-x-1 opacity-0" : "max-w-48 translate-x-0 opacity-100"}`}>
+          <p className="font-bold leading-tight text-white">Cordova Public College</p>
           <p className="text-xs text-blue-300">Library Management System</p>
         </div>
-      </div>
+      </button>
 
       {renderNav()}
 
+      <div className="shrink-0 border-t border-zinc-800 px-5 py-4">
+        <div className={`relative overflow-hidden transition-[height] duration-300 ease-in-out ${isCollapsed ? "h-5" : "h-10"}`}>
+          <p className={`absolute inset-x-0 top-0 text-xs leading-5 text-zinc-500 transition-opacity duration-150 ${isCollapsed ? "opacity-0" : "opacity-100"}`}>
+            © 2026 Cordova Public College. All rights reserved.
+          </p>
+          <p
+            aria-hidden={!isCollapsed}
+            className={`absolute inset-0 text-xs text-zinc-500 transition-opacity duration-150 ${isCollapsed ? "opacity-100 delay-100" : "opacity-0"}`}
+            title="© 2026 Cordova Public College. All rights reserved."
+          >
+            ©
+            <span className="sr-only"> 2026 Cordova Public College. All rights reserved.</span>
+          </p>
+        </div>
+      </div>
       </aside>
 
       <nav className="fixed inset-x-3 bottom-[calc(0.75rem+min(env(safe-area-inset-bottom),2rem))] z-40 flex items-stretch justify-evenly gap-1 rounded-2xl border border-zinc-800 bg-zinc-900/95 p-2 shadow-2xl shadow-black/50 backdrop-blur lg:hidden" aria-label="Mobile navigation">

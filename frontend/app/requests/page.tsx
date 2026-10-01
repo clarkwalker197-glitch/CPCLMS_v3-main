@@ -416,7 +416,7 @@ export default function RequestsPage() {
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex">
       <Sidebar />
       <div className="flex-1 min-w-0">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-[calc(7rem+min(env(safe-area-inset-bottom),2rem))] lg:pb-8">
           {successMsg && (
             <div className="p-4 mb-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-sm text-emerald-400">
               {successMsg}
@@ -483,12 +483,12 @@ export default function RequestsPage() {
                                   <td className="px-6 py-4"><p className="text-zinc-100 font-medium">{txn.book?.title || "Unknown"}</p><p className="text-xs text-zinc-500">{txn.book?.author || ""}</p></td>
                                   <td className="px-6 py-4 text-zinc-400 hidden sm:table-cell">{txn.book?.accessionNo || "—"}</td><td className="px-6 py-4 text-zinc-400 hidden sm:table-cell">{formatDate(txn.borrowDate)}</td><td className="px-6 py-4 text-zinc-400 hidden md:table-cell">{formatDate(txn.dueDate)}</td><td className="px-6 py-4 text-zinc-400 hidden md:table-cell">{formatDate(txn.returnDate)}</td>
                                   <td className="px-6 py-4"><span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${txnStatusBadge[txn.status] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>{txnStatusLabel[txn.status] || txn.status}</span></td>
-                                  <td className="px-6 py-4"><span className={`font-medium ${txn.fineWaived ? "text-zinc-400" : txn.finePaid ? "text-emerald-400" : txn.fineAmount > 0 ? "text-amber-400" : "text-zinc-500"}`}>{txn.fineAmount ? `₱${txn.fineAmount.toFixed(2)} · ${txn.fineWaived ? "Waived" : txn.finePaid ? "Paid" : "Unpaid"}` : "—"}</span></td>
+                                  <td className="px-6 py-4"><span className={`font-medium ${txn.finePaid ? "text-emerald-400" : txn.fineAmount > 0 ? "text-amber-400" : "text-zinc-500"}`}>{txn.fineAmount ? `₱${txn.fineAmount.toFixed(2)} · ${txn.finePaid ? "Paid" : "Unpaid"}` : "—"}</span></td>
                                 </tr>)}</tbody>
                               </table>
                             </div>
                           </div>
-                          <div className="space-y-0 pb-[calc(4rem+env(safe-area-inset-bottom))] sm:hidden">
+                          <div className="space-y-0 sm:hidden">
                             {txns.map((txn: any) => (
                               <div key={txn.id} className="mb-4 last:mb-0">
                                 <BorrowHistoryCard transaction={txn} formatDate={formatDate} statusBadge={txnStatusBadge} statusLabel={txnStatusLabel} />
@@ -607,7 +607,6 @@ export default function RequestsPage() {
                       {records.map((req: any) => (
                         <tr key={req.id} className="border-t border-zinc-800/60 hover:bg-zinc-800/40 transition-colors">
                           <td className="px-6 py-4">
-                            {isLibrarian && req.transactionId && <p className="mb-1 font-mono text-xs text-blue-300">{formatBorrowId(req.transactionId)}</p>}
                             <div className="space-y-1">
                               {(req.books || []).map((book: any) => (
                                 <div key={book.requestId || book.id}>
@@ -672,7 +671,6 @@ export default function RequestsPage() {
                 records.map((req: any) => (
                   <article key={req.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-lg shadow-black/10">
                     <div className="border-b border-zinc-800/80 pb-3">
-                      {isLibrarian && req.transactionId && <p className="mb-2 break-all font-mono text-xs text-blue-300">{formatBorrowId(req.transactionId)}</p>}
                       {(req.books || []).map((book: any) => <div key={book.requestId || book.id} className="mb-2 last:mb-0"><p className="font-semibold text-zinc-100 break-words">{book.title || "Unknown"}</p><p className="mt-1 text-sm text-zinc-500">{book.accessionNo || ""}</p></div>)}
                     </div>
                     <div className="grid grid-cols-2 gap-3 py-4 text-sm"><div><p className="text-xs text-zinc-500">Member</p><p className="mt-1 break-words text-zinc-300">{req.user?.firstName} {req.user?.lastName}</p><p className="text-xs text-zinc-500">{req.user?.libraryId || ""}</p></div><div><p className="text-xs text-zinc-500">Request Date</p><p className="mt-1 text-zinc-300">{formatDate(req.requestDate)}</p></div><div className="col-span-2"><p className="text-xs text-zinc-500">Notes</p><p className="mt-1 whitespace-pre-wrap break-words text-zinc-300">{req.notes || "—"}</p></div></div>
@@ -792,6 +790,7 @@ export default function RequestsPage() {
                           <th className="px-6 py-3 font-medium">Book</th>
                           <th className="px-6 py-3 font-medium">Member</th>
                           <th className="px-6 py-3 font-medium hidden sm:table-cell"><SortHeader field="dueDate" sort={activeTxnSort} order={activeTxnSortOrder} onSort={(field) => changeActiveTxnSort(field, nextSortOrder(activeTxnSort, activeTxnSortOrder, field))}>Due Date</SortHeader></th>
+                          <th className="px-6 py-3 font-medium text-right">Fine</th>
                           <th className="px-6 py-3 font-medium text-right">Actions</th>
                         </tr>
                       </thead>
@@ -814,6 +813,7 @@ export default function RequestsPage() {
                                 {txn.status === "OVERDUE" && <span className="inline-flex items-center rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-400 ring-1 ring-red-500/30">Overdue</span>}
                               </div>
                             </td>
+                            <td className="px-6 py-4 text-right font-medium text-amber-400">₱{Number(txn.fineAmount || 0).toFixed(2)}</td>
                             <td className="px-6 py-4 text-right">
                               <div className="inline-flex items-center justify-end gap-1.5">
                                 <button

@@ -135,14 +135,9 @@ export default function Sidebar() {
 
       {renderNav()}
 
-      {/* Footer */}
-      <div className="px-6 py-5 border-t border-zinc-800">
-        <p className="text-xs text-zinc-500">© 2026 Cordova Public College</p>
-        <p className="text-xs text-zinc-600 mt-1">All rights reserved.</p>
-      </div>
       </aside>
 
-      <nav className="fixed inset-x-3 bottom-3 z-40 flex items-stretch justify-evenly gap-1 rounded-2xl border border-zinc-800 bg-zinc-900/95 p-2 shadow-2xl shadow-black/50 backdrop-blur lg:hidden" aria-label="Mobile navigation">
+      <nav className="fixed inset-x-3 bottom-[calc(0.75rem+min(env(safe-area-inset-bottom),2rem))] z-40 flex items-stretch justify-evenly gap-1 rounded-2xl border border-zinc-800 bg-zinc-900/95 p-2 shadow-2xl shadow-black/50 backdrop-blur lg:hidden" aria-label="Mobile navigation">
         {[
           { href: user?.role === "LIBRARIAN" ? "/dashboard" : "/student/dashboard", label: "Dashboard", icon: LayoutDashboard },
           { href: "/books", label: "Books", icon: BookOpen },

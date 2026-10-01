@@ -177,7 +177,7 @@ async register(input: RegisterInput, ipAddress?: string, userAgent?: string) {
     }
 
     const libraryId = input.libraryId;
-    if ((input.role === 'STUDENT' || input.role === 'FACULTY') && input.department && !isDepartmentCode(input.department)) {
+    if (input.department && !isDepartmentCode(input.department)) {
       throw new BadRequestError('Department must be one of the official programs');
     }
     const hashedPassword = await bcrypt.hash(input.password, 12);
@@ -189,7 +189,7 @@ const user = await prisma.user.create({
         lastName: input.lastName,
         email: input.email,
         password: hashedPassword,
-        role: input.role || 'STUDENT',
+        role: 'STUDENT',
         department: input.department,
         yearSection: input.yearSection,
         phone: input.phone,

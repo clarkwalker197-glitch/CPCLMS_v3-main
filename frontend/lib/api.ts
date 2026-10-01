@@ -294,7 +294,6 @@ async register(data: {
     libraryId: string;
     email: string;
     password: string;
-    role?: string;
     department?: string;
     yearSection?: string;
     phone?: string;

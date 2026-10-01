@@ -23,6 +23,8 @@ import crypto from 'crypto';
 
 type ActivityRequestContext = { ipAddress?: string; userAgent?: string };
 
+const FINE_PER_BOOK_PER_DAY = 5;
+
 function generateTransactionId(): string {
   return crypto.randomInt(0, 100_000_000).toString().padStart(8, '0');
 }
@@ -820,11 +822,10 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
     // Calculate fine
     let fineAmount = 0;
     if (isOverdue) {
-      const finePerDay = await policyService.getFloat('FINE_PER_DAY', 5);
       const dueStart = new Date(transaction.dueDate.getFullYear(), transaction.dueDate.getMonth(), transaction.dueDate.getDate());
       const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const diffDays = Math.floor((todayStart.getTime() - dueStart.getTime()) / (1000 * 60 * 60 * 24));
-      fineAmount = diffDays * finePerDay;
+      fineAmount = diffDays * FINE_PER_BOOK_PER_DAY;
     }
 
     const [updated] = await prisma.$transaction([
@@ -834,7 +835,7 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
           returnDate: now,
           status: 'RETURNED',
           fineAmount,
-          fineWaived: fineAmount > 0 && !transaction.finePaid,
+          finePaid: transaction.finePaid || fineAmount > 0,
           qrScanned: true,
         },
         include: {
@@ -874,14 +875,13 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
       '/requests'
     );
 
-    // Returning the book waives any overdue fine.
-    if (fineAmount > 0 && !transaction.finePaid) {
+    if (fineAmount > 0) {
       await prisma.notification.create({
         data: {
           userId: transaction.userId,
           type: 'OVERDUE_FINE',
-          title: 'Overdue Fine Waived',
-          message: `Your overdue fine of ₱${fineAmount.toFixed(2)} for "${transaction.book.title}" was waived when the book was returned.`,
+          title: 'Overdue Fine Paid',
+          message: `Your overdue fine of ₱${fineAmount.toFixed(2)} for "${transaction.book.title}" was automatically marked as paid when the book was returned.`,
           link: `/transactions/${transaction.id}`,
         },
       });
@@ -1079,11 +1079,10 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
   async synchronizeOverdueTransactions() {
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const finePerDay = await policyService.getFloat('FINE_PER_DAY', 5);
     return prisma.$executeRaw`
       UPDATE borrow_transactions
       SET status = 'OVERDUE',
-          fine_amount = GREATEST(0, (${todayStart}::date - due_date::date)) * ${finePerDay}
+          fine_amount = GREATEST(0, (${todayStart}::date - due_date::date)) * ${FINE_PER_BOOK_PER_DAY}
       WHERE status IN ('ACTIVE', 'OVERDUE')
         AND due_date < ${todayStart}
         AND return_date IS NULL
@@ -1098,7 +1097,6 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
       where: { id: transactionId },
     });
     if (!transaction) throw new NotFoundError('Transaction');
-    if (transaction.fineWaived) throw new BadRequestError('Fine was waived when the book was returned');
     if (transaction.finePaid) throw new BadRequestError('Fine already paid');
     if (!transaction.fineAmount || transaction.fineAmount <= 0) {
       throw new BadRequestError('No fine to pay');
@@ -1351,10 +1349,9 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
     await this.synchronizeOverdueTransactions();
 
     for (const txn of overdueTransactions) {
-      const finePerDay = await policyService.getFloat('FINE_PER_DAY', 5);
       const dueStart = new Date(txn.dueDate.getFullYear(), txn.dueDate.getMonth(), txn.dueDate.getDate());
       const diffDays = Math.floor((todayStart.getTime() - dueStart.getTime()) / (1000 * 60 * 60 * 24));
-      const fine = Math.max(0, diffDays) * finePerDay;
+      const fine = Math.max(0, diffDays) * FINE_PER_BOOK_PER_DAY;
 
       await prisma.notification.create({
         data: {

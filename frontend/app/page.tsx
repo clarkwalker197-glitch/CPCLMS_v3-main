@@ -152,12 +152,6 @@ export default function Home() {
         </section>
       </main>
 
-      <footer className="border-t border-zinc-800 py-8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2 text-sm text-zinc-500">
-          <p>© {new Date().getFullYear()} Cordova Public College Library</p>
-          <p>Library Management System</p>
-        </div>
-      </footer>
     </div>
   );
 }

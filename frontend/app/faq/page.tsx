@@ -134,7 +134,7 @@ export default function FaqPage() {
       <div className="min-h-screen bg-zinc-950 text-zinc-100 lg:flex">
         <Sidebar />
         <main className="min-w-0 flex-1">
-          <div className="mx-auto max-w-4xl px-4 py-8 pb-28 sm:px-6 lg:px-8 lg:pb-8">
+          <div className="mx-auto max-w-4xl px-4 py-8 pb-[calc(7rem+min(env(safe-area-inset-bottom),2rem))] sm:px-6 lg:px-8 lg:pb-8">
             <div className="mb-8 flex items-center justify-between gap-4">
               <div>
                 <h1 className="text-2xl font-bold text-white">{isLibrarian ? "FAQ Manager" : "Frequently Asked Questions"}</h1>

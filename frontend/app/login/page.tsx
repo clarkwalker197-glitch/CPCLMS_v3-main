@@ -279,12 +279,6 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Copyright footer */}
-        <div className="pb-6 text-center">
-          <p className="text-xs text-zinc-600">
-            © 2026 Cordova Public College. All rights reserved.
-          </p>
-        </div>
       </div>
     </GoogleOAuthProvider>
   );

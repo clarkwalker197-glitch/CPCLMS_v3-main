@@ -20,7 +20,7 @@ export default function BorrowHistoryCard({
   const isBorrowed = transaction.status === "ACTIVE" || transaction.status === "OVERDUE";
 
   return (
-    <article className="rounded-2xl border border-zinc-800 bg-zinc-900/90 p-4 shadow-lg shadow-black/10 transition-colors hover:border-zinc-700">
+    <article className="rounded-2xl border border-zinc-800 bg-zinc-900/90 px-4 pt-4 pb-2 shadow-lg shadow-black/10 transition-colors hover:border-zinc-700">
       <div className="border-b border-zinc-800/80 pb-3">
         <p className="break-words font-semibold text-zinc-100">{transaction.book?.title || "Unknown"}</p>
         <p className="mt-1 break-words text-sm text-zinc-500">{transaction.book?.author || "Unknown author"}</p>
@@ -47,8 +47,8 @@ export default function BorrowHistoryCard({
         {hasFine && (
           <div>
             <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">Fine</p>
-            <p className={`mt-1 text-sm font-semibold ${transaction.fineWaived ? "text-zinc-400" : transaction.finePaid ? "text-emerald-400" : "text-amber-400"}`}>
-              ₱{transaction.fineAmount.toFixed(2)} · {transaction.fineWaived ? "Waived" : transaction.finePaid ? "Paid" : "Unpaid"}
+            <p className={`mt-1 text-sm font-semibold ${transaction.finePaid ? "text-emerald-400" : "text-amber-400"}`}>
+              ₱{transaction.fineAmount.toFixed(2)} · {transaction.finePaid ? "Paid" : "Unpaid"}
             </p>
           </div>
         )}

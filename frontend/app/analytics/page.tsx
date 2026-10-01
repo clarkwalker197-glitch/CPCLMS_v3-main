@@ -58,7 +58,7 @@ export default function AnalyticsPage() {
   const [categories, setCategories] = useState<any[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
   const [topBooks, setTopBooks] = useState<any[]>([]);
-  const [fines, setFines] = useState<any>({ paid: 0, unpaid: 0, waived: 0, monthly: [] });
+  const [fines, setFines] = useState<any>({ paid: 0, unpaid: 0, monthly: [] });
   const [returns, setReturns] = useState<any>({ onTimeRate: 0 });
   const [requests, setRequests] = useState<any>({});
   const [inventory, setInventory] = useState<any>({ lowStock: [], neverBorrowed: [] });
@@ -141,7 +141,7 @@ export default function AnalyticsPage() {
       <div className="min-h-screen bg-zinc-950 text-zinc-100 lg:flex">
         <Sidebar />
         <main className="min-w-0 flex-1">
-          <div className="mx-auto max-w-7xl px-4 py-8 pb-[calc(5rem+env(safe-area-inset-bottom))] sm:px-6 lg:px-8 lg:pb-8">
+          <div className="mx-auto max-w-7xl px-4 py-8 pb-[calc(7rem+min(env(safe-area-inset-bottom),2rem))] sm:px-6 lg:px-8 lg:pb-8">
             <header className="mb-8 flex items-center justify-between gap-4">
               <div>
                 <h1 className="text-2xl font-bold text-white">Report</h1>
@@ -194,7 +194,7 @@ export default function AnalyticsPage() {
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
               <Panel title="Request Pipeline"><div className="grid grid-cols-2 gap-4 text-sm"><div><p className="text-zinc-500">Pending</p><p className="text-xl font-semibold text-amber-400">{requests.pending ?? 0}</p></div><div><p className="text-zinc-500">Approved</p><p className="text-xl font-semibold text-emerald-400">{requests.approved ?? 0}</p></div><div><p className="text-zinc-500">Rejected</p><p className="text-xl font-semibold text-red-400">{requests.rejected ?? 0}</p></div><div><p className="text-zinc-500">Approval rate</p><p className="text-xl font-semibold text-blue-400">{Number(requests.approvalRate || 0).toFixed(1)}%</p></div></div><p className="mt-4 text-xs text-zinc-500">Average processing time: {Number(requests.averageApprovalHours || 0).toFixed(1)} hours</p></Panel>
               <Panel title="Inventory Health"><div className="mb-4 flex items-center gap-2"><Package className="h-4 w-4 text-amber-400" /><span className="text-sm text-zinc-300">{inventory.lowStockCount ?? 0} low-stock, {inventory.unavailableCount ?? 0} unavailable, {inventory.neverBorrowedCount ?? 0} never borrowed</span></div><div className="space-y-2">{(inventory.lowStock || []).slice(0, 6).map((book: any) => <div key={book.id} className="flex justify-between gap-3 text-xs"><span className="truncate text-zinc-300">{book.title}</span><span className="text-amber-400">{book.availableCopies} left</span></div>)}</div></Panel>
-              <Panel title="Fine Disposition"><div className="mb-3 grid grid-cols-3 gap-2 text-xs"><span className="text-amber-400">Unpaid ₱{Number(fines.unpaid || 0).toFixed(2)}</span><span className="text-emerald-400">Paid ₱{Number(fines.paid || 0).toFixed(2)}</span><span className="text-zinc-400">Waived ₱{Number(fines.waived || 0).toFixed(2)}</span></div>{(fines.monthly || []).length === 0 ? <p className="text-sm text-zinc-500">No fines for this range</p> : <div className="h-40"><ResponsiveContainer width="100%" height="100%"><BarChart data={fines.monthly}><CartesianGrid strokeDasharray="3 3" stroke="#27272a" /><XAxis dataKey="month" stroke="#71717a" fontSize={10} tickLine={false} axisLine={false} /><YAxis stroke="#71717a" fontSize={10} tickLine={false} axisLine={false} /><Tooltip contentStyle={chartStyle} /><Bar dataKey="unpaid" stackId="fines" fill="#f59e0b" name="Unpaid" /><Bar dataKey="paid" stackId="fines" fill="#10b981" name="Paid" /><Bar dataKey="waived" stackId="fines" fill="#a1a1aa" name="Waived" /></BarChart></ResponsiveContainer></div>}</Panel>
+              <Panel title="Fine Disposition"><div className="mb-3 grid grid-cols-2 gap-2 text-xs"><span className="text-amber-400">Unpaid ₱{Number(fines.unpaid || 0).toFixed(2)}</span><span className="text-emerald-400">Paid ₱{Number(fines.paid || 0).toFixed(2)}</span></div>{(fines.monthly || []).length === 0 ? <p className="text-sm text-zinc-500">No fines for this range</p> : <div className="h-40"><ResponsiveContainer width="100%" height="100%"><BarChart data={fines.monthly}><CartesianGrid strokeDasharray="3 3" stroke="#27272a" /><XAxis dataKey="month" stroke="#71717a" fontSize={10} tickLine={false} axisLine={false} /><YAxis stroke="#71717a" fontSize={10} tickLine={false} axisLine={false} /><Tooltip contentStyle={chartStyle} /><Bar dataKey="unpaid" stackId="fines" fill="#f59e0b" name="Unpaid" /><Bar dataKey="paid" stackId="fines" fill="#10b981" name="Paid" /></BarChart></ResponsiveContainer></div>}</Panel>
             </div>
           </div>
         </main>

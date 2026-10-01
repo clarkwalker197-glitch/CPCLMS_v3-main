@@ -10,7 +10,6 @@ const departmentCodeSchema = z.enum(DEPARTMENTS.map((department) => department.c
 // Enum values matching the Prisma Role enum
 /** @see prisma/schema.prisma Role enum */
 const RoleValues = ['STUDENT', 'FACULTY', 'LIBRARIAN'] as const;
-const PublicRegistrationRoleValues = ['STUDENT', 'FACULTY'] as const;
 const nameSchema = (label: string) => z
   .string()
   .min(1, `${label} is required`)
@@ -42,32 +41,30 @@ email: z
       .string()
       .email('Invalid email address')
       .transform((email) => email.toLowerCase().trim()),
-    role: z
-      .enum(PublicRegistrationRoleValues, {
-        errorMap: () => ({ message: 'Role must be STUDENT or FACULTY' }),
-      })
-      .optional(),
     password: z
       .string()
       .min(8, 'Password must be at least 8 characters')
-      .max(128),
+      .max(128)
+      .refine(
+        (password) => [/[A-Za-z]/.test(password), /\d/.test(password), /[^A-Za-z0-9\s]/.test(password)].filter(Boolean).length >= 2,
+        'Password must include at least two of letters, numbers, or symbols'
+      ),
     department: departmentCodeSchema.optional(),
     yearSection: z.string().optional(),
     phone: z.string().optional(),
   }).superRefine((data, ctx) => {
-    const role = data.role ?? 'STUDENT';
-    if (role === 'STUDENT' && !data.yearSection?.trim()) {
+    if (!data.yearSection?.trim()) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['yearSection'],
         message: 'Year & Section is required for Student accounts',
       });
     }
-    if ((role === 'STUDENT' || role === 'FACULTY') && !data.department) {
+    if (!data.department) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['department'],
-        message: 'Department is required for Student and Faculty accounts',
+        message: 'Department is required for Student accounts',
       });
     }
   }),

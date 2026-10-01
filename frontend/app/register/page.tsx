@@ -7,6 +7,28 @@ import { useAuth } from '@/lib/auth-context';
 import api from '@/lib/api';
 import { isValidName, nameValidationMessage, sanitizeNameInput } from '@/lib/name-validation';
 
+function analyzePassword(password: string) {
+  const categories = [
+    /[A-Za-z]/.test(password),
+    /\d/.test(password),
+    /[^A-Za-z0-9\s]/.test(password),
+  ].filter(Boolean).length;
+  const meetsRequirements = password.length >= 8 && categories >= 2;
+  const level = !password
+    ? null
+    : !meetsRequirements
+      ? 'Weak'
+      : password.length >= 12 && categories === 3
+        ? 'Strong'
+        : 'Medium';
+
+  return {
+    level,
+    score: level === 'Strong' ? 3 : level === 'Medium' ? 2 : level === 'Weak' ? 1 : 0,
+    meetsRequirements,
+  };
+}
+
 export default function RegisterPage() {
   const { register, isAuthenticated, loading } = useAuth();
   const router = useRouter();
@@ -18,7 +40,6 @@ const [formData, setFormData] = useState({
     phone: '',
     department: '',
     yearSection: '',
-    role: 'STUDENT',
     password: '',
     confirmPassword: '',
   });
@@ -27,6 +48,7 @@ const [formData, setFormData] = useState({
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [departments, setDepartments] = useState<Array<{ code: string; name: string }>>([]);
+  const passwordStatus = analyzePassword(formData.password);
 
   useEffect(() => {
     if (!loading && isAuthenticated) {
@@ -65,12 +87,12 @@ const [formData, setFormData] = useState({
       return;
     }
 
-    if (formData.password.length < 8) {
-      setError('Password must be at least 8 characters');
+    if (!passwordStatus.meetsRequirements) {
+      setError('Password must be at least 8 characters and include at least two of letters, numbers, or symbols');
       return;
     }
 
-    if (formData.role === 'STUDENT' && !formData.yearSection.trim()) {
+    if (!formData.yearSection.trim()) {
       setError('Year & Section is required for Student accounts');
       return;
     }
@@ -86,7 +108,6 @@ const result = await register({
         phone: formData.phone.trim(),
         department: formData.department,
         yearSection: formData.yearSection.trim(),
-        role: formData.role,
         password: formData.password,
       });
 
@@ -335,12 +356,12 @@ if (result.success) {
                   </div>
                 </div>
 
-{/* Year & Section + Role */}
+                {/* Academic Details */}
                 <div>
                   <label className="block text-sm font-medium text-zinc-300 mb-1.5">
                     Academic Details
                   </label>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3">
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                         <svg className="w-5 h-5 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -351,37 +372,15 @@ if (result.success) {
                         id="yearSection"
                         name="yearSection"
                         type="text"
-                        required={formData.role === 'STUDENT'}
+                        required
                         value={formData.yearSection}
                         onChange={handleChange}
                         className={inputClass}
                         placeholder="Year &amp; Section"
                       />
                     </div>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <svg className="w-5 h-5 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
-                      </div>
-                      <select
-                        id="role"
-                        name="role"
-                        required
-                        value={formData.role}
-                        onChange={handleChange}
-                        className="w-full pl-10 pr-3 py-3 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition appearance-none"
-                      >
-                        <option value="STUDENT" className="bg-zinc-900 text-white">Student</option>
-                        <option value="FACULTY" className="bg-zinc-900 text-white">Faculty</option>
-                      </select>
-                      <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                        <svg className="w-4 h-4 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                        </svg>
-                      </div>
-                    </div>
                   </div>
+                  <p className="mt-2 text-xs text-zinc-500">Faculty accounts are created by a librarian. Please contact the library.</p>
                 </div>
 
                 {/* Password */}
@@ -403,7 +402,7 @@ if (result.success) {
                       value={formData.password}
                       onChange={handleChange}
                       className="w-full pl-10 pr-14 py-3 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                      placeholder="Min. 8 characters"
+                      placeholder="8+ characters, mixed types"
                     />
                     <button
                       type="button"
@@ -413,6 +412,23 @@ if (result.success) {
                     >
                       {showPassword ? 'Hide' : 'Show'}
                     </button>
+                  </div>
+                  <div className="mt-2 space-y-1.5" aria-live="polite">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-zinc-500">Password strength</span>
+                      <span className={passwordStatus.level === 'Strong' ? 'text-emerald-400' : passwordStatus.level === 'Medium' ? 'text-amber-400' : passwordStatus.level === 'Weak' ? 'text-red-400' : 'text-zinc-500'}>
+                        {passwordStatus.level || 'Enter a password'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-1" role="meter" aria-label="Password strength" aria-valuemin={0} aria-valuemax={3} aria-valuenow={passwordStatus.score}>
+                      {[0, 1, 2].map((segment) => (
+                        <span
+                          key={segment}
+                          className={`h-1 rounded-full ${segment < passwordStatus.score ? passwordStatus.level === 'Strong' ? 'bg-emerald-500' : passwordStatus.level === 'Medium' ? 'bg-amber-500' : 'bg-red-500' : 'bg-zinc-800'}`}
+                        />
+                      ))}
+                    </div>
+                    <p className="text-xs text-zinc-500">Use at least 8 characters and combine at least two: letters, numbers, or symbols.</p>
                   </div>
                 </div>
 
@@ -477,12 +493,6 @@ if (result.success) {
         </div>
       </div>
 
-      {/* Copyright footer */}
-      <div className="pb-6 text-center">
-        <p className="text-xs text-zinc-600">
-          © 2026 Cordova Public College. All rights reserved.
-        </p>
-      </div>
     </div>
   );
 }

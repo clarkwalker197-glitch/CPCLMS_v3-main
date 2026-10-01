@@ -16,7 +16,7 @@ export default function ResponsiveTable({
   return (
     <>
       {desktop && <div className={`hidden sm:block ${desktopClassName}`}>{desktop}</div>}
-      <div className={`space-y-4 pb-20 sm:hidden ${mobileClassName}`}>{mobile}</div>
+      <div className={`space-y-4 sm:hidden ${mobileClassName}`}>{mobile}</div>
     </>
   );
 }

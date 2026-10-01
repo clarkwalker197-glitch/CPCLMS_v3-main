@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "CPC Library | Smart Library Management System",
+  title: "PWA-based CPC Library System",
   description:
     "A modern, smart library management system for Colegio de Porta Coeli. Manage books, borrow requests, reservations, and more.",
   keywords: [
@@ -32,7 +32,7 @@ export const metadata: Metadata = {
   themeColor: "#041dc2",
   appleWebApp: {
     capable: true,
-    title: "CPC Library",
+    title: "PWA-based CPC Library System",
     statusBarStyle: "default",
   },
   icons: {
@@ -43,10 +43,10 @@ export const metadata: Metadata = {
   other: {
     "apple-mobile-web-app-capable": "yes",
     "apple-mobile-web-app-status-bar-style": "default",
-    "apple-mobile-web-app-title": "CPCLMS",
+    "apple-mobile-web-app-title": "PWA-based CPC Library System",
   },
   openGraph: {
-    title: "CPC Library",
+    title: "PWA-based CPC Library System",
     description: "Smart Library Management System for Colegio de Porta Coeli",
     type: "website",
     locale: "en_PH",
@@ -82,6 +82,9 @@ export default function RootLayout({
             <SWSelfHeal />
             <OfflineIndicator />
             <main className="flex-1">{children}</main>
+            <footer className="w-full shrink-0 border-t border-zinc-800 bg-zinc-950 px-4 py-5 text-center text-xs text-zinc-500">
+              © 2026 Cordova Public College. All rights reserved.
+            </footer>
           </AuthProvider>
         </ThemeProvider>
       </body>

@@ -364,7 +364,7 @@ export class ReportService {
       t.returnDate || '',
       t.status,
       t.fineAmount || 0,
-      t.fineAmount && t.fineAmount > 0 ? (t.fineWaived ? 'Waived' : t.finePaid ? 'Paid' : 'Unpaid') : '—',
+      t.fineAmount && t.fineAmount > 0 ? (t.finePaid ? 'Paid' : 'Unpaid') : '—',
     ]);
 
     return this.createExcel('Transactions', headers, rows, [28, 25, 15, 40, 15, 14, 14, 14, 12, 10, 10]);
@@ -576,7 +576,6 @@ export class ReportService {
     const fineDispositionSheet = this.addMonthlyReportSheet(workbook, 'Fine Disposition', 'Fine Disposition', ['Disposition', 'Amount (PHP)'], [
       ['Unpaid', Number(fines.unpaid || 0)],
       ['Paid', Number(fines.paid || 0)],
-      ['Waived', Number(fines.waived || 0)],
       ['Total', Number(fines.total || 0)],
     ], [24, 20]);
     fineDispositionSheet.getColumn(2).numFmt = '₱#,##0.00';

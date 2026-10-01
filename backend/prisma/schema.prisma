@@ -252,7 +252,6 @@ model BorrowTransaction {
   transactionId String?        @map("transaction_id")
   fineAmount Float?            @default(0) @map("fine_amount")
   finePaid   Boolean           @default(false) @map("fine_paid")
-  fineWaived Boolean           @default(false) @map("fine_waived")
   notes      String?
   qrCode     String?           @map("qr_code") /// Base64 PNG QR code for this transaction
   qrScanned  Boolean           @default(false) @map("qr_scanned") /// Whether QR was scanned at return

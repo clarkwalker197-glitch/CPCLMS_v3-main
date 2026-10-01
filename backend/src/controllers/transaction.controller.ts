@@ -217,6 +217,41 @@ export const cancelReservation = asyncHandler(
   }
 );
 
+export const approveReservation = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const reservation = await transactionService.approveReservation(
+      req.params.id,
+      req.user!.userId,
+      { ipAddress: req.ip, userAgent: req.get('user-agent') }
+    );
+    sendSuccess(res, reservation, 'Reservation approved');
+  }
+);
+
+export const rejectReservation = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const { reason } = req.body;
+    const reservation = await transactionService.rejectReservation(
+      req.params.id,
+      req.user!.userId,
+      reason || 'No reason provided',
+      { ipAddress: req.ip, userAgent: req.get('user-agent') }
+    );
+    sendSuccess(res, reservation, 'Reservation rejected');
+  }
+);
+
+export const pickupReservation = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const reservation = await transactionService.pickupReservation(
+      req.params.id,
+      req.user!.userId,
+      { ipAddress: req.ip, userAgent: req.get('user-agent') }
+    );
+    sendSuccess(res, reservation, 'Reserved book picked up successfully');
+  }
+);
+
 export const listReservations = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const userId =

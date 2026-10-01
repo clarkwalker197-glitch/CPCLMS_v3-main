@@ -558,6 +558,26 @@ async createBorrowRequest(data: {
     return this.get(`/reservations${query}`);
   }
 
+  async reserveBook(bookId: string): Promise<ApiResponse<any>> {
+    return this.post('/reservations', { bookId });
+  }
+
+  async cancelReservation(id: string): Promise<ApiResponse<any>> {
+    return this.put(`/reservations/${encodeURIComponent(id)}/cancel`);
+  }
+
+  async approveReservation(id: string): Promise<ApiResponse<any>> {
+    return this.put(`/reservations/${encodeURIComponent(id)}/approve`);
+  }
+
+  async rejectReservation(id: string, reason?: string): Promise<ApiResponse<any>> {
+    return this.put(`/reservations/${encodeURIComponent(id)}/reject`, { reason: reason || 'No reason provided' });
+  }
+
+  async pickupReservation(id: string): Promise<ApiResponse<any>> {
+    return this.put(`/reservations/${encodeURIComponent(id)}/pickup`);
+  }
+
   async approveRequest(id: string): Promise<ApiResponse<any>> {
     return this.put(`/transactions/requests/${id}/approve`);
   }

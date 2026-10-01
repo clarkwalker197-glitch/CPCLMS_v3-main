@@ -151,6 +151,31 @@ export default function BooksPage() {
     setCart((prev) => [...prev, book]);
   };
 
+  const handleReserveBook = async (book: any) => {
+    if (!user) {
+      router.push('/login');
+      return;
+    }
+    if (user.role === 'LIBRARIAN') {
+      setError('Librarians do not reserve books.');
+      return;
+    }
+
+    try {
+      setError('');
+      const res = await api.reserveBook(book.id);
+      if (res.success) {
+        setSuccessMsg(`Reservation placed for "${book.title}".`);
+        loadData();
+        setTimeout(() => setSuccessMsg(''), 4000);
+        return;
+      }
+      setError(res.error || 'Unable to reserve this book.');
+    } catch {
+      setError('Unable to reserve this book right now.');
+    }
+  };
+
   const handleRemoveFromCart = (id: string) => {
     setCart((prev) => prev.filter((b) => b.id !== id));
   };
@@ -502,20 +527,30 @@ export default function BooksPage() {
                             </button>
                           </>
                         ) : (
-                          <button
-                            onClick={() => handleAddToCart(book)}
-                            disabled={!isPhysicalBookAvailable(book)}
-                            className={`flex-1 px-1.5 py-2 text-[11px] font-semibold text-white rounded-lg transition-colors sm:px-3 sm:text-sm ${inCart(book.id)
-                                ? "bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-600/20"
-                                : "bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-600/20"
-                              } disabled:opacity-40 disabled:cursor-not-allowed`}
-                          >
-                            {!isPhysicalBookAvailable(book)
-                              ? "Unavailable"
-                              : inCart(book.id)
-                                ? "Remove"
-                                : "Borrow"}
-                          </button>
+                          <>
+                            <button
+                              onClick={() => handleAddToCart(book)}
+                              disabled={!isPhysicalBookAvailable(book)}
+                              className={`flex-1 px-1.5 py-2 text-[11px] font-semibold text-white rounded-lg transition-colors sm:px-3 sm:text-sm ${inCart(book.id)
+                                  ? "bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-600/20"
+                                  : "bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-600/20"
+                                } disabled:opacity-40 disabled:cursor-not-allowed`}
+                            >
+                              {!isPhysicalBookAvailable(book)
+                                ? "Unavailable"
+                                : inCart(book.id)
+                                  ? "Remove"
+                                  : "Borrow"}
+                            </button>
+                            {!isPhysicalBookAvailable(book) && (
+                              <button
+                                onClick={() => handleReserveBook(book)}
+                                className="flex-1 rounded-lg bg-amber-500/15 px-1.5 py-2 text-[11px] font-semibold text-amber-300 transition-colors hover:bg-amber-500/20 sm:px-3 sm:text-sm"
+                              >
+                                Reserve
+                              </button>
+                            )}
+                          </>
                         )}
                       </div>
                     </div>
@@ -601,16 +636,26 @@ export default function BooksPage() {
                               </button>
                             </div>
                           ) : (
-                            <button
-                              onClick={() => handleAddToCart(book)}
-                              disabled={!isPhysicalBookAvailable(book)}
-                              className={`px-3 py-1.5 text-white text-xs font-semibold rounded-lg transition-colors ${inCart(book.id)
-                                  ? "bg-emerald-600 hover:bg-emerald-700"
-                                  : "bg-blue-600 hover:bg-blue-700"
-                                } disabled:opacity-40 disabled:cursor-not-allowed`}
-                            >
-                              {!isPhysicalBookAvailable(book) ? "Unavailable" : inCart(book.id) ? "Remove" : "Borrow"}
-                            </button>
+                            <div className="inline-flex items-center gap-2">
+                              <button
+                                onClick={() => handleAddToCart(book)}
+                                disabled={!isPhysicalBookAvailable(book)}
+                                className={`px-3 py-1.5 text-white text-xs font-semibold rounded-lg transition-colors ${inCart(book.id)
+                                    ? "bg-emerald-600 hover:bg-emerald-700"
+                                    : "bg-blue-600 hover:bg-blue-700"
+                                  } disabled:opacity-40 disabled:cursor-not-allowed`}
+                              >
+                                {!isPhysicalBookAvailable(book) ? "Unavailable" : inCart(book.id) ? "Remove" : "Borrow"}
+                              </button>
+                              {!isPhysicalBookAvailable(book) && (
+                                <button
+                                  onClick={() => handleReserveBook(book)}
+                                  className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-500/15 text-amber-300 hover:bg-amber-500/20"
+                                >
+                                  Reserve
+                                </button>
+                              )}
+                            </div>
                           )}
                         </td>
                       </tr>

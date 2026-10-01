@@ -37,6 +37,7 @@ const navItems = [
   },
   { href: "/members", label: "Members", icon: Users },
   { href: "/requests", label: "Borrow Requests", icon: ClipboardList },
+  { href: "/reservations", label: "Reservations", icon: BookOpenText },
   { href: "/faq", label: "FAQ", icon: HelpCircle },
   { href: "/suggestions", label: "Suggestions", icon: MessageSquare },
   { href: "/acquisition-requests", label: "Request a Book", icon: LibraryBig },

@@ -85,6 +85,52 @@ export class TransactionService {
     throw new ConflictError('Could not allocate a unique transaction ID. Please retry approval.');
   }
 
+  static getReservationRolePriority(role?: Role | null): number {
+    switch (role) {
+      case Role.FACULTY:
+        return 0;
+      case Role.STUDENT:
+        return 1;
+      default:
+        return 2;
+    }
+  }
+
+  static sortReservationsByPriority<T extends { user?: { role?: Role | null } | null; reservationDate?: Date | string | null; id?: string | null }>(
+    a: T,
+    b: T
+  ): number {
+    const priorityDelta = TransactionService.getReservationRolePriority(a.user?.role) - TransactionService.getReservationRolePriority(b.user?.role);
+    if (priorityDelta !== 0) return priorityDelta;
+
+    const aTime = a.reservationDate ? new Date(a.reservationDate).getTime() : Number.MAX_SAFE_INTEGER;
+    const bTime = b.reservationDate ? new Date(b.reservationDate).getTime() : Number.MAX_SAFE_INTEGER;
+    if (aTime !== bTime) return aTime - bTime;
+
+    const aId = a.id ?? '';
+    const bId = b.id ?? '';
+    return aId.localeCompare(bId);
+  }
+
+  private async recalculateReservationQueueForBook(bookId: string, tx: Prisma.TransactionClient = prisma) {
+    const activeReservations = await tx.reservation.findMany({
+      where: { bookId, status: 'ACTIVE' },
+      include: { user: { select: { role: true } } },
+      orderBy: [{ user: { role: 'asc' } }, { reservationDate: 'asc' }, { id: 'asc' }],
+    });
+
+    const ordered = [...activeReservations].sort(TransactionService.sortReservationsByPriority);
+    for (let index = 0; index < ordered.length; index += 1) {
+      const nextReservation = ordered[index];
+      if (nextReservation.queuePosition !== index + 1) {
+        await tx.reservation.update({
+          where: { id: nextReservation.id },
+          data: { queuePosition: index + 1 },
+        });
+      }
+    }
+  }
+
   /**
    * Create borrow request(s)
    * - Enforces a maximum of 3 books per transaction.
@@ -866,6 +912,8 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
       }),
     ]);
 
+    await this.recalculateReservationQueueForBook(transaction.bookId);
+
     // Notify all librarians about the returned book
     const borrowerName = `${transaction.user.firstName} ${transaction.user.lastName}`;
     await notificationService.notifyAllLibrarians(
@@ -887,11 +935,10 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
       });
     }
 
-    // Check and notify next reservation in queue
     const nextReservation = await prisma.reservation.findFirst({
       where: { bookId: transaction.bookId, status: 'ACTIVE' },
-      orderBy: { queuePosition: 'asc' },
-      include: { user: { select: { firstName: true, lastName: true } } },
+      orderBy: [{ user: { role: 'asc' } }, { reservationDate: 'asc' }, { queuePosition: 'asc' }],
+      include: { user: { select: { firstName: true, lastName: true, role: true } } },
     });
 
     if (nextReservation) {
@@ -1192,24 +1239,31 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
    * - Auto-positions in queue
    */
   async reserveBook(userId: string, bookId: string, auditContext?: ActivityRequestContext) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, firstName: true, lastName: true, role: true },
+    });
+    if (!user) throw new NotFoundError('User');
+    if (!['STUDENT', 'FACULTY'].includes(user.role)) {
+      throw new BadRequestError('Only students and faculty can reserve books.');
+    }
+
     const book = await prisma.book.findUnique({ where: { id: bookId } });
     if (!book) throw new NotFoundError('Book');
-
-    // Allow reservation even if available (for future-borrow planning)
-    // But warn via notification
+    if (book.availableCopies > 0 && book.status === 'AVAILABLE') {
+      throw new BadRequestError('This book is currently available. Please borrow it instead.');
+    }
 
     const existing = await prisma.reservation.findFirst({
       where: { userId, bookId, status: 'ACTIVE' },
     });
     if (existing) throw new ConflictError('You already have an active reservation for this book');
 
-    // Check if already borrowed
     const activeBorrow = await prisma.borrowTransaction.findFirst({
       where: { userId, bookId, status: 'ACTIVE' },
     });
     if (activeBorrow) throw new ConflictError('You already have this book borrowed');
 
-    // Check queue limit
     const queueLimit = await policyService.getNumber('RESERVATION_QUEUE_LIMIT', 10);
     const activeReservations = await prisma.reservation.count({
       where: { bookId, status: 'ACTIVE' },
@@ -1218,19 +1272,40 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
       throw new BadRequestError(`Reservation queue is full (max ${queueLimit}) for this book`);
     }
 
-    // Get expiry days
     const maxExpiryDays = await policyService.getNumber('MAX_RESERVATION_DAYS', 3);
+    const reservation = await prisma.$transaction(async (tx) => {
+      const queuePosition = (await tx.reservation.count({ where: { bookId, status: 'ACTIVE' } })) + 1;
+      const created = await tx.reservation.create({
+        data: {
+          userId,
+          bookId,
+          status: 'ACTIVE',
+          expiryDate: new Date(Date.now() + maxExpiryDays * 24 * 60 * 60 * 1000),
+          queuePosition,
+          notified: false,
+        },
+        include: {
+          book: { select: { title: true, author: true, accessionNo: true, isbn: true } },
+          user: { select: { firstName: true, lastName: true, libraryId: true, role: true } },
+        },
+      });
+      await this.recalculateReservationQueueForBook(bookId, tx);
+      return tx.reservation.findUnique({
+        where: { id: created.id },
+        include: {
+          book: { select: { title: true, author: true, accessionNo: true, isbn: true } },
+          user: { select: { firstName: true, lastName: true, libraryId: true, role: true } },
+        },
+      });
+    });
 
-    const reservation = await prisma.reservation.create({
+    await prisma.notification.create({
       data: {
         userId,
-        bookId,
-        expiryDate: new Date(Date.now() + maxExpiryDays * 24 * 60 * 60 * 1000),
-        queuePosition: activeReservations + 1,
-      },
-      include: {
-        book: { select: { title: true, author: true, accessionNo: true, isbn: true } },
-        user: { select: { firstName: true, lastName: true, libraryId: true } },
+        type: 'SYSTEM',
+        title: 'Reservation placed',
+        message: `Your reservation for "${book.title}" is queued at position ${reservation?.queuePosition ?? 1}.`,
+        link: `/reservations/${reservation?.id}`,
       },
     });
 
@@ -1239,11 +1314,11 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
         userId,
         action: 'RESERVE_BOOK',
         entity: 'Reservation',
-        entityId: reservation.id,
+        entityId: reservation!.id,
         ipAddress: auditContext?.ipAddress,
         details: {
           bookTitle: book.title,
-          queuePosition: reservation.queuePosition,
+          queuePosition: reservation!.queuePosition,
           status: 'Reserved',
           ...(auditContext?.userAgent ? { userAgent: auditContext.userAgent } : {}),
         },
@@ -1251,6 +1326,191 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
     });
 
     return reservation;
+  }
+
+  async approveReservation(reservationId: string, librarianId: string, auditContext?: ActivityRequestContext) {
+    const reservation = await prisma.reservation.findUnique({
+      where: { id: reservationId },
+      include: {
+        book: { select: { title: true } },
+        user: { select: { firstName: true, lastName: true, role: true } },
+      },
+    });
+    if (!reservation) throw new NotFoundError('Reservation');
+    if (reservation.status !== 'ACTIVE') throw new BadRequestError('Reservation is already resolved.');
+
+    const updated = await prisma.reservation.update({
+      where: { id: reservationId },
+      data: { notified: true },
+      include: {
+        book: { select: { title: true, author: true, accessionNo: true, isbn: true } },
+        user: { select: { firstName: true, lastName: true, libraryId: true, role: true } },
+      },
+    });
+
+    await prisma.notification.create({
+      data: {
+        userId: reservation.userId,
+        type: 'SYSTEM',
+        title: 'Reservation approved',
+        message: `Your reservation for "${reservation.book.title}" has been approved and is active.`,
+        link: `/reservations/${reservation.id}`,
+      },
+    });
+
+    await prisma.activityLog.create({
+      data: {
+        userId: librarianId,
+        action: 'APPROVE_RESERVATION',
+        entity: 'Reservation',
+        entityId: reservationId,
+        ipAddress: auditContext?.ipAddress,
+        details: {
+          bookTitle: reservation.book.title,
+          status: 'Approved',
+          ...(auditContext?.userAgent ? { userAgent: auditContext.userAgent } : {}),
+        },
+      },
+    });
+
+    return updated;
+  }
+
+  async rejectReservation(reservationId: string, librarianId: string, reason = 'No reason provided', auditContext?: ActivityRequestContext) {
+    const reservation = await prisma.reservation.findUnique({
+      where: { id: reservationId },
+      include: { book: { select: { title: true } }, user: { select: { firstName: true, lastName: true } } },
+    });
+    if (!reservation) throw new NotFoundError('Reservation');
+    if (reservation.status !== 'ACTIVE') throw new BadRequestError('Reservation already processed');
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const cancelled = await tx.reservation.update({
+        where: { id: reservationId },
+        data: { status: 'CANCELLED' },
+      });
+      await this.recalculateReservationQueueForBook(reservation.bookId, tx);
+      return cancelled;
+    });
+
+    await prisma.notification.create({
+      data: {
+        userId: reservation.userId,
+        type: 'RESERVATION_CANCELLED',
+        title: 'Reservation rejected',
+        message: `Your reservation for "${reservation.book.title}" was rejected. Reason: ${reason}`,
+        link: '/reservations',
+      },
+    });
+
+    await prisma.activityLog.create({
+      data: {
+        userId: librarianId,
+        action: 'REJECT_RESERVATION',
+        entity: 'Reservation',
+        entityId: reservationId,
+        ipAddress: auditContext?.ipAddress,
+        details: {
+          bookTitle: reservation.book.title,
+          reason,
+          status: 'Rejected',
+          ...(auditContext?.userAgent ? { userAgent: auditContext.userAgent } : {}),
+        },
+      },
+    });
+
+    return updated;
+  }
+
+  async pickupReservation(reservationId: string, userId: string, auditContext?: ActivityRequestContext) {
+    const reservation = await prisma.reservation.findUnique({
+      where: { id: reservationId },
+      include: {
+        book: { select: { id: true, title: true, availableCopies: true, status: true } },
+        user: { select: { id: true, firstName: true, lastName: true, role: true, maxBorrowDays: true, maxBooksAllowed: true } },
+      },
+    });
+    if (!reservation) throw new NotFoundError('Reservation');
+    if (reservation.userId !== userId) throw new BadRequestError('This reservation is not assigned to you.');
+    if (reservation.status !== 'ACTIVE') throw new BadRequestError('This reservation has already been fulfilled or cancelled.');
+
+    const book = await prisma.book.findUnique({ where: { id: reservation.bookId } });
+    if (!book) throw new NotFoundError('Book');
+    if ((book.availableCopies ?? 0) < 1) {
+      throw new BadRequestError('This reserved book is not available for pickup yet.');
+    }
+
+    const loanDate = new Date();
+    const dueDate = await this.calculateBorrowDueDate(
+      { role: reservation.user.role, maxBorrowDays: reservation.user.maxBorrowDays ?? null },
+      loanDate
+    );
+
+    const transaction = await prisma.$transaction(async (tx) => {
+      const transactionId = await this.generateUniqueTransactionId(tx);
+      const created = await tx.borrowTransaction.create({
+        data: {
+          userId,
+          bookId: reservation.bookId,
+          transactionId,
+          borrowDate: loanDate,
+          dueDate,
+          status: 'ACTIVE',
+          notes: 'Checked out as a reservation pickup',
+        },
+        include: {
+          book: { select: { title: true, accessionNo: true, isbn: true } },
+          user: { select: { firstName: true, lastName: true, libraryId: true, role: true } },
+        },
+      });
+
+      await tx.book.update({
+        where: { id: reservation.bookId },
+        data: {
+          availableCopies: { decrement: 1 },
+          status: book.availableCopies - 1 <= 0 ? 'BORROWED' : 'AVAILABLE',
+        },
+      });
+
+      await tx.reservation.update({
+        where: { id: reservation.id },
+        data: {
+          status: 'FULFILLED',
+          notified: true,
+        },
+      });
+
+      await this.recalculateReservationQueueForBook(reservation.bookId, tx);
+      return created;
+    });
+
+    await prisma.notification.create({
+      data: {
+        userId,
+        type: 'REQUEST_APPROVED',
+        title: 'Reservation ready for pickup',
+        message: `Your reserved book "${reservation.book.title}" is ready. Please collect it before ${dueDate.toLocaleDateString()}.`,
+        link: `/transactions/${transaction.id}`,
+      },
+    });
+
+    await prisma.activityLog.create({
+      data: {
+        userId,
+        action: 'PICKUP_RESERVATION',
+        entity: 'Reservation',
+        entityId: reservationId,
+        ipAddress: auditContext?.ipAddress,
+        details: {
+          bookTitle: reservation.book.title,
+          status: 'Picked up',
+          dueDate,
+          ...(auditContext?.userAgent ? { userAgent: auditContext.userAgent } : {}),
+        },
+      },
+    });
+
+    return transaction;
   }
 
   /**
@@ -1266,38 +1526,28 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
     if (reservation.userId !== userId) throw new BadRequestError('Not your reservation');
     if (reservation.status !== 'ACTIVE') throw new BadRequestError('Reservation already processed');
 
-    await prisma.$transaction([
-      prisma.reservation.update({
+    await prisma.$transaction(async (tx) => {
+      await tx.reservation.update({
         where: { id: reservationId },
         data: { status: 'CANCELLED' },
-      }),
-      prisma.activityLog.create({
-        data: {
-          userId,
-          action: 'CANCEL_RESERVATION',
-          entity: 'Reservation',
-          entityId: reservationId,
-          ipAddress: auditContext?.ipAddress,
-          details: {
-            bookTitle: reservation.book.title,
-            status: 'Cancelled',
-            ...(auditContext?.userAgent ? { userAgent: auditContext.userAgent } : {}),
-          },
-        },
-      }),
-    ]);
-
-    // Recalculate positions for remaining reservations of this book
-    const remaining = await prisma.reservation.findMany({
-      where: { bookId: reservation.bookId, status: 'ACTIVE' },
-      orderBy: { queuePosition: 'asc' },
-    });
-    for (let i = 0; i < remaining.length; i++) {
-      await prisma.reservation.update({
-        where: { id: remaining[i].id },
-        data: { queuePosition: i + 1 },
       });
-    }
+      await this.recalculateReservationQueueForBook(reservation.bookId, tx);
+    });
+
+    await prisma.activityLog.create({
+      data: {
+        userId,
+        action: 'CANCEL_RESERVATION',
+        entity: 'Reservation',
+        entityId: reservationId,
+        ipAddress: auditContext?.ipAddress,
+        details: {
+          bookTitle: reservation.book.title,
+          status: 'Cancelled',
+          ...(auditContext?.userAgent ? { userAgent: auditContext.userAgent } : {}),
+        },
+      },
+    });
   }
 
   /**
@@ -1314,10 +1564,10 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
       prisma.reservation.findMany({
         where,
         include: {
-          user: { select: { id: true, firstName: true, lastName: true, libraryId: true } },
+          user: { select: { id: true, firstName: true, lastName: true, libraryId: true, role: true } },
           book: { select: { id: true, title: true, author: true, accessionNo: true, isbn: true, availableCopies: true, status: true } },
         },
-        orderBy: [{ queuePosition: 'asc' }, { reservationDate: 'desc' }],
+        orderBy: [{ user: { role: 'asc' } }, { reservationDate: 'asc' }, { queuePosition: 'asc' }],
         skip,
         take,
       }),

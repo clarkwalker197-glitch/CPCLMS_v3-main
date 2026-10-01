@@ -334,7 +334,7 @@ export function QRScanner({
             <select
               value={selectedCamera}
               onChange={(e) => handleCameraChange(e.target.value)}
-              className="w-full px-3 py-2 border border-zinc-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+              className="w-full px-3 py-2 border border-zinc-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
             >
               {cameras.map((cam) => (
                 <option key={cam.id} value={cam.id}>
@@ -359,7 +359,7 @@ export function QRScanner({
           {/* Scan overlay */}
           {scanning && (
             <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-              <div className="w-48 h-48 border-2 border-emerald-400 rounded-lg opacity-60" />
+              <div className="w-48 h-48 border-2 border-blue-400 rounded-lg opacity-60" />
               <div className="absolute bottom-3 left-0 right-0 text-center">
                 <span className="text-xs text-white/70 bg-black/40 px-2 py-1 rounded-full">
                   Point at QR code
@@ -391,12 +391,12 @@ export function QRScanner({
               onChange={(e) => setManualInput(e.target.value.toUpperCase().slice(0, 13))}
               maxLength={13}
               placeholder={placeholder}
-              className="flex-1 px-3 py-2 border border-zinc-300 rounded-lg bg-white text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono uppercase"
+              className="flex-1 px-3 py-2 border border-zinc-300 rounded-lg bg-white text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono uppercase"
             />
             <button
               type="submit"
               disabled={!normalizeBorrowId(manualInput) || loading}
-              className="px-4 py-2 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors font-medium"
+              className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors font-medium"
             >
               {submitLabel}
             </button>
@@ -419,7 +419,7 @@ export function QRScanner({
                 }
               }
             }}
-            className="text-sm text-emerald-600 hover:text-emerald-700 font-medium transition-colors"
+            className="text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors"
           >
             {scanning ? "Stop Scanning" : "Restart Camera"}
           </button>

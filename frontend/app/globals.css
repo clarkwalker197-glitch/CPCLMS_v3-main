@@ -9,8 +9,28 @@
   animation: cpc-route-enter 200ms ease-out both;
 }
 
+@keyframes cpc-modal-enter {
+  from { opacity: 0; transform: translateY(4px) scale(0.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes cpc-modal-backdrop-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.qr-modal-enter {
+  animation: cpc-modal-enter 160ms ease-out both;
+}
+
+.qr-modal-backdrop-enter {
+  animation: cpc-modal-backdrop-enter 140ms ease-out both;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .page-route-enter {
+  .page-route-enter,
+  .qr-modal-enter,
+  .qr-modal-backdrop-enter {
     animation: none;
   }
 }

@@ -2,10 +2,28 @@
 // Environment Configuration (Validated via Zod)
 // ============================================================
 
+import fs from 'fs';
+import path from 'path';
 import { z } from 'zod';
 import dotenv from 'dotenv';
 
-dotenv.config();
+export function resolveDotenvPath(): string | undefined {
+  const candidates = [
+    path.resolve(process.cwd(), '.env'),
+    path.resolve(__dirname, '../../.env'),
+    path.resolve(__dirname, '../../../.env'),
+    path.resolve(__dirname, '../../../../.env'),
+  ];
+
+  return candidates.find((candidate) => fs.existsSync(candidate));
+}
+
+const envPath = resolveDotenvPath();
+if (envPath) {
+  dotenv.config({ path: envPath });
+} else {
+  dotenv.config();
+}
 
 const frontendOriginSchema = z.preprocess((value) => {
   if (typeof value !== 'string') return value;
@@ -38,8 +56,14 @@ const envSchema = z.object({
   COOKIE_SECRET: z.string().min(16).optional(),
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
-  EMAIL_USER: z.string().email().optional(),
-  EMAIL_PASS: z.string().min(1).optional(),
+  EMAIL_USER: z.preprocess(
+    (value) => (typeof value === 'string' ? value.trim() : value),
+    z.string().email().optional()
+  ),
+  EMAIL_PASS: z.preprocess(
+    (value) => (typeof value === 'string' ? value.replace(/\s+/g, '') : value),
+    z.string().min(1).optional()
+  ),
   BLOB_READ_WRITE_TOKEN: z.string().optional(),
   BLOB_STORE_ID: z.string().optional(),
 });

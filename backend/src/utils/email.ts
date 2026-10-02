@@ -1,12 +1,31 @@
 import nodemailer from 'nodemailer';
+import { connect } from 'node:net';
 import { env } from '../config/env';
 import { AppError } from './errors';
 
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false,
   auth: {
     user: env.EMAIL_USER,
     pass: env.EMAIL_PASS,
+  },
+  tls: {
+    rejectUnauthorized: false,
+  },
+  getSocket: (options, callback) => {
+    const socket = connect({
+      host: 'smtp.gmail.com',
+      port: Number(options.port),
+      family: 4,
+    });
+    const onError = (error: Error) => callback(error);
+    socket.once('error', onError);
+    socket.once('connect', () => {
+      socket.removeListener('error', onError);
+      callback(null, { connection: socket, servername: 'smtp.gmail.com' });
+    });
   },
 });
 

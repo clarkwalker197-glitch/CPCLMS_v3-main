@@ -56,13 +56,13 @@ const envSchema = z.object({
   COOKIE_SECRET: z.string().min(16).optional(),
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
-  EMAIL_USER: z.preprocess(
+  RESEND_API_KEY: z.preprocess(
+    (value) => (typeof value === 'string' ? value.trim() || undefined : value),
+    z.string().optional()
+  ),
+  EMAIL_FROM: z.preprocess(
     (value) => (typeof value === 'string' ? value.trim() : value),
     z.string().email().optional()
-  ),
-  EMAIL_PASS: z.preprocess(
-    (value) => (typeof value === 'string' ? value.replace(/\s+/g, '') : value),
-    z.string().min(1).optional()
   ),
   BLOB_READ_WRITE_TOKEN: z.string().optional(),
   BLOB_STORE_ID: z.string().optional(),

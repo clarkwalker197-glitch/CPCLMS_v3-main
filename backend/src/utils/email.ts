@@ -1,33 +1,5 @@
-import nodemailer from 'nodemailer';
-import { connect } from 'node:net';
 import { env } from '../config/env';
-import { AppError } from './errors';
-
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false,
-  auth: {
-    user: env.EMAIL_USER,
-    pass: env.EMAIL_PASS,
-  },
-  tls: {
-    rejectUnauthorized: false,
-  },
-  getSocket: (options, callback) => {
-    const socket = connect({
-      host: 'smtp.gmail.com',
-      port: Number(options.port),
-      family: 4,
-    });
-    const onError = (error: Error) => callback(error);
-    socket.once('error', onError);
-    socket.once('connect', () => {
-      socket.removeListener('error', onError);
-      callback(null, { connection: socket, servername: 'smtp.gmail.com' });
-    });
-  },
-});
+import { AppError } from '../utils/errors';
 
 export interface OutgoingEmail {
   to: string;
@@ -36,18 +8,32 @@ export interface OutgoingEmail {
 }
 
 export async function sendEmail(email: OutgoingEmail): Promise<void> {
-  if (!env.EMAIL_USER || !env.EMAIL_PASS) {
-    throw new AppError('Email service is not configured. Set EMAIL_USER and EMAIL_PASS.', 503);
+  if (!env.RESEND_API_KEY) {
+    throw new AppError('Email service is not configured. Set RESEND_API_KEY.', 503);
   }
 
   try {
-    await transporter.sendMail({
-      from: env.EMAIL_USER,
-      to: email.to,
-      subject: email.subject,
-      text: email.text,
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: env.EMAIL_FROM,
+        to: email.to,
+        subject: email.subject,
+        text: email.text,
+      }),
     });
+
+    if (!response.ok) {
+      const details = await response.text();
+      console.error('Email delivery failed:', response.status, details);
+      throw new AppError('Unable to send the verification email. Please try again later.', 503);
+    }
   } catch (error) {
+    if (error instanceof AppError) throw error;
     console.error('Email delivery failed:', error instanceof Error ? error.message : error);
     throw new AppError('Unable to send the verification email. Please try again later.', 503);
   }

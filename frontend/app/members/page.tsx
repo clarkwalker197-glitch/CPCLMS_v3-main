@@ -51,6 +51,7 @@ const emptyAddMemberForm: AddMemberFormState = {
 export default function MembersPage() {
   const { user } = useAuth();
   const [members, setMembers] = useState<any[]>([]);
+  const [departments, setDepartments] = useState<Array<{ code: string; name: string }>>([]);
   const [finesMap, setFinesMap] = useState<Record<string, number>>({});
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -119,6 +120,12 @@ const [usersRes, statsRes] = await Promise.all([
     }
     loadData();
   }, [user, loadData]);
+
+  useEffect(() => {
+    api.getDepartments().then((response) => {
+      if (response.success && response.data) setDepartments(response.data);
+    });
+  }, []);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -446,13 +453,19 @@ const handleDelete = async (member: any) => {
               {(memberForm.role === "STUDENT" || memberForm.role === "FACULTY") && (
                 <div>
                   <label className="block text-sm font-medium text-zinc-300 mb-1.5">Department *</label>
-                  <input
+                  <select
                     required
                     value={memberForm.department}
                     onChange={handleAddMemberChange("department")}
-                    className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
-                    placeholder="e.g., BSIT"
-                  />
+                    className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
+                  >
+                    <option value="">Select Department</option>
+                    {departments.map((department) => (
+                      <option key={department.code} value={department.code}>
+                        {department.name} ({department.code})
+                      </option>
+                    ))}
+                  </select>
                 </div>
               )}
 

@@ -416,7 +416,7 @@ export default function RequestsPage() {
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex">
       <Sidebar />
       <div className="flex-1 min-w-0">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-[calc(7rem+min(env(safe-area-inset-bottom),2rem))] lg:pb-8">
+        <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-[calc(7rem+min(env(safe-area-inset-bottom),2rem))] lg:pb-8 ${isLibrarian ? "flex flex-col" : ""}`}>
           {successMsg && (
             <div className="p-4 mb-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-sm text-emerald-400">
               {successMsg}
@@ -506,7 +506,7 @@ export default function RequestsPage() {
                     {/* ===================================================== */}
                     {/* Borrow Requests */}
           {/* ===================================================== */}
-          <div>
+          <div className={isLibrarian ? "order-2" : ""}>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
               <div>
                 <h2 className="text-2xl font-bold text-white">Borrow Requests</h2>
@@ -740,7 +740,7 @@ export default function RequestsPage() {
           </div>
 
           {isLibrarian && (
-            <div className="mt-8">
+            <div className={isLibrarian ? "order-1 mt-8" : "mt-8"}>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
                 <div>
                   <h2 className="text-2xl font-bold text-white">Active Borrowed Books</h2>

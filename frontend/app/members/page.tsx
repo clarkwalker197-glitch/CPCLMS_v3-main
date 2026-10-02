@@ -65,6 +65,8 @@ export default function MembersPage() {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [successMsg, setSuccessMsg] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [memberToDelete, setMemberToDelete] = useState<any>(null);
+  const [deleteError, setDeleteError] = useState("");
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
   const [memberForm, setMemberForm] = useState<AddMemberFormState>(emptyAddMemberForm);
   const [submittingMember, setSubmittingMember] = useState(false);
@@ -133,23 +135,30 @@ const [usersRes, statsRes] = await Promise.all([
     setCurrentPage(1);
   }, [debouncedSearch, debouncedStatus]);
 
-const handleDelete = async (member: any) => {
-    if (!window.confirm(`Delete member "${member.firstName} ${member.lastName}"? This action cannot be undone.`)) return;
-    if (deletingId) return; // prevent double-click spam
-    setDeletingId(member.id);
+  const handleDelete = (member: any) => {
+    if (deletingId) return;
+    setDeleteError("");
+    setMemberToDelete(member);
+  };
+
+  const confirmDeleteMember = async () => {
+    if (!memberToDelete || deletingId) return;
+    setDeletingId(memberToDelete.id);
+    setDeleteError("");
     try {
-      const res = await api.delete(`/auth/users/${member.id}`);
+      const res = await api.delete(`/auth/users/${memberToDelete.id}`);
       if (res.success) {
+        setMemberToDelete(null);
         setSuccessMsg("Member deleted successfully");
         loadData();
         setTimeout(() => setSuccessMsg(""), 4000);
       } else if (res.rateLimited) {
-        setError("You're moving too fast. Please wait a moment and try again.");
+        setDeleteError("You're moving too fast. Please wait a moment and try again.");
       } else {
-        setError(res.error || "Failed to delete member");
+        setDeleteError(res.error || "Failed to delete member");
       }
     } catch {
-      setError("Failed to delete member");
+      setDeleteError("Failed to delete member");
     } finally {
       setDeletingId(null);
     }
@@ -184,8 +193,8 @@ const handleDelete = async (member: any) => {
       return;
     }
 
-    if (memberForm.role === "LIBRARIAN" && !memberForm.libraryId.trim()) {
-      setMemberFormError("ID Number is required for Librarian accounts.");
+    if ((memberForm.role === "LIBRARIAN" || memberForm.role === "FACULTY") && !memberForm.libraryId.trim()) {
+      setMemberFormError(`ID Number is required for ${memberForm.role === "LIBRARIAN" ? "Librarian" : "Faculty"} accounts.`);
       return;
     }
 
@@ -440,7 +449,7 @@ const handleDelete = async (member: any) => {
                 </div>
               </div>
 
-              {memberForm.role === "LIBRARIAN" && (
+              {(memberForm.role === "LIBRARIAN" || memberForm.role === "FACULTY") && (
                 <div>
                   <label className="block text-sm font-medium text-zinc-300 mb-1.5">ID Number *</label>
                   <input
@@ -448,7 +457,7 @@ const handleDelete = async (member: any) => {
                     value={memberForm.libraryId}
                     onChange={handleAddMemberChange("libraryId")}
                     className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
-                    placeholder="e.g., LIB-2026-0001"
+                    placeholder={memberForm.role === "LIBRARIAN" ? "e.g., LIB-2026-0001" : "Faculty ID number"}
                   />
                 </div>
               )}
@@ -530,6 +539,51 @@ const handleDelete = async (member: any) => {
                 </button>
               </div>
             </form>
+          </Dialog>
+
+          <Dialog
+            open={Boolean(memberToDelete)}
+            onOpenChange={(open) => {
+              if (!open && deletingId === null) {
+                setMemberToDelete(null);
+                setDeleteError("");
+              }
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Trash2 className="h-5 w-5 text-red-400" />
+                Delete member?
+              </DialogTitle>
+              <DialogDescription>This action cannot be undone.</DialogDescription>
+            </DialogHeader>
+            {memberToDelete && (
+              <div className="mb-5 rounded-xl border border-zinc-700 bg-zinc-950/70 p-4">
+                <p className="font-medium text-zinc-100">{getFullName(memberToDelete)}</p>
+                <p className="mt-1 break-all text-sm text-zinc-400">{memberToDelete.email}</p>
+                {memberToDelete.libraryId && <p className="mt-1 text-xs text-zinc-500">ID: {memberToDelete.libraryId}</p>}
+              </div>
+            )}
+            {deleteError && <div role="alert" className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{deleteError}</div>}
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setMemberToDelete(null)}
+                disabled={deletingId !== null}
+                className="flex-1 rounded-xl border border-zinc-700 px-4 py-2.5 font-medium text-zinc-300 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteMember}
+                disabled={deletingId !== null}
+                className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 font-medium text-white transition-colors hover:bg-red-700 disabled:cursor-wait disabled:opacity-50"
+              >
+                <Trash2 className="h-4 w-4" aria-hidden="true" />
+                {deletingId !== null ? "Deleting..." : "Delete Member"}
+              </button>
+            </div>
           </Dialog>
 
           {!loading && members.length > 0 && (

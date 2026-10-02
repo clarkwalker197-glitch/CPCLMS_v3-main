@@ -75,6 +75,8 @@ export default function RequestsPage() {
   const [activeTxnPage, setActiveTxnPage] = useState(1);
   const [activeTxnSort, setActiveTxnSort] = useState("dueDate");
   const [activeTxnSortOrder, setActiveTxnSortOrder] = useState<"asc" | "desc">("asc");
+  const [returnTarget, setReturnTarget] = useState<any>(null);
+  const [returnError, setReturnError] = useState("");
   const [missingTarget, setMissingTarget] = useState<any>(null);
   const [missingReason, setMissingReason] = useState("");
   const [missingLoading, setMissingLoading] = useState(false);
@@ -219,6 +221,32 @@ export default function RequestsPage() {
   }, [loadRequests]);
 
   useEffect(() => {
+    const transactionId = approvalReceipt?.transactionId;
+    if (!transactionId) return;
+
+    let cancelled = false;
+    let timeoutId = 0;
+    const checkVerification = async () => {
+      const response = await api.getBorrowRequestBatch(transactionId).catch(() => null);
+      if (!cancelled && response?.success) {
+        setApprovalReceipt(null);
+        setSuccessMsg(`Borrow ID ${formatBorrowId(transactionId)} verified. Books are now active.`);
+        await Promise.all([loadRequests(), loadActiveTransactions()]);
+        setTimeout(() => setSuccessMsg(""), 4000);
+        return;
+      }
+
+      if (!cancelled) timeoutId = window.setTimeout(() => void checkVerification(), 3000);
+    };
+
+    timeoutId = window.setTimeout(() => void checkVerification(), 3000);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [approvalReceipt?.transactionId, loadActiveTransactions, loadRequests]);
+
+  useEffect(() => {
     setReqPage(1);
   }, [debouncedReqSearch, debouncedReqStatus]);
 
@@ -256,22 +284,29 @@ export default function RequestsPage() {
     setReqPage(1);
   };
 
-  const handleReturn = async (record: any) => {
-    if (!window.confirm(`Return "${record.book?.title || "this book"}"?`)) return;
+  const openReturnModal = (record: any) => {
+    setReturnTarget(record);
+    setReturnError("");
+  };
+
+  const handleReturn = async () => {
+    if (!returnTarget) return;
     if (actionLoadingId) return;
-    setActionLoadingId(record.id);
+    setActionLoadingId(returnTarget.id);
+    setReturnError("");
     try {
-      const res = await api.returnBook(record.id);
+      const res = await api.returnBook(returnTarget.id);
       if (res.success) {
+        setReturnTarget(null);
         setSuccessMsg("Book returned successfully");
         if (isLibrarian) loadActiveTransactions();
         else loadTransactions();
         setTimeout(() => setSuccessMsg(""), 4000);
       } else {
-        setError(res.error || "Failed to return book");
+        setReturnError(res.error || "Failed to return book");
       }
     } catch {
-      setError("Failed to return book");
+      setReturnError("Failed to return book");
     } finally {
       setActionLoadingId(null);
     }
@@ -817,7 +852,7 @@ export default function RequestsPage() {
                             <td className="px-6 py-4 text-right">
                               <div className="inline-flex items-center justify-end gap-1.5">
                                 <button
-                                  onClick={() => handleReturn(txn)}
+                                  onClick={() => openReturnModal(txn)}
                                   disabled={actionLoadingId !== null}
                                   className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                                 >
@@ -856,7 +891,7 @@ export default function RequestsPage() {
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-2 border-t border-zinc-800/80 pt-3">
-                        <button onClick={() => handleReturn(txn)} disabled={actionLoadingId !== null} className="inline-flex min-h-10 items-center justify-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40">
+                        <button onClick={() => openReturnModal(txn)} disabled={actionLoadingId !== null} className="inline-flex min-h-10 items-center justify-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40">
                           <CheckCircle2 className="h-3.5 w-3.5" /> {actionLoadingId === txn.id ? "Returning..." : "Return"}
                         </button>
                         <button onClick={() => openMissingModal(txn)} disabled={actionLoadingId !== null} className="inline-flex min-h-10 items-center justify-center gap-1 rounded-lg bg-amber-500/15 px-3 py-2 text-xs font-medium text-amber-400 transition-colors hover:bg-amber-500/25 disabled:cursor-not-allowed disabled:opacity-40">
@@ -883,6 +918,33 @@ export default function RequestsPage() {
           )}
         </div>
       </div>
+
+      {returnTarget && (
+        <ModalLayer>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={() => actionLoadingId !== returnTarget.id && setReturnTarget(null)} />
+            <div className="relative z-50 w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl shadow-black/50">
+              <div className="mb-5 flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-500/15 text-blue-400"><CheckCircle2 className="h-5 w-5" /></div>
+                <div>
+                  <h3 className="text-lg font-semibold text-white">Confirm Book Return</h3>
+                  <p className="mt-1 text-sm text-zinc-400">Confirm that this book has been returned. This will close the active borrow record.</p>
+                </div>
+              </div>
+              <div className="mb-5 rounded-xl border border-zinc-800 bg-zinc-950/70 p-4">
+                <p className="font-medium text-zinc-100">{returnTarget.book?.title || "Unknown book"}</p>
+                <p className="mt-1 text-sm text-zinc-400">{[returnTarget.user?.firstName, returnTarget.user?.lastName].filter(Boolean).join(" ") || "Unknown member"}</p>
+                <p className="mt-1 text-xs text-zinc-500">Due {formatDate(returnTarget.dueDate)}</p>
+              </div>
+              {returnError && <div role="alert" className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{returnError}</div>}
+              <div className="flex gap-3">
+                <button type="button" onClick={() => setReturnTarget(null)} disabled={actionLoadingId !== null} className="flex-1 rounded-xl border border-zinc-700 px-4 py-2.5 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40">Cancel</button>
+                <button type="button" onClick={handleReturn} disabled={actionLoadingId !== null} className="flex-1 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-wait disabled:opacity-50">{actionLoadingId === returnTarget.id ? "Returning..." : "Confirm Return"}</button>
+              </div>
+            </div>
+          </div>
+        </ModalLayer>
+      )}
 
       {missingTarget && (
         <ModalLayer>

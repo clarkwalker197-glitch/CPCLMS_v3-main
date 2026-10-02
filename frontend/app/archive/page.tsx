@@ -4,11 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import api from "@/lib/api";
 import Sidebar from "@/components/Sidebar";
-import { Archive as ArchiveIcon, BookOpen, BookOpenText, Users, RotateCcw, Search } from "lucide-react";
+import { Archive as ArchiveIcon, Users, RotateCcw, Search } from "lucide-react";
 
 const tabs = [
-  { key: "books", label: "Books", icon: BookOpen },
-  { key: "ebooks", label: "eBooks", icon: BookOpenText },
   { key: "users", label: "Users", icon: Users },
 ] as const;
 
@@ -29,8 +27,8 @@ function getArchiveCountdown(item: any) {
 
 export default function ArchivePage() {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<TabKey>("books");
-  const [archive, setArchive] = useState<{ books: any[]; ebooks: any[]; users: any[] }>({ books: [], ebooks: [], users: [] });
+  const [activeTab, setActiveTab] = useState<TabKey>("users");
+  const [archive, setArchive] = useState<{ users: any[] }>({ users: [] });
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [restoringId, setRestoringId] = useState<string | null>(null);
@@ -44,7 +42,7 @@ export default function ArchivePage() {
     try {
       const res = await api.getArchive();
       if (res.success && res.data) {
-        setArchive(res.data);
+        setArchive({ users: res.data.users || [] });
         return;
       }
 
@@ -74,13 +72,9 @@ export default function ArchivePage() {
     setRestoringId(null);
   };
 
-  const items = archive[activeTab].filter((item) => {
-    const query = search.toLowerCase();
-    const text = activeTab === "users"
-      ? `${item.firstName} ${item.lastName} ${item.email} ${item.libraryId}`
-      : `${item.title} ${item.author || ""} ${item.isbn || ""} ${item.accessionNo || ""}`;
-    return text.toLowerCase().includes(query);
-  });
+  const items = archive.users.filter((item) =>
+    `${item.firstName} ${item.lastName} ${item.email} ${item.libraryId}`.toLowerCase().includes(search.toLowerCase())
+  );
 
   if (user && user.role !== "LIBRARIAN") {
     return <div className="min-h-screen bg-zinc-950 text-white flex"><Sidebar /><main className="flex-1 flex items-center justify-center"><p className="text-zinc-400">Access denied.</p></main></div>;
@@ -93,7 +87,7 @@ export default function ArchivePage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-[calc(7rem+min(env(safe-area-inset-bottom),2rem))] lg:pb-8">
           <div className="mb-6">
             <div className="flex items-center gap-3"><ArchiveIcon className="w-7 h-7 text-blue-400" /><h1 className="text-2xl font-bold text-white">Archive</h1></div>
-            <p className="text-sm text-zinc-400 mt-1">Restore books, eBooks, and user accounts removed from active lists.</p>
+            <p className="text-sm text-zinc-400 mt-1">Restore user accounts removed from the active list.</p>
           </div>
           {message && <div className="p-4 mb-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-sm text-emerald-400">{message}</div>}
           {error && (
@@ -114,10 +108,10 @@ export default function ArchivePage() {
             {tabs.map((tab) => { const Icon = tab.icon; return <button key={tab.key} onClick={() => setActiveTab(tab.key)} className={`inline-flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === tab.key ? "border-blue-500 text-blue-400" : "border-transparent text-zinc-500 hover:text-zinc-200"}`}><Icon className="w-4 h-4" />{tab.label}<span className="text-xs">({archive[tab.key].length})</span></button>; })}
           </div>
           <div className="relative mb-5 max-w-xl"><Search className="absolute left-3 top-3 w-4 h-4 text-zinc-500" /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search archived items..." className="w-full pl-9 pr-3 py-2.5 bg-zinc-900 border border-zinc-700 rounded-xl text-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
-          {loading ? <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-8 text-zinc-500">Loading archive...</div> : items.length === 0 ? <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-12 text-center text-zinc-500">No archived {activeTab} found.</div> : <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden"><div className="divide-y divide-zinc-800/70">{items.map((item) => {
+          {loading ? <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-8 text-zinc-500">Loading archive...</div> : items.length === 0 ? <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-12 text-center text-zinc-500">No archived users found.</div> : <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden"><div className="divide-y divide-zinc-800/70">{items.map((item) => {
             const countdown = getArchiveCountdown(item);
             const archivedDate = new Date(item.archivedAt || item.deletedAt || item.updatedAt);
-            return <div key={item.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5"><div><p className="font-medium text-zinc-100">{activeTab === "users" ? `${item.firstName} ${item.lastName}` : item.title}</p><p className="text-sm text-zinc-500 mt-1">{activeTab === "users" ? `${item.email} · ${item.libraryId}` : `${item.author || ""}${item.accessionNo ? ` · ${item.accessionNo}` : ""}`}</p><div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-zinc-400">
+            return <div key={item.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5"><div><p className="font-medium text-zinc-100">{`${item.firstName} ${item.lastName}`}</p><p className="text-sm text-zinc-500 mt-1">{`${item.email} · ${item.libraryId}`}</p><div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-zinc-400">
               <span>Archived {archivedDate.toLocaleDateString()}</span>
               {countdown !== null && <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-amber-300">Auto-delete in {countdown} day{countdown === 1 ? "" : "s"}</span>}
             </div></div><button onClick={() => restore(activeTab, item.id)} disabled={restoringId === item.id} className="inline-flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg disabled:opacity-40"><RotateCcw className="w-4 h-4" />{restoringId === item.id ? "Restoring..." : "Restore"}</button></div>;

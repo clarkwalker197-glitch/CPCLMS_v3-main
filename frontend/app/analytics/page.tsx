@@ -9,8 +9,6 @@ import {
   CartesianGrid,
   Cell,
   LabelList,
-  Line,
-  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -185,8 +183,9 @@ export default function AnalyticsPage() {
             </div>
 
             <div className="mb-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
-              <Panel title="Monthly Borrow, Return & Overdue Trends">
-                {trends.length === 0 ? <div className="flex h-72 items-center justify-center text-sm text-zinc-500">No trend data for this range</div> : <div className="h-72"><ResponsiveContainer width="100%" height="100%"><LineChart data={trends}><CartesianGrid strokeDasharray="3 3" stroke="#27272a" /><XAxis dataKey="month" stroke="#71717a" fontSize={11} tickLine={false} axisLine={false} /><YAxis stroke="#71717a" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} /><Tooltip contentStyle={chartStyle} /><Line type="monotone" dataKey="borrows" stroke="#3b82f6" strokeWidth={2} dot={false} name="Borrows" /><Line type="monotone" dataKey="returns" stroke="#10b981" strokeWidth={2} dot={false} name="Returns" /><Line type="monotone" dataKey="overdues" stroke="#ef4444" strokeWidth={2} dot={false} name="Overdue" /></LineChart></ResponsiveContainer></div>}
+              <Panel title="Monthly Borrow Activity">
+                <p className="-mt-3 mb-3 text-xs text-zinc-500">Number of books borrowed each month</p>
+                {trends.length === 0 ? <div className="flex h-72 items-center justify-center text-sm text-zinc-500">No borrowing data for this range</div> : <div className="h-72"><ResponsiveContainer width="100%" height="100%"><BarChart data={trends} margin={{ top: 20, right: 12, bottom: 12, left: 12 }}><CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#27272a" /><XAxis dataKey="month" stroke="#71717a" fontSize={11} tickLine={false} axisLine={false} label={{ value: "Month", position: "insideBottom", offset: -8, fill: "#a1a1aa", fontSize: 11 }} /><YAxis stroke="#71717a" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} width={36} label={{ value: "Number of Books Borrowed", angle: -90, position: "insideLeft", fill: "#a1a1aa", fontSize: 11 }} /><Tooltip contentStyle={chartStyle} formatter={(value) => [`${value} books`, "Borrowed"]} /><Bar dataKey="borrows" fill="#3b82f6" radius={[5, 5, 0, 0]} maxBarSize={48} name="Books Borrowed"><LabelList dataKey="borrows" position="top" fill="#a1a1aa" fontSize={11} /></Bar></BarChart></ResponsiveContainer></div>}
               </Panel>
               <Panel title="Department Borrowing Comparison">
                 <div className="mb-4 flex flex-wrap gap-x-5 gap-y-2">

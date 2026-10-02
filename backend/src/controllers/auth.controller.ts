@@ -8,6 +8,38 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { sendSuccess } from '../utils/helpers';
 import { AuthenticatedRequest } from '../types';
 import { DEPARTMENTS } from '../constants/departments';
+import { env } from '../config/env';
+
+const getRefreshTokenFromRequest = (req: Request): string | undefined => {
+  const signedCookieToken = typeof (req as any).signedCookies?.refreshToken === 'string'
+    ? (req as any).signedCookies.refreshToken
+    : undefined;
+  const cookieToken = typeof (req as any).cookies?.refreshToken === 'string'
+    ? (req as any).cookies.refreshToken
+    : undefined;
+  const bodyToken = typeof req.body?.refreshToken === 'string' ? req.body.refreshToken : undefined;
+  return signedCookieToken || cookieToken || bodyToken;
+};
+
+const setRefreshCookie = (res: Response, token: string, expiresAt: Date): void => {
+  res.cookie('refreshToken', token, {
+    httpOnly: true,
+    secure: env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+    signed: true,
+    expires: expiresAt,
+  });
+};
+
+const clearRefreshCookie = (res: Response): void => {
+  res.clearCookie('refreshToken', {
+    httpOnly: true,
+    secure: env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+  });
+};
 
 export const getDepartments = asyncHandler(async (_req: Request, res: Response) => {
   sendSuccess(res, DEPARTMENTS);
@@ -20,6 +52,7 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
   const { identifier, password } = req.body;
   const ipAddress = req.ip;
   const result = await authService.login(identifier, password, ipAddress, req.get('user-agent'));
+  setRefreshCookie(res, result.refreshToken, new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
   sendSuccess(res, result, 'Login successful');
 });
 
@@ -35,6 +68,7 @@ export const verifyPasswordReset = asyncHandler(async (req: Request, res: Respon
 
 export const googleLogin = asyncHandler(async (req: Request, res: Response) => {
   const result = await authService.googleLogin(req.body.credential, req.ip, req.get('user-agent'));
+  setRefreshCookie(res, result.refreshToken, new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
   sendSuccess(res, result, 'Google login successful');
 });
 
@@ -49,6 +83,7 @@ export const resetPassword = asyncHandler(async (req: Request, res: Response) =>
 export const register = asyncHandler(async (req: Request, res: Response) => {
   const ipAddress = req.ip;
   const result = await authService.register(req.body, ipAddress, req.get('user-agent'));
+  setRefreshCookie(res, result.refreshToken, new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
   sendSuccess(res, result, 'Registration successful', 201);
 });
 
@@ -65,9 +100,10 @@ export const createUser = asyncHandler(async (req: AuthenticatedRequest, res: Re
  * POST /api/auth/refresh
  */
 export const refreshToken = asyncHandler(async (req: Request, res: Response) => {
-  const { refreshToken: token } = req.body;
+  const token = getRefreshTokenFromRequest(req);
   const ipAddress = req.ip;
   const result = await authService.refreshAccessToken(token, ipAddress);
+  setRefreshCookie(res, result.refreshToken, new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
   sendSuccess(res, result, 'Token refreshed successfully');
 });
 
@@ -75,10 +111,11 @@ export const refreshToken = asyncHandler(async (req: Request, res: Response) => 
  * POST /api/auth/logout
  */
 export const logout = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const { refreshToken: token } = req.body;
+  const token = getRefreshTokenFromRequest(req);
   if (token) {
     await authService.logout(token);
   }
+  clearRefreshCookie(res);
   sendSuccess(res, null, 'Logged out successfully');
 });
 
@@ -87,6 +124,7 @@ export const logout = asyncHandler(async (req: AuthenticatedRequest, res: Respon
  */
 export const logoutAll = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   await authService.logoutAll(req.user!.userId);
+  clearRefreshCookie(res);
   sendSuccess(res, null, 'All sessions logged out successfully');
 });
 

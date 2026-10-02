@@ -103,10 +103,18 @@ class ApiClient {
     return localStorage.getItem('refreshToken');
   }
 
+  private hasRefreshCookie(): boolean {
+    if (typeof document === 'undefined') return false;
+    return document.cookie.split('; ').some((cookie) => cookie.startsWith('refreshToken='));
+  }
+
   private setTokens(accessToken: string, refreshToken?: string): void {
     localStorage.setItem('accessToken', accessToken);
     if (refreshToken) {
-      localStorage.setItem('refreshToken', refreshToken);
+      // Keep compatibility with older backend responses, but do not persist the
+      // refresh token in browser storage because it is now exposed as a secure,
+      // httpOnly cookie by the backend.
+      void refreshToken;
     }
   }
 
@@ -114,6 +122,9 @@ class ApiClient {
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
+    if (typeof document !== 'undefined') {
+      document.cookie = 'refreshToken=; Max-Age=0; path=/; SameSite=Lax; Secure';
+    }
   }
 
   private async request<T>(
@@ -165,6 +176,7 @@ class ApiClient {
     try {
       const response = await fetch(`${this.baseUrl}${endpoint}`, {
         ...options,
+        credentials: 'include',
         headers,
       });
 
@@ -203,12 +215,13 @@ class ApiClient {
       }
 
       // If unauthorized, try refresh token
-      if (response.status === 401 && this.getRefreshToken()) {
+      if (response.status === 401 && (this.getRefreshToken() || this.hasRefreshCookie())) {
         const refreshed = await this.refreshToken();
         if (refreshed) {
           headers['Authorization'] = `Bearer ${this.getToken()}`;
           const retryResponse = await fetch(`${this.baseUrl}${endpoint}`, {
             ...options,
+            credentials: 'include',
             headers,
           });
           try {
@@ -257,7 +270,8 @@ class ApiClient {
       const response = await fetch(`${this.baseUrl}/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
+        credentials: 'include',
+        ...(refreshToken ? { body: JSON.stringify({ refreshToken }) } : {}),
       });
 
       const data = await response.json();
@@ -316,7 +330,10 @@ const response = await this.request<any>('/auth/register', {
 
   async logout(): Promise<void> {
     try {
-      await this.request('/auth/logout', { method: 'POST' });
+      await this.request('/auth/logout', {
+        method: 'POST',
+        credentials: 'include',
+      });
     } catch {
       // Ignore errors
     }

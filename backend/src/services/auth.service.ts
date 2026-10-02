@@ -272,7 +272,11 @@ const user = await prisma.user.create({
   // ────────────────────────────────────────
   //  REFRESH TOKEN
   // ────────────────────────────────────────
-  async refreshAccessToken(refreshTokenStr: string, ipAddress?: string) {
+  async refreshAccessToken(refreshTokenStr?: string, ipAddress?: string) {
+    if (!refreshTokenStr) {
+      throw new UnauthorizedError('Refresh token is required.');
+    }
+
     // Find the stored token
     const storedToken = await prisma.refreshToken.findUnique({
       where: { token: refreshTokenStr },
@@ -340,7 +344,11 @@ const user = await prisma.user.create({
   // ────────────────────────────────────────
   //  LOGOUT (revoke specific refresh token)
   // ────────────────────────────────────────
-  async logout(refreshTokenStr: string) {
+  async logout(refreshTokenStr?: string) {
+    if (!refreshTokenStr) {
+      return;
+    }
+
     await prisma.refreshToken.updateMany({
       where: { token: refreshTokenStr, revokedAt: null },
       data: { revokedAt: new Date() },

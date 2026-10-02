@@ -280,35 +280,25 @@ export function AddEBookModal(props: {
               required
             />
           </div>
-          {mode === "link" && (
-            <div>
-              <label className={labelClass}>Format</label>
-              <select className={inputClass} value={form.format} onChange={update("format")}>
-                <option value="PDF">PDF</option>
-                <option value="EPUB">EPUB</option>
-                <option value="MOBI">MOBI</option>
-              </select>
-            </div>
-          )}
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className={labelClass}>Classification Number *</label>
             <input className={inputClass} value={form.classificationNumber} onChange={updateClassificationNumber} onBlur={normalizeClassification} inputMode="decimal" maxLength={9} placeholder="e.g., 812.54" required />
           </div>
-          <div>
-            <label className={labelClass}>Category *</label>
+        </div>
+
+        <div>
+          <label className={labelClass}>Category *</label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <select className={inputClass} value={mainCategoryCode} onChange={(e) => {
               setMainCategoryCode(e.target.value);
               setForm((current) => ({ ...current, categoryId: "" }));
-            }} required>
+            }} aria-label="Main category" required>
               <option value="">Select a main category</option>
               {DEWEY_MAIN_CATEGORIES.map((category) => (
                 <option key={category.code} value={category.code}>{category.name} ({category.range})</option>
               ))}
             </select>
-            <select className={`${inputClass} mt-2`} value={form.categoryId} onChange={update("categoryId")} disabled={!mainCategoryCode} required>
+            <select className={inputClass} value={form.categoryId} onChange={update("categoryId")} disabled={!mainCategoryCode} aria-label="Subcategory" required>
               <option value="">Select a subcategory</option>
               {subcategoriesForMain(mainCategoryCode).map((category) => {
                 const categoryId = categoryIdForDewey(category, props.categories);
@@ -337,6 +327,14 @@ export function AddEBookModal(props: {
 
         {mode === "link" && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className={labelClass}>Format</label>
+              <select className={inputClass} value={form.format} onChange={update("format")}>
+                <option value="PDF">PDF</option>
+                <option value="EPUB">EPUB</option>
+                <option value="MOBI">MOBI</option>
+              </select>
+            </div>
             <div>
               <label className={labelClass}>Edition</label>
               <input className={inputClass} value={form.edition} onChange={update("edition")} />

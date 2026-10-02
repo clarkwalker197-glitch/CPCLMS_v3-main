@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
 import api from "@/lib/api";
-import { isValidName, nameValidationMessage, sanitizeNameInput } from "@/lib/name-validation";
+import { sanitizeNameInput } from "@/lib/name-validation";
 import { useDebounce } from "@/lib/useDebounce";
 import Sidebar from "@/components/Sidebar";
 import ResponsiveTable from "@/components/ResponsiveTable";
@@ -25,6 +25,7 @@ const PAGE_SIZE = 10;
 type AddMemberFormState = {
   firstName: string;
   lastName: string;
+  suffix: string;
   email: string;
   libraryId: string;
   password: string;
@@ -38,6 +39,7 @@ type AddMemberFormState = {
 const emptyAddMemberForm: AddMemberFormState = {
   firstName: "",
   lastName: "",
+  suffix: "",
   email: "",
   libraryId: "",
   password: "",
@@ -161,15 +163,6 @@ const handleDelete = async (member: any) => {
       : event.target.value;
     setMemberForm((current) => ({ ...current, [field]: value }));
     setMemberFormError("");
-
-    if (!isValidName(memberForm.firstName.trim())) {
-      setMemberFormError(nameValidationMessage("First name"));
-      return;
-    }
-    if (!isValidName(memberForm.lastName.trim())) {
-      setMemberFormError(nameValidationMessage("Last name"));
-      return;
-    }
   };
 
   const resetAddMemberForm = () => {
@@ -211,6 +204,7 @@ const handleDelete = async (member: any) => {
       const payload = {
         firstName: memberForm.firstName.trim(),
         lastName: memberForm.lastName.trim(),
+        suffix: memberForm.suffix.trim() || undefined,
         email: memberForm.email.trim().toLowerCase(),
         libraryId: memberForm.libraryId.trim() || undefined,
         password: memberForm.password,
@@ -220,9 +214,9 @@ const handleDelete = async (member: any) => {
         phone: memberForm.phone.trim() || undefined,
       };
 
-      const res = await api.post<{ firstName?: string; lastName?: string }>("/auth/admin/users", payload);
+      const res = await api.post<{ firstName?: string; lastName?: string; suffix?: string | null }>("/auth/admin/users", payload);
       if (res.success) {
-        const createdName = `${res.data?.firstName || memberForm.firstName} ${res.data?.lastName || memberForm.lastName}`.trim();
+        const createdName = [res.data?.firstName || memberForm.firstName, res.data?.lastName || memberForm.lastName, res.data?.suffix || memberForm.suffix.trim()].filter(Boolean).join(" ");
         setSuccessMsg(createdName ? `User created successfully: ${createdName}` : "User created successfully");
         setShowAddMemberModal(false);
         resetAddMemberForm();
@@ -240,7 +234,7 @@ const handleDelete = async (member: any) => {
     }
   };
 
-  const getFullName = (m: any) => `${m?.firstName || ""} ${m?.lastName || ""}`.trim() || "—";
+  const getFullName = (m: any) => [m?.firstName, m?.lastName, m?.suffix].filter(Boolean).join(" ") || "—";
   const formatDate = (d?: string) =>
     d ? new Date(d).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" }) : "—";
   const formatPhone = (p?: string) => p || "—";
@@ -376,7 +370,7 @@ const handleDelete = async (member: any) => {
             )}
 
             <form onSubmit={handleAddMember} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-zinc-300 mb-1.5">First Name *</label>
                   <input
@@ -397,6 +391,15 @@ const handleDelete = async (member: any) => {
                     onBlur={(event) => setMemberForm((current) => ({ ...current, lastName: event.target.value.trim() }))}
                     className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
                     placeholder="Last name"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-1.5">Suffix (optional)</label>
+                  <input
+                    value={memberForm.suffix}
+                    onChange={handleAddMemberChange("suffix")}
+                    className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
+                    placeholder="e.g., Jr., III"
                   />
                 </div>
               </div>

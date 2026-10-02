@@ -75,6 +75,7 @@ export const createUserSchema = z.object({
   body: z.object({
     firstName: nameSchema('First name'),
     lastName: nameSchema('Last name'),
+    suffix: z.string().trim().max(20).optional(),
     email: z
       .string()
       .email('Invalid email address')

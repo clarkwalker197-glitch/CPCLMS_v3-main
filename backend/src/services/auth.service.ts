@@ -249,6 +249,7 @@ const user = await prisma.user.create({
         libraryId,
         firstName: input.firstName,
         lastName: input.lastName,
+        suffix: input.suffix || null,
         email: input.email,
         password: hashedPassword,
         role: input.role,
@@ -260,7 +261,7 @@ const user = await prisma.user.create({
     });
 
     await this.logActivity(adminId, 'CREATE_USER', 'User', user.id, ipAddress, {
-      createdUserName: `${user.firstName} ${user.lastName}`,
+      createdUserName: [user.firstName, user.lastName, user.suffix].filter(Boolean).join(' '),
       createdUserLibraryId: user.libraryId,
       createdUserRole: user.role,
       ...(userAgent ? { userAgent } : {}),
@@ -542,6 +543,7 @@ const user = await prisma.user.create({
       libraryId: true,
       firstName: true,
       lastName: true,
+      suffix: true,
       email: true,
       avatar: true,
       role: true,

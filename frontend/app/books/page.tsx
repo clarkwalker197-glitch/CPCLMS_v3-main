@@ -21,7 +21,6 @@ import {
   LayoutGrid,
   List,
   Pencil,
-  Trash2,
   BookOpen,
   ChevronLeft,
   ChevronRight,
@@ -200,28 +199,6 @@ export default function BooksPage() {
     setCart([]);
     loadData();
     setTimeout(() => setSuccessMsg(""), 4000);
-  };
-
-  const handleDelete = async (book: any) => {
-    if (!window.confirm(`Archive "${book.title}"? It can be restored later from the Archive.`)) return;
-    if (togglingStatusId) return; // prevent double-click spam
-    setTogglingStatusId(book.id);
-    try {
-      const res = await api.delete(`/books/${book.id}`);
-      if (res.success) {
-        setSuccessMsg("Book archived successfully");
-        loadData();
-        setTimeout(() => setSuccessMsg(""), 4000);
-      } else if (res.rateLimited) {
-        setError("You're moving too fast. Please wait a moment and try again.");
-      } else {
-        setError(res.error || "Failed to delete book");
-      }
-    } catch {
-      setError("Failed to delete book");
-    } finally {
-      setTogglingStatusId(null);
-    }
   };
 
   const handleEdit = (book: any) => {

@@ -7,7 +7,7 @@ import api from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/api";
 import MediaImage from "@/components/MediaImage";
 import { categoryCodeForId, categoryDisplayName, categoryForClassification, categoryIdForDewey, DEWEY_MAIN_CATEGORIES, mainCategoryForClassification, mainCategoryForCode, normalizeClassificationNumber, sanitizeClassificationInput, subcategoriesForMain } from "@/lib/categories";
-import { BookOpen, Link2, Trash2 } from "lucide-react";
+import { BookOpen, Link2 } from "lucide-react";
 
 interface Category {
   id: string;
@@ -167,26 +167,6 @@ export function EditEBookModal(props: {
         setError(res.error || "Too many requests. Please wait a moment and try again.");
       } else {
         setError(res.error || "Failed to update e-book. Please check the fields and try again.");
-      }
-    } catch (err: any) {
-      setError(err?.message || "Network error. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!props.ebook || loading) return;
-    if (!window.confirm("Are you sure you want to delete this e-book? It can be restored later from the Archive.")) return;
-    setLoading(true);
-    setError("");
-    try {
-      const res = await api.delete(`/ebooks/${props.ebook.id}`);
-      if (res.success) {
-        props.onSuccess();
-        handleClose();
-      } else {
-        setError(res.error || "Failed to archive e-book.");
       }
     } catch (err: any) {
       setError(err?.message || "Network error. Please try again.");
@@ -363,18 +343,6 @@ export function EditEBookModal(props: {
           />
         </div>
 
-        <div className="border-t border-zinc-800 pt-4">
-          <button
-            type="button"
-            onClick={handleDelete}
-            disabled={loading}
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40"
-          >
-            <Trash2 className="w-4 h-4" />
-            Delete E-Book
-          </button>
-          <p className="text-xs text-zinc-500 mt-2">This archives the e-book. It can be restored from Archive.</p>
-        </div>
       </form>
 
       <div className="flex gap-2 mt-6">

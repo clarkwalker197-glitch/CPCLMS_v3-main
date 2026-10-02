@@ -62,7 +62,11 @@ const envSchema = z.object({
   ),
   EMAIL_FROM: z.preprocess(
     (value) => (typeof value === 'string' ? value.trim() : value),
-    z.string().email().optional()
+    z.string().optional().refine((value) => {
+      if (value === undefined) return true;
+      const displayNameAddress = value.match(/^(?:[^<>]*\s)?<([^<>]+)>$/);
+      return z.string().email().safeParse(displayNameAddress?.[1] ?? value).success;
+    }, 'Invalid email')
   ),
   BLOB_READ_WRITE_TOKEN: z.string().optional(),
   BLOB_STORE_ID: z.string().optional(),

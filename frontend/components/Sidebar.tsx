@@ -144,26 +144,26 @@ export default function Sidebar() {
         aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
         aria-expanded={!isCollapsed}
         title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-        className={`flex w-full shrink-0 items-center overflow-hidden border-b border-zinc-800 py-6 transition-[gap,padding] duration-300 ease-in-out ${isCollapsed ? "justify-center gap-0 px-4" : "gap-3 px-6"}`}
+        className={`flex w-full shrink-0 items-center overflow-hidden border-b border-zinc-800 py-4 transition-[gap,padding] duration-300 ease-in-out ${isCollapsed ? "justify-center gap-0 px-3" : "gap-2.5 px-4"}`}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/CPClogo.png" alt="Cordova Public College Logo" className="h-11 w-11 shrink-0 object-contain" />
-        <div aria-hidden={isCollapsed} className={`min-w-0 overflow-hidden text-left transition-[max-width,opacity,transform] duration-200 ease-in-out ${isCollapsed ? "max-w-0 translate-x-1 opacity-0" : "max-w-48 translate-x-0 opacity-100"}`}>
+        <img src="/CPClogo.png" alt="Cordova Public College Logo" className="h-10 w-10 shrink-0 object-contain" />
+        <div aria-hidden={isCollapsed} className={`min-w-0 overflow-hidden text-left leading-none transition-[max-width,opacity,transform] duration-200 ease-in-out ${isCollapsed ? "max-w-0 translate-x-1 opacity-0" : "max-w-48 translate-x-0 opacity-100"}`}>
           <p className="font-bold leading-tight text-white">Cordova Public College</p>
-          <p className="text-xs text-blue-300">Library Management System</p>
+          <p className="mt-0.5 text-[11px] text-blue-300">Library Management System</p>
         </div>
       </button>
 
       {renderNav()}
 
-      <div className="shrink-0 border-t border-zinc-800 px-5 py-4">
-        <div className={`relative overflow-hidden transition-[height] duration-300 ease-in-out ${isCollapsed ? "h-5" : "h-10"}`}>
-          <p className={`absolute inset-x-0 top-0 text-xs leading-5 text-zinc-500 transition-opacity duration-150 ${isCollapsed ? "opacity-0" : "opacity-100"}`}>
+      <div className="mt-auto shrink-0 border-t border-zinc-800 px-4 py-3">
+        <div className={`relative overflow-hidden transition-[height] duration-300 ease-in-out ${isCollapsed ? "h-4" : "h-10"}`}>
+          <p className={`absolute inset-x-0 top-0 text-[11px] leading-5 text-zinc-500 transition-opacity duration-150 ${isCollapsed ? "opacity-0" : "opacity-100"}`}>
             © 2026 Cordova Public College. All rights reserved.
           </p>
           <p
             aria-hidden={!isCollapsed}
-            className={`absolute inset-0 text-xs text-zinc-500 transition-opacity duration-150 ${isCollapsed ? "opacity-100 delay-100" : "opacity-0"}`}
+            className={`absolute inset-0 flex items-center justify-center text-[11px] text-zinc-500 transition-opacity duration-150 ${isCollapsed ? "opacity-100 delay-100" : "opacity-0"}`}
             title="© 2026 Cordova Public College. All rights reserved."
           >
             ©

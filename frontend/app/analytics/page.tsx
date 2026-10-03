@@ -69,6 +69,7 @@ export default function AnalyticsPage() {
   const [inventory, setInventory] = useState<any>({ lowStock: [], neverBorrowed: [] });
   const [departmentFilter, setDepartmentFilter] = useState("");
   const [departmentBooks, setDepartmentBooks] = useState<any[]>([]);
+  const [showAllInventory, setShowAllInventory] = useState(false);
   const [error, setError] = useState("");
 
   const handleDownloadReport = async () => {
@@ -152,8 +153,10 @@ export default function AnalyticsPage() {
     { label: "Unavailable", value: Number(inventory.unavailableCount || 0), color: "#F87171" },
     { label: "Never borrowed", value: Number(inventory.neverBorrowedCount || 0), color: "#22D3EE" },
   ];
-  const lowStockItems = (inventory.lowStock || []).slice(0, 3);
-  const neverBorrowedItems = (inventory.neverBorrowed || []).slice(0, 3);
+  const lowStockItems = (inventory.lowStock || []).slice(0, showAllInventory ? undefined : 3);
+  const neverBorrowedItems = (inventory.neverBorrowed || []).slice(0, showAllInventory ? undefined : 3);
+  const hasMoreInventoryItems = (inventory.lowStock || []).length > 3 || (inventory.neverBorrowed || []).length > 3;
+  const categoryColors = ["#34d399", "#60a5fa", "#fbbf24", "#f472b6", "#a78bfa", "#f87171", "#2dd4bf", "#f59e0b", "#38bdf8", "#c084fc"];
 
   return (
     <ProtectedRoute roles={["LIBRARIAN"]}>
@@ -196,7 +199,13 @@ export default function AnalyticsPage() {
                     </span>
                   ))}
                 </div>
-                {departments.length === 0 ? <div className="flex h-64 items-center justify-center text-sm text-zinc-500">No department data for this range</div> : <div className="h-64"><ResponsiveContainer width="100%" height="100%"><BarChart data={departments} margin={{ top: 8, bottom: 8, left: 0, right: 8 }}><CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#27272a" /><XAxis dataKey="code" stroke="#71717a" fontSize={11} tickLine={false} axisLine={false} interval={0} /><YAxis stroke="#71717a" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} width={32} /><Tooltip contentStyle={chartStyle} formatter={(value) => [`${value} borrows`, "Total"]} /><Bar dataKey="value" radius={[5, 5, 0, 0]} maxBarSize={42}>{departments.map((entry) => <Cell key={entry.code} fill={getDepartmentColor(entry.code || entry.shortName)} />)}</Bar></BarChart></ResponsiveContainer></div>}
+                {departments.length === 0 ? <div className="flex h-64 items-center justify-center text-sm text-zinc-500">No department data for this range</div> : <div className="h-64"><ResponsiveContainer width="100%" height="100%"><BarChart data={departments} margin={{ top: 8, bottom: 8, left: 0, right: 8 }}><CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#27272a" /><XAxis dataKey="code" stroke="#71717a" fontSize={11} tickLine={false} axisLine={false} interval={0} /><YAxis stroke="#71717a" fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} width={32} /><Tooltip
+                  cursor={{ fill: "rgba(59, 130, 246, 0.08)" }}
+                  contentStyle={{ ...chartStyle, backgroundColor: "#0f172a", borderColor: "#3f3f46", color: "#f8fafc" }}
+                  labelStyle={{ color: "#f8fafc", fontWeight: 600 }}
+                  itemStyle={{ color: "#f8fafc" }}
+                  formatter={(value) => [`${value} borrows`, "Total"]}
+                /><Bar dataKey="value" radius={[5, 5, 0, 0]} maxBarSize={42}>{departments.map((entry) => <Cell key={entry.code} fill={getDepartmentColor(entry.code || entry.shortName)} />)}</Bar></BarChart></ResponsiveContainer></div>}
               </Panel>
             </div>
 
@@ -205,7 +214,9 @@ export default function AnalyticsPage() {
                 {topBooks.length === 0 ? <p className="text-sm text-zinc-500">No borrow data for this range</p> : <div className="space-y-3">{topBooks.map((book) => <div key={book.id} className="flex items-center justify-between gap-4 border-b border-zinc-800/60 pb-3 last:border-0 last:pb-0"><div className="min-w-0"><p className="truncate text-sm font-medium text-zinc-100">{book.title}</p><p className="truncate text-xs text-zinc-500">{book.author}</p></div><span className="text-sm font-semibold text-blue-400">{book.borrowCount}</span></div>)}</div>}
               </Panel>
               <Panel title="Most Borrowed Categories">
-                {categories.length === 0 ? <p className="text-sm text-zinc-500">No category data for this range</p> : <div className="h-72"><ResponsiveContainer width="100%" height="100%"><BarChart data={categories} layout="vertical" margin={{ left: 8, right: 28 }}><CartesianGrid strokeDasharray="3 3" stroke="#27272a" horizontal={false} /><XAxis type="number" allowDecimals={false} stroke="#71717a" fontSize={11} tickLine={false} axisLine={false} /><YAxis type="category" dataKey="name" width={110} stroke="#a1a1aa" fontSize={11} tickLine={false} axisLine={false} /><Tooltip contentStyle={chartStyle} /><Bar dataKey="borrowCount" fill="#10b981" radius={[0, 6, 6, 0]}><LabelList dataKey="borrowCount" position="right" fill="#a1a1aa" fontSize={11} /></Bar></BarChart></ResponsiveContainer></div>}
+                {categories.length === 0 ? <p className="text-sm text-zinc-500">No category data for this range</p> : <div className="h-72"><ResponsiveContainer width="100%" height="100%"><BarChart data={categories} layout="vertical" margin={{ left: 8, right: 28 }}><CartesianGrid strokeDasharray="3 3" stroke="#27272a" horizontal={false} /><XAxis type="number" allowDecimals={false} stroke="#71717a" fontSize={11} tickLine={false} axisLine={false} /><YAxis type="category" dataKey="name" width={110} stroke="#a1a1aa" fontSize={11} tickLine={false} axisLine={false} /><Tooltip contentStyle={chartStyle} /><Bar dataKey="borrowCount" radius={[0, 6, 6, 0]}>{categories.map((category, index) => (
+                    <Cell key={`${category.name}-${index}`} fill={categoryColors[index % categoryColors.length]} />
+                  ))}<LabelList dataKey="borrowCount" position="right" fill="#a1a1aa" fontSize={11} /></Bar></BarChart></ResponsiveContainer></div>}
               </Panel>
             </div>
 
@@ -297,6 +308,15 @@ export default function AnalyticsPage() {
                     {neverBorrowedItems.length ? <ul className="space-y-2">{neverBorrowedItems.map((book: any) => <li key={book.id} className="line-clamp-2 text-zinc-500">{book.title}</li>)}</ul> : <p className="text-zinc-600">None</p>}
                   </div>
                 </div>
+                {hasMoreInventoryItems && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllInventory((prev) => !prev)}
+                    className="mt-4 inline-flex items-center rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-xs font-medium text-zinc-300 transition hover:border-zinc-500 hover:text-white"
+                  >
+                    {showAllInventory ? "Show less" : "See all"}
+                  </button>
+                )}
               </Panel>
               <Panel title="Fine Distribution">
                 <div className="mb-4 grid grid-cols-3 gap-2 border-b border-zinc-800 pb-4 text-xs">

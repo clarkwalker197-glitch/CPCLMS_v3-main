@@ -5,7 +5,6 @@ import { AuthProvider } from "@/lib/auth-context";
 import { ThemeProvider } from "@/components/theme-provider";
 import { SWSelfHeal } from "@/components/SWSelfHeal";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
-import SiteFooter from "@/components/SiteFooter";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -83,7 +82,6 @@ export default function RootLayout({
             <SWSelfHeal />
             <OfflineIndicator />
             <main className="flex-1">{children}</main>
-            <SiteFooter />
           </AuthProvider>
         </ThemeProvider>
       </body>

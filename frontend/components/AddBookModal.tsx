@@ -46,6 +46,7 @@ export function AddBookModal(props: {
     shelf: "",
     row: "",
     copies: "1",
+    replacementValue: "",
   };
   const [form, setForm] = useState(emptyForm);
   const [mainCategoryCode, setMainCategoryCode] = useState("");
@@ -112,8 +113,13 @@ export function AddBookModal(props: {
       return;
     }
     const copiesNum = form.copies ? Number(form.copies) : 1;
+    const replacementValue = Number(form.replacementValue);
     if (!Number.isInteger(copiesNum) || copiesNum < 1) {
       setError("Copies must be a whole number of 1 or more.");
+      return;
+    }
+    if (!Number.isFinite(replacementValue) || replacementValue < 0) {
+      setError("Replacement value must be a valid non-negative amount in pesos.");
       return;
     }
 
@@ -130,6 +136,7 @@ export function AddBookModal(props: {
         pages: form.pages ? Number(form.pages) : undefined,
         categoryId: form.categoryId,
         classificationNumber,
+        replacementValue: Number(replacementValue.toFixed(2)),
         description: form.description.trim() || undefined,
         language: form.language.trim() || "English",
         shelf: form.shelf.trim() || undefined,
@@ -315,12 +322,15 @@ export function AddBookModal(props: {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className={labelClass}>Pages</label>
+            <label className={labelClass}>Replacement Value (₱)</label>
             <input
               type="number"
+              min={0}
+              step="0.01"
               className={inputClass}
-              value={form.pages}
-              onChange={update("pages")}
+              value={form.replacementValue}
+              onChange={update("replacementValue")}
+              placeholder="e.g., 350.00"
             />
           </div>
           <div>

@@ -149,6 +149,7 @@ model Book {
   categoryId           String?    @map("category_id")
   category             Category?  @relation(fields: [categoryId], references: [id])
   classificationNumber String?    @map("classification_number") @db.VarChar(50)
+  replacementValue     Decimal    @default(0.00) @map("replacement_value") @db.Decimal(10, 2)
   description          String?    @db.VarChar(2000)
   coverImage           String?    @map("cover_image") @db.VarChar(500)
   language             String     @default("English") @db.VarChar(50)

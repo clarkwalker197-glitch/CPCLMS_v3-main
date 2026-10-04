@@ -1068,7 +1068,10 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
   async declareMissing(transactionId: string, librarianId: string, reason?: string) {
     const transaction = await prisma.borrowTransaction.findUnique({
       where: { id: transactionId },
-      include: { book: true, user: { select: { id: true, firstName: true, lastName: true } } },
+      include: {
+        book: true,
+        user: { select: { id: true, firstName: true, lastName: true } },
+      },
     });
     if (!transaction) throw new NotFoundError('Transaction');
     if (transaction.returnDate) throw new BadRequestError('Book already returned');
@@ -1077,17 +1080,19 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
     }
 
     const now = new Date();
+    const replacementValue = Number(transaction.book.replacementValue ?? 0);
     const isOverdue = now > transaction.dueDate;
-    const fineAmount =
-      (isOverdue ? transaction.fineAmount ?? 0 : 0) || 0;
+    const missingFineAmount = Number.isFinite(replacementValue) ? Math.max(0, replacementValue) : 0;
+    const fineAmount = isOverdue ? Math.max(transaction.fineAmount ?? 0, missingFineAmount) : missingFineAmount;
 
     const [updated] = await prisma.$transaction([
       prisma.borrowTransaction.update({
         where: { id: transaction.id },
         data: {
           returnDate: now,
-          status: isOverdue ? 'OVERDUE' : 'RETURNED',
+          status: 'RETURNED',
           fineAmount,
+          finePaid: transaction.finePaid || fineAmount > 0,
           qrScanned: true,
           notes: reason ? `${transaction.notes ? transaction.notes + ' ' : ''}Declared missing: ${reason}`.trim() : (transaction.notes || undefined),
         },
@@ -1111,6 +1116,8 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
             accessionNo: transaction.book.accessionNo,
             borrower: `${transaction.user.firstName} ${transaction.user.lastName}`,
             reason: reason || null,
+            replacementValue: missingFineAmount,
+            isOverdue,
           },
         },
       }),

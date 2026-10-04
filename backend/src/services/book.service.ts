@@ -154,6 +154,7 @@ export class BookService {
         pages: data.pages ? Number(data.pages) : null,
         categoryId: data.categoryId,
         classificationNumber: normalizeClassificationNumber(data.classificationNumber),
+        replacementValue: new Prisma.Decimal(Number(data.replacementValue ?? 0)),
         description: data.description || null,
         coverImage: data.coverImage || null,
         language: data.language || 'English',
@@ -185,13 +186,13 @@ export class BookService {
         ...(input.pages !== undefined && { pages: Number(input.pages) }),
         ...(input.copies !== undefined && { copies: Number(input.copies) }),
         ...(input.availableCopies !== undefined && { availableCopies: Number(input.availableCopies) }),
+        ...(input.replacementValue !== undefined && { replacementValue: new Prisma.Decimal(Number(input.replacementValue)) }),
         ...(input.classificationNumber !== undefined && {
           classificationNumber: normalizeClassificationNumber(input.classificationNumber),
         }),
         ...(input.copies !== undefined && {
           availableCopies: Number(input.copies) - (book.copies - book.availableCopies),
         }),
-        ...(input.availableCopies !== undefined && { availableCopies: Number(input.availableCopies) }),
       },
       include: {
         category: { select: { id: true, name: true, slug: true } },

@@ -25,6 +25,7 @@ interface Book {
   pages?: number;
   categoryId?: string;
   classificationNumber?: string;
+  replacementValue?: number | string | null;
   description?: string;
   coverImage?: string;
   language?: string;
@@ -69,6 +70,7 @@ export function EditBookModal(props: {
     language: "English",
     copies: "1",
     availableCopies: "1",
+    replacementValue: "0",
   };
 
   const [form, setForm] = useState(emptyForm);
@@ -95,6 +97,7 @@ export function EditBookModal(props: {
         language: props.book.language || "English",
         copies: props.book.copies ? String(props.book.copies) : "1",
         availableCopies: props.book.availableCopies ? String(props.book.availableCopies) : "1",
+        replacementValue: props.book.replacementValue != null ? String(props.book.replacementValue) : "0",
       });
       const categoryCode = categoryCodeForId(props.book.categoryId, props.categories);
       setMainCategoryCode((mainCategoryForCode(categoryCode) || mainCategoryForCode(props.book.classificationNumber?.slice(0, 3)))?.code || "");
@@ -189,6 +192,7 @@ export function EditBookModal(props: {
 
     const copiesNum = form.copies ? Number(form.copies) : 1;
     const availableCopiesNum = form.availableCopies ? Number(form.availableCopies) : 1;
+    const replacementValue = Number(form.replacementValue);
 
     if (!Number.isInteger(copiesNum) || copiesNum < 1) {
       setError("Total copies must be a whole number of 1 or more.");
@@ -205,6 +209,11 @@ export function EditBookModal(props: {
       return;
     }
 
+    if (!Number.isFinite(replacementValue) || replacementValue < 0) {
+      setError("Replacement value must be a valid non-negative amount in pesos.");
+      return;
+    }
+
     setLoading(true);
     try {
       const commonFields = {
@@ -216,6 +225,7 @@ export function EditBookModal(props: {
         pages: form.pages ? Number(form.pages) : undefined,
         categoryId: form.categoryId || undefined,
         classificationNumber,
+        replacementValue: Number(replacementValue.toFixed(2)),
         description: form.description.trim() || undefined,
         language: form.language.trim() || "English",
         copies: copiesNum,
@@ -405,9 +415,25 @@ export function EditBookModal(props: {
             />
           </div>
           <div>
+            <label className={labelClass}>Replacement Value (₱)</label>
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              className={inputClass}
+              value={form.replacementValue}
+              onChange={update("replacementValue")}
+              placeholder="e.g., 350.00"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
             <label className={labelClass}>Language</label>
             <input className={inputClass} value={form.language} onChange={update("language")} />
           </div>
+          <div></div>
         </div>
 
         <div>

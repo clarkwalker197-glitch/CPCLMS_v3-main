@@ -1,23 +1,14 @@
 import api from './api';
 import { canUseOfflineStorage, db, setSyncMeta } from './db';
 import type { LocalRecord, SyncMutation } from './offline-types';
-import { NETWORK_STATUS_EVENT } from './network-status';
 
 export const SYNC_EVENT = 'cpclms-sync';
 const SYNC_BATCH_SIZE = 2;
 const SYNC_BATCH_DELAY_MS = 150;
 const MAX_SYNC_ATTEMPTS = 6;
 let syncing = false;
-let networkReachable = true;
+let syncRequested = false;
 let retryTimer: ReturnType<typeof setTimeout> | undefined;
-
-if (typeof window !== 'undefined') {
-  window.addEventListener(NETWORK_STATUS_EVENT, (event) => {
-    networkReachable = Boolean((event as CustomEvent<{ online: boolean }>).detail.online);
-  });
-  window.addEventListener('online', () => { networkReachable = true; });
-  window.addEventListener('offline', () => { networkReachable = false; });
-}
 
 function currentUserId(): string | null {
   if (typeof window === 'undefined') return null;
@@ -329,6 +320,12 @@ export async function enqueueMutation(input: NewMutation): Promise<void> {
     attempts: 0,
   };
   await db.syncQueue.add(mutation);
+  notifySync();
+
+  if (typeof navigator === 'undefined' || navigator.onLine) {
+    if (syncing) syncRequested = true;
+    else void syncNow();
+  }
 
   if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
     try {
@@ -341,7 +338,6 @@ export async function enqueueMutation(input: NewMutation): Promise<void> {
       // Reconnect and app-start sync remain available if Background Sync is unsupported.
     }
   }
-  notifySync();
 }
 
 export async function pendingMutationCount(): Promise<number> {
@@ -420,13 +416,17 @@ export async function syncNow(): Promise<void> {
     syncing = false;
     notifySync();
     void scheduleQueueRetry();
+    if (syncRequested) {
+      syncRequested = false;
+      void syncNow();
+    }
   }
 }
 
 export const fullSync = syncNow;
 
 export function isOnline(): boolean {
-  return typeof navigator === 'undefined' || (navigator.onLine && networkReachable);
+  return typeof navigator === 'undefined' || navigator.onLine;
 }
 
 export function subscribeToConnectivity(listener: (online: boolean) => void): () => void {

@@ -74,6 +74,7 @@ export default function RequestsPage() {
   const [txnPage, setTxnPage] = useState(1);
   const [txnSort, setTxnSort] = useState("status");
   const [txnSortOrder, setTxnSortOrder] = useState<"asc" | "desc">("asc");
+  const [showingCachedTransactions, setShowingCachedTransactions] = useState(false);
 
   // Librarian-only active borrowed books
   const [activeTxns, setActiveTxns] = useState<any[]>([]);
@@ -130,7 +131,41 @@ export default function RequestsPage() {
   const loadTransactions = useCallback(async () => {
     if (isLibrarian) return;
     setTxnLoading(true);
+    const applyCachedTransactions = (cachedTransactions: any[]) => {
+      const search = debouncedTxnSearch.trim().toLocaleLowerCase();
+      const filtered = cachedTransactions
+        .filter((transaction: any) => {
+          const searchable = [
+            transaction.book?.title,
+            transaction.book?.author,
+            transaction.book?.accessionNo,
+          ].some((value) => String(value || "").toLocaleLowerCase().includes(search));
+          return (!search || searchable) &&
+            (!debouncedTxnStatus || transaction.status === debouncedTxnStatus);
+        })
+        .sort((left: any, right: any) => {
+          const leftValue = left[txnSort] ?? "";
+          const rightValue = right[txnSort] ?? "";
+          const comparison = txnSort === "fineAmount"
+            ? Number(leftValue) - Number(rightValue)
+            : String(leftValue).localeCompare(String(rightValue), undefined, { numeric: true });
+          return txnSortOrder === "desc" ? -comparison : comparison;
+        });
+      setTxns(filtered.slice((txnPage - 1) * PAGE_SIZE, txnPage * PAGE_SIZE));
+      setTxnTotal(filtered.length);
+      setShowingCachedTransactions(cachedTransactions.length > 0);
+      return cachedTransactions.length > 0;
+    };
     try {
+      const cachedTransactions = user
+        ? await offlineDb.transactions.where("userId").equals(user.id).toArray()
+        : [];
+
+      if (!navigator.onLine) {
+        if (!applyCachedTransactions(cachedTransactions)) setError("No synchronized borrowed books are available offline.");
+        return;
+      }
+
       const params: Record<string, string> = {
         page: String(txnPage),
         limit: String(PAGE_SIZE),
@@ -142,17 +177,27 @@ export default function RequestsPage() {
 
       const res = await api.get<any>(`/transactions?${new URLSearchParams(params).toString()}`);
       if (res.success) {
-        setTxns((res.data as any[]) || []);
+        const serverTransactions = ((res.data as any[]) || []).map((transaction: any) => ({
+          ...transaction,
+          userId: transaction.userId || user?.id,
+        }));
+        setTxns(serverTransactions);
         setTxnTotal(res.meta?.total ?? ((res.data as any[]) || []).length);
+        if (user) await offlineDb.transactions.bulkPut(serverTransactions);
+        setShowingCachedTransactions(false);
       } else {
-        setError(res.error || "Failed to load borrowed books");
+        if (!applyCachedTransactions(cachedTransactions)) setError(res.error || "Failed to load borrowed books");
       }
     } catch {
-      setError("Failed to load borrowed books");
+      const cachedTransactions = user
+        ? await offlineDb.transactions.where("userId").equals(user.id).toArray()
+        : [];
+      if (!cachedTransactions.length) setError("Failed to load borrowed books");
+      else applyCachedTransactions(cachedTransactions);
     } finally {
       setTxnLoading(false);
     }
-  }, [debouncedTxnSearch, debouncedTxnStatus, isLibrarian, txnPage, txnSort, txnSortOrder]);
+  }, [debouncedTxnSearch, debouncedTxnStatus, isLibrarian, txnPage, txnSort, txnSortOrder, user]);
 
   const loadActiveTransactions = useCallback(async () => {
     if (!isLibrarian) return;
@@ -506,6 +551,11 @@ export default function RequestsPage() {
                           <div>
                             <h1 className="text-2xl font-bold text-white">My Borrowed Books</h1>
                             <p className="text-sm text-zinc-400 mt-1">Your currently borrowed and recently returned books · {txnTotal} record{txnTotal !== 1 ? "s" : ""}</p>
+                            {showingCachedTransactions && (
+                              <p className="mt-2 text-xs text-amber-300">
+                                Offline — showing your last synchronized borrowed books.
+                              </p>
+                            )}
                           </div>
                         </div>
 

@@ -636,7 +636,10 @@ const user = await prisma.user.create({
 
     const updated = await prisma.user.update({
       where: { id: targetUserId },
-      data: { isActive: !user.isActive },
+      data: {
+        isActive: !user.isActive,
+        archivedAt: user.isActive ? new Date() : null,
+      },
     });
 
     // If deactivating, revoke all sessions
@@ -740,4 +743,3 @@ const user = await prisma.user.create({
 }
 
 export const authService = new AuthService();
-

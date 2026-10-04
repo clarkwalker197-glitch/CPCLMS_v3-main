@@ -59,7 +59,9 @@ export class CommunityService {
       data: { userId, subject: input.subject.trim(), message: input.message.trim() },
       include: { user: { select: { firstName: true, lastName: true } } },
     });
-    const memberName = `${suggestion.user.firstName} ${suggestion.user.lastName}`.trim();
+    const memberName = suggestion.user
+      ? `${suggestion.user.firstName} ${suggestion.user.lastName}`.trim()
+      : 'a deleted member';
     await notificationService.notifyAllLibrarians(
       'SUGGESTION_NEW',
       'New suggestion',
@@ -82,7 +84,7 @@ export class CommunityService {
     const existing = await prisma.suggestion.findUnique({ where: { id } });
     if (!existing) throw new NotFoundError('Suggestion');
     const suggestion = await prisma.suggestion.update({ where: { id }, data: input });
-    if (input.status && input.status !== existing.status) {
+    if (input.status && input.status !== existing.status && suggestion.userId) {
       await notificationService.createNotification(
         suggestion.userId,
         'SUGGESTION_UPDATED',
@@ -100,7 +102,9 @@ export class CommunityService {
       data: { userId, title: input.title.trim(), author: input.author?.trim() || undefined, isbn: input.isbn?.trim() || undefined, details: input.details?.trim() || undefined },
       include: { user: { select: { firstName: true, lastName: true } } },
     });
-    const memberName = `${request.user.firstName} ${request.user.lastName}`.trim();
+    const memberName = request.user
+      ? `${request.user.firstName} ${request.user.lastName}`.trim()
+      : 'a deleted member';
     await notificationService.notifyAllLibrarians(
       'ACQUISITION_REQUEST_NEW',
       'New book request',
@@ -123,7 +127,7 @@ export class CommunityService {
     const existing = await prisma.acquisitionRequest.findUnique({ where: { id } });
     if (!existing) throw new NotFoundError('Acquisition request');
     const request = await prisma.acquisitionRequest.update({ where: { id }, data: input });
-    if (input.status && input.status !== existing.status) {
+    if (input.status && input.status !== existing.status && request.userId) {
       await notificationService.createNotification(
         request.userId,
         'ACQUISITION_REQUEST_UPDATED',

@@ -25,6 +25,29 @@ type ActivityRequestContext = { ipAddress?: string; userAgent?: string };
 
 const FINE_PER_BOOK_PER_DAY = 5;
 
+type LinkedBorrowRecord<T extends {
+  userId: string | null;
+  bookId: string | null;
+  user: unknown;
+  book: unknown;
+}> = T & {
+  userId: string;
+  bookId: string;
+  user: NonNullable<T['user']>;
+  book: NonNullable<T['book']>;
+};
+
+function assertLinkedBorrowRecord<T extends {
+  userId: string | null;
+  bookId: string | null;
+  user: unknown;
+  book: unknown;
+}>(record: T): asserts record is LinkedBorrowRecord<T> {
+  if (!record.userId || !record.bookId || !record.user || !record.book) {
+    throw new BadRequestError('This archived record no longer has an active user and book link');
+  }
+}
+
 function generateTransactionId(): string {
   return crypto.randomInt(0, 100_000_000).toString().padStart(8, '0');
 }
@@ -206,7 +229,7 @@ export class TransactionService {
       let approvedStillBlocking = false;
       const approvedRequests = existingRequests.filter((r) => r.status === 'APPROVED');
       if (approvedRequests.length > 0) {
-        const approvedBookIds = approvedRequests.map((r) => r.bookId);
+        const approvedBookIds = approvedRequests.flatMap((r) => r.bookId ? [r.bookId] : []);
         const activeTxns = await tx.borrowTransaction.count({
           where: {
             userId,
@@ -349,7 +372,9 @@ export class TransactionService {
     if (requests.length > TransactionService.MAX_BOOKS_PER_TRANSACTION) {
       throw new BadRequestError('This transaction exceeds the maximum of 3 books');
     }
+    for (const request of requests) assertLinkedBorrowRecord(request);
     const user = requests[0].user;
+    if (!user) throw new BadRequestError('The archived user cannot approve this request');
     if (requests.some((request) => request.userId !== user.id)) {
       throw new BadRequestError('Transaction request contains multiple members');
     }
@@ -405,6 +430,7 @@ export class TransactionService {
       },
       orderBy: { requestDate: 'asc' },
     });
+    for (const request of stagedRequests) assertLinkedBorrowRecord(request);
     await prisma.activityLog.create({
       data: {
         userId: librarianId,
@@ -415,7 +441,7 @@ export class TransactionService {
         details: {
           transactionId,
           borrowerName: `${user.firstName} ${user.lastName}`,
-          bookTitles: stagedRequests.map((request) => request.book.title),
+          bookTitles: stagedRequests.map((request) => request.book?.title || 'Deleted book'),
           status: 'Awaiting borrower verification',
           ...(auditContext?.userAgent ? { userAgent: auditContext.userAgent } : {}),
         },
@@ -449,7 +475,12 @@ export class TransactionService {
       throw new BadRequestError('This transaction exceeds the maximum of 3 books');
     }
 
+    for (const request of requests) assertLinkedBorrowRecord(request);
     const user = requests[0].user;
+    if (!user) throw new BadRequestError('The archived user cannot verify this request');
+    if (requests.some((request) => !request.book || !request.bookId)) {
+      throw new BadRequestError('This archived request no longer has a linked book');
+    }
     const borrowDate = new Date();
     const dueDate = await this.calculateBorrowDueDate(user, borrowDate);
     const maxBooks = user.role === Role.STUDENT
@@ -457,7 +488,7 @@ export class TransactionService {
       : user.role === Role.FACULTY
         ? user.maxBooksAllowed ?? await policyService.getNumber('FACULTY_MAX_BOOKS', 10)
         : 999;
-    const bookIds = requests.map((request) => request.bookId);
+    const bookIds = requests.flatMap((request) => request.bookId ? [request.bookId] : []);
 
     const transactions = await prisma.$transaction(async (tx) => {
       const claimed = await tx.borrowRequest.updateMany({
@@ -490,8 +521,11 @@ export class TransactionService {
         throw new BadRequestError(`You have reached the maximum limit of ${maxBooks} active borrows`);
       }
 
-      const createdTransactions = await Promise.all(requests.map((request) =>
-        tx.borrowTransaction.create({
+      const createdTransactions = await Promise.all(requests.map((request) => {
+        if (!request.bookId || !request.book) {
+          throw new BadRequestError('This archived request no longer has a linked book');
+        }
+        return tx.borrowTransaction.create({
           data: {
             userId,
             bookId: request.bookId,
@@ -505,8 +539,8 @@ export class TransactionService {
             book: { select: { title: true, accessionNo: true, isbn: true, shelf: true, row: true } },
             user: { select: { id: true, firstName: true, lastName: true, libraryId: true, avatar: true, role: true } },
           },
-        })
-      ));
+        });
+      }));
 
       await Promise.all(books.map((book) => tx.book.update({
         where: { id: book.id },
@@ -535,7 +569,7 @@ export class TransactionService {
           details: {
             transactionId,
             borrowerName: `${user.firstName} ${user.lastName}`,
-            bookTitles: requests.map((request) => request.book.title),
+            bookTitles: requests.map((request) => request.book?.title || 'Deleted book'),
             dueDate,
             status: 'Verified',
             ...(auditContext?.userAgent ? { userAgent: auditContext.userAgent } : {}),
@@ -582,6 +616,9 @@ export class TransactionService {
     if (request.status !== 'PENDING') {
       throw new BadRequestError('Request already processed');
     }
+    if (!request.book || !request.bookId) {
+      throw new BadRequestError('This archived request no longer has a linked book');
+    }
 
     if (request.transactionId) {
       const requests = await prisma.borrowRequest.findMany({
@@ -591,7 +628,7 @@ export class TransactionService {
       if (requests.some((entry) => entry.status !== request.status)) {
         throw new BadRequestError('This transaction has already been processed');
       }
-      const bookTitles = requests.map((entry) => entry.book.title).join(', ');
+      const bookTitles = requests.map((entry) => entry.book?.title || 'Deleted book').join(', ');
       await prisma.$transaction([
         prisma.borrowRequest.updateMany({
           where: { transactionId: request.transactionId, status: request.status },
@@ -636,7 +673,7 @@ export class TransactionService {
           userId: request.userId,
           type: 'REQUEST_REJECTED',
           title: 'Borrow Request Rejected',
-          message: `Your request to borrow "${request.book.title}" was rejected. Reason: ${reason}`,
+          message: `Your request to borrow "${request.book?.title || 'a book'}" was rejected. Reason: ${reason}`,
           link: '/requests',
         },
       }),
@@ -648,7 +685,7 @@ export class TransactionService {
           entityId: requestId,
           ipAddress: auditContext?.ipAddress,
           details: {
-            bookTitle: request.book.title,
+            bookTitle: request.book?.title || 'Deleted book',
             reason,
             status: 'Rejected',
             ...(auditContext?.userAgent ? { userAgent: auditContext.userAgent } : {}),
@@ -701,9 +738,9 @@ export class TransactionService {
       books: requests.map((request) => ({
         requestId: request.id,
         bookId: request.bookId,
-        title: request.book.title,
-        author: request.book.author,
-        accessionNo: request.book.accessionNo,
+        title: request.book?.title || 'Deleted book',
+        author: request.book?.author || 'Unknown',
+        accessionNo: request.book?.accessionNo || '—',
         status: transactions.find((transaction) => transaction.bookId === request.bookId)?.status ?? request.status,
         dueDate: transactions.find((transaction) => transaction.bookId === request.bookId)?.dueDate ?? null,
       })),
@@ -795,8 +832,8 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
         if (statusDifference) return statusDifference * direction;
       }
       if (sort === 'memberName') {
-        const aName = `${a.user.firstName} ${a.user.lastName}`;
-        const bName = `${b.user.firstName} ${b.user.lastName}`;
+        const aName = a.user ? `${a.user.firstName} ${a.user.lastName}` : 'Deleted user';
+        const bName = b.user ? `${b.user.firstName} ${b.user.lastName}` : 'Deleted user';
         const nameDifference = aName.localeCompare(bName);
         if (nameDifference) return nameDifference * direction;
       }
@@ -861,6 +898,9 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
 
     if (!transaction) throw new NotFoundError('Active transaction for this book');
     if (transaction.returnDate) throw new BadRequestError('Book already returned');
+    if (!transaction.book || !transaction.user || !transaction.bookId || !transaction.userId) {
+      throw new BadRequestError('This transaction no longer has an active user and book link');
+    }
 
     const now = new Date();
     const isOverdue = now >= new Date(transaction.dueDate.getFullYear(), transaction.dueDate.getMonth(), transaction.dueDate.getDate() + 1);
@@ -911,6 +951,7 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
         },
       }),
     ]);
+    if (!updated.book) throw new BadRequestError('The book was removed before the transaction could be updated');
 
     await this.recalculateReservationQueueForBook(transaction.bookId);
 
@@ -970,6 +1011,9 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
     });
     if (!transaction) throw new NotFoundError('Transaction');
     if (transaction.returnDate) throw new BadRequestError('Book already returned');
+    if (!transaction.book || !transaction.user || !transaction.bookId || !transaction.userId) {
+      throw new BadRequestError('This transaction no longer has an active user and book link');
+    }
 
     const now = new Date();
     const isOverdue = now > transaction.dueDate;
@@ -1019,6 +1063,7 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
         },
       }),
     ]);
+    if (!updated.book) throw new BadRequestError('The book was removed before the transaction could be updated');
 
     return updated;
   }
@@ -1164,15 +1209,17 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
       },
     });
 
-    await prisma.notification.create({
-      data: {
-        userId: transaction.userId,
-        type: 'SYSTEM',
-        title: 'Fine Paid',
-        message: `Your fine of ₱${transaction.fineAmount.toFixed(2)} for "${updated.book.title}" has been paid.`,
-        link: `/transactions/${transactionId}`,
-      },
-    });
+    if (transaction.userId) {
+      await prisma.notification.create({
+        data: {
+          userId: transaction.userId,
+          type: 'SYSTEM',
+          title: 'Fine Paid',
+          message: `Your fine of ₱${transaction.fineAmount.toFixed(2)} for "${updated.book?.title || 'a deleted book'}" has been paid.`,
+          link: `/transactions/${transactionId}`,
+        },
+      });
+    }
 
     return updated;
   }
@@ -1203,10 +1250,10 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
       requestId: request.id,
       transactionId: receipt.transactionId,
       approvalCode: formatBorrowId(receipt.transactionId),
-      bookTitle: firstRequest.book.title,
-      accessionNo: firstRequest.book.accessionNo,
-      memberName: `${firstRequest.user.firstName} ${firstRequest.user.lastName}`,
-      libraryId: firstRequest.user.libraryId,
+      bookTitle: firstRequest.book?.title || 'Deleted book',
+      accessionNo: firstRequest.book?.accessionNo || '—',
+      memberName: firstRequest.user ? `${firstRequest.user.firstName} ${firstRequest.user.lastName}` : 'Deleted user',
+      libraryId: firstRequest.user?.libraryId || '—',
       qrCode: receipt.qrCode,
     };
   }
@@ -1298,6 +1345,9 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
         },
       });
     });
+    if (!reservation || !reservation.book) {
+      throw new NotFoundError('Created reservation');
+    }
 
     await prisma.notification.create({
       data: {
@@ -1337,6 +1387,9 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
       },
     });
     if (!reservation) throw new NotFoundError('Reservation');
+    if (!reservation.book || !reservation.bookId || !reservation.userId) {
+      throw new BadRequestError('This archived reservation can no longer be approved');
+    }
     if (reservation.status !== 'ACTIVE') throw new BadRequestError('Reservation is already resolved.');
 
     const updated = await prisma.reservation.update({
@@ -1382,6 +1435,10 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
       include: { book: { select: { title: true } }, user: { select: { firstName: true, lastName: true } } },
     });
     if (!reservation) throw new NotFoundError('Reservation');
+    if (!reservation.book || !reservation.bookId || !reservation.userId) {
+      throw new BadRequestError('This archived reservation can no longer be rejected');
+    }
+    const bookId = reservation.bookId;
     if (reservation.status !== 'ACTIVE') throw new BadRequestError('Reservation already processed');
 
     const updated = await prisma.$transaction(async (tx) => {
@@ -1389,7 +1446,7 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
         where: { id: reservationId },
         data: { status: 'CANCELLED' },
       });
-      await this.recalculateReservationQueueForBook(reservation.bookId, tx);
+      await this.recalculateReservationQueueForBook(bookId, tx);
       return cancelled;
     });
 
@@ -1431,6 +1488,10 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
       },
     });
     if (!reservation) throw new NotFoundError('Reservation');
+    if (!reservation.book || !reservation.user || !reservation.bookId || !reservation.userId) {
+      throw new BadRequestError('This archived reservation can no longer be picked up');
+    }
+    const bookId = reservation.bookId;
     if (reservation.userId !== userId) throw new BadRequestError('This reservation is not assigned to you.');
     if (reservation.status !== 'ACTIVE') throw new BadRequestError('This reservation has already been fulfilled or cancelled.');
 
@@ -1451,7 +1512,7 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
       const created = await tx.borrowTransaction.create({
         data: {
           userId,
-          bookId: reservation.bookId,
+          bookId,
           transactionId,
           borrowDate: loanDate,
           dueDate,
@@ -1465,7 +1526,7 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
       });
 
       await tx.book.update({
-        where: { id: reservation.bookId },
+        where: { id: bookId },
         data: {
           availableCopies: { decrement: 1 },
           status: book.availableCopies - 1 <= 0 ? 'BORROWED' : 'AVAILABLE',
@@ -1480,7 +1541,7 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
         },
       });
 
-      await this.recalculateReservationQueueForBook(reservation.bookId, tx);
+      await this.recalculateReservationQueueForBook(bookId, tx);
       return created;
     });
 
@@ -1523,6 +1584,10 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
       include: { book: { select: { title: true } } },
     });
     if (!reservation) throw new NotFoundError('Reservation');
+    if (!reservation.book || !reservation.bookId) {
+      throw new BadRequestError('This archived reservation can no longer be cancelled');
+    }
+    const bookId = reservation.bookId;
     if (reservation.userId !== userId) throw new BadRequestError('Not your reservation');
     if (reservation.status !== 'ACTIVE') throw new BadRequestError('Reservation already processed');
 
@@ -1531,7 +1596,7 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
         where: { id: reservationId },
         data: { status: 'CANCELLED' },
       });
-      await this.recalculateReservationQueueForBook(reservation.bookId, tx);
+      await this.recalculateReservationQueueForBook(bookId, tx);
     });
 
     await prisma.activityLog.create({
@@ -1599,6 +1664,7 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
     await this.synchronizeOverdueTransactions();
 
     for (const txn of overdueTransactions) {
+      if (!txn.book || !txn.userId) continue;
       const dueStart = new Date(txn.dueDate.getFullYear(), txn.dueDate.getMonth(), txn.dueDate.getDate());
       const diffDays = Math.floor((todayStart.getTime() - dueStart.getTime()) / (1000 * 60 * 60 * 24));
       const fine = Math.max(0, diffDays) * FINE_PER_BOOK_PER_DAY;
@@ -1619,4 +1685,3 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
 }
 
 export const transactionService = new TransactionService();
-

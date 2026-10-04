@@ -165,10 +165,10 @@ export class ReportService {
 
     const headers = ['User', 'Library ID', 'Book', 'Accession', 'Borrowed', 'Due', 'Status', 'Fine'];
     const rows = txns.map((t) => [
-      `${t.user.firstName} ${t.user.lastName}`,
-      t.user.libraryId,
-      t.book.title.substring(0, 30),
-      t.book.accessionNo,
+      t.user ? `${t.user.firstName} ${t.user.lastName}` : 'Deleted user',
+      t.user?.libraryId || '—',
+      t.book?.title.substring(0, 30) || 'Deleted book',
+      t.book?.accessionNo || '—',
       t.borrowDate.toLocaleDateString(),
       t.dueDate.toLocaleDateString(),
       t.status,
@@ -213,9 +213,9 @@ export class ReportService {
     const rows = txns.map((t) => {
       const daysOverdue = Math.ceil((now.getTime() - t.dueDate.getTime()) / (1000 * 60 * 60 * 24));
       return [
-        `${t.user.firstName} ${t.user.lastName}`,
-        t.user.libraryId,
-        t.book.title.substring(0, 30),
+        t.user ? `${t.user.firstName} ${t.user.lastName}` : 'Deleted user',
+        t.user?.libraryId || '—',
+        t.book?.title.substring(0, 30) || 'Deleted book',
         t.dueDate.toLocaleDateString(),
         String(daysOverdue),
         t.fineAmount ? `₱${t.fineAmount.toFixed(2)}` : '₱0.00',
@@ -238,10 +238,10 @@ export class ReportService {
     const headers = ['Queue', 'User', 'Library ID', 'Book', 'Accession', 'Expires'];
     const rows = reservations.map((r) => [
       String(r.queuePosition),
-      `${r.user.firstName} ${r.user.lastName}`,
-      r.user.libraryId,
-      r.book.title.substring(0, 30),
-      r.book.accessionNo,
+      r.user ? `${r.user.firstName} ${r.user.lastName}` : 'Deleted user',
+      r.user?.libraryId || '—',
+      r.book?.title.substring(0, 30) || 'Deleted book',
+      r.book?.accessionNo || '—',
       r.expiryDate.toLocaleDateString(),
     ]);
 
@@ -355,10 +355,10 @@ export class ReportService {
     const headers = ['Transaction ID', 'User', 'Library ID', 'Book Title', 'Accession No', 'Borrow Date', 'Due Date', 'Return Date', 'Status', 'Fine', 'Fine Status'];
     const rows = txns.map((t) => [
       t.id,
-      `${t.user.firstName} ${t.user.lastName}`,
-      t.user.libraryId,
-      t.book.title,
-      t.book.accessionNo,
+      t.user ? `${t.user.firstName} ${t.user.lastName}` : 'Deleted user',
+      t.user?.libraryId || '—',
+      t.book?.title || 'Deleted book',
+      t.book?.accessionNo || '—',
       t.borrowDate,
       t.dueDate,
       t.returnDate || '',
@@ -407,12 +407,12 @@ export class ReportService {
     const rows = txns.map((t) => {
       const daysOverdue = Math.ceil((now.getTime() - t.dueDate.getTime()) / (1000 * 60 * 60 * 24));
       return [
-        `${t.user.firstName} ${t.user.lastName}`,
-        t.user.libraryId,
-        t.user.email,
-        t.user.department || '',
-        t.book.title,
-        t.book.accessionNo,
+        t.user ? `${t.user.firstName} ${t.user.lastName}` : 'Deleted user',
+        t.user?.libraryId || '—',
+        t.user?.email || '—',
+        t.user?.department || '',
+        t.book?.title || 'Deleted book',
+        t.book?.accessionNo || '—',
         t.dueDate,
         daysOverdue,
         t.fineAmount || 0,
@@ -435,11 +435,11 @@ export class ReportService {
     const headers = ['Queue #', 'User', 'Library ID', 'Email', 'Book', 'Accession', 'Reserved', 'Expires'];
     const rows = reservations.map((r) => [
       r.queuePosition,
-      `${r.user.firstName} ${r.user.lastName}`,
-      r.user.libraryId,
-      r.user.email,
-      r.book.title,
-      r.book.accessionNo,
+      r.user ? `${r.user.firstName} ${r.user.lastName}` : 'Deleted user',
+      r.user?.libraryId || '—',
+      r.user?.email || '—',
+      r.book?.title || 'Deleted book',
+      r.book?.accessionNo || '—',
       r.reservationDate,
       r.expiryDate,
     ]);
@@ -585,4 +585,3 @@ export class ReportService {
 }
 
 export const reportService = new ReportService();
-

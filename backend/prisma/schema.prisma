@@ -209,10 +209,10 @@ model EBook {
 /// Requests to borrow a physical book (initiated by user)
 model BorrowRequest {
   id                      String        @id @default(cuid())
-  userId                  String        @map("user_id")
-  user                    User          @relation(fields: [userId], references: [id])
-  bookId                  String        @map("book_id")
-  book                    Book          @relation(fields: [bookId], references: [id])
+  userId                  String?       @map("user_id")
+  user                    User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  bookId                  String?       @map("book_id")
+  book                    Book?         @relation(fields: [bookId], references: [id], onDelete: SetNull)
   requestDate             DateTime      @default(now()) @map("request_date")
   status                  RequestStatus @default(PENDING)
   requestBatchId          String?       @map("request_batch_id") @db.VarChar(100)
@@ -242,10 +242,10 @@ model BorrowRequest {
 /// Active and historical borrowing transactions
 model BorrowTransaction {
   id            String            @id @default(cuid())
-  userId        String            @map("user_id")
-  user          User              @relation(fields: [userId], references: [id])
-  bookId        String            @map("book_id")
-  book          Book              @relation(fields: [bookId], references: [id])
+  userId        String?           @map("user_id")
+  user          User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  bookId        String?           @map("book_id")
+  book          Book?             @relation(fields: [bookId], references: [id], onDelete: SetNull)
   borrowDate    DateTime          @default(now()) @map("borrow_date")
   dueDate       DateTime          @map("due_date")
   returnDate    DateTime?         @map("return_date")
@@ -271,10 +271,10 @@ model BorrowTransaction {
 /// Reservations for books that are currently borrowed/unavailable
 model Reservation {
   id              String            @id @default(cuid())
-  userId          String            @map("user_id")
-  user            User              @relation(fields: [userId], references: [id])
-  bookId          String            @map("book_id")
-  book            Book              @relation(fields: [bookId], references: [id])
+  userId          String?           @map("user_id")
+  user            User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  bookId          String?           @map("book_id")
+  book            Book?             @relation(fields: [bookId], references: [id], onDelete: SetNull)
   reservationDate DateTime          @default(now()) @map("reservation_date")
   expiryDate      DateTime          @map("expiry_date")
   status          ReservationStatus @default(ACTIVE)
@@ -313,8 +313,8 @@ model ActivityLog {
 /// In-app notifications for users
 model Notification {
   id        String           @id @default(cuid())
-  userId    String           @map("user_id")
-  user      User             @relation(fields: [userId], references: [id])
+  userId    String?          @map("user_id")
+  user      User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
   type      NotificationType
   title     String           @db.VarChar(255)
   message   String?          @db.VarChar(1000)
@@ -386,8 +386,8 @@ model Faq {
 
 model Suggestion {
   id        String   @id @default(cuid())
-  userId    String   @map("user_id")
-  user      User     @relation(fields: [userId], references: [id])
+  userId    String?  @map("user_id")
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   subject   String   @db.VarChar(255)
   message   String   @db.VarChar(3000)
   status    String   @default("PENDING") @db.VarChar(50)
@@ -402,8 +402,8 @@ model Suggestion {
 
 model AcquisitionRequest {
   id        String   @id @default(cuid())
-  userId    String   @map("user_id")
-  user      User     @relation(fields: [userId], references: [id])
+  userId    String?  @map("user_id")
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   title     String   @db.VarChar(255)
   author    String?  @db.VarChar(255)
   isbn      String?  @db.VarChar(20)

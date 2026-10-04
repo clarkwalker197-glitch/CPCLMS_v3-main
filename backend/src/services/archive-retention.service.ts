@@ -1,51 +1,126 @@
+import fs from 'fs';
+import { promises as fsPromises } from 'fs';
+import path from 'path';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../config';
 import { tryDeleteUnreferencedCoverImage } from './cover-image-storage.service';
 
 export const ARCHIVE_RETENTION_DAYS = 15;
 
+const backendRootCandidates = [
+  process.cwd(),
+  path.join(process.cwd(), 'backend'),
+  path.resolve(__dirname, '../../'),
+  path.resolve(__dirname, '../../../'),
+];
+const backendRoot = backendRootCandidates.find((root) =>
+  fs.existsSync(path.join(root, 'prisma', 'schema.prisma'))
+) ?? backendRootCandidates[0];
+
+async function tryDeleteLocalEBookFile(fileUrl?: string | null): Promise<void> {
+  const match = fileUrl && /^\/uploads\/ebooks\/([^/\\]+)$/.exec(fileUrl);
+  if (!match || match[1] === '.' || match[1] === '..') return;
+
+  const filePath = path.join(backendRoot, 'uploads', 'ebooks', match[1]);
+  try {
+    await fsPromises.unlink(filePath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      console.error(`Could not delete expired e-book file ${filePath}:`, error);
+    }
+  }
+}
+
 export class ArchiveRetentionService {
   async purgeExpiredArchives() {
     const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - ARCHIVE_RETENTION_DAYS);
+    cutoff.setTime(cutoff.getTime() - ARCHIVE_RETENTION_DAYS * 24 * 60 * 60 * 1000);
 
     const jobs = [
       {
         name: 'Book',
         model: prisma.book,
-        where: { deletedAt: { not: null }, archivedAt: { lte: cutoff } },
+        where: {
+          deletedAt: { not: null },
+          OR: [
+            { archivedAt: { lte: cutoff } },
+            { archivedAt: null, deletedAt: { lte: cutoff } },
+          ],
+        },
         includeCover: true,
+        includeEBookFile: false,
+        canDelete: async (id: string) => {
+          const [activeTransactions, activeReservations, pendingRequests] = await Promise.all([
+            prisma.borrowTransaction.count({ where: { bookId: id, status: { in: ['ACTIVE', 'OVERDUE'] } } }),
+            prisma.reservation.count({ where: { bookId: id, status: 'ACTIVE' } }),
+            prisma.borrowRequest.count({ where: { bookId: id, status: 'PENDING' } }),
+          ]);
+          return activeTransactions === 0 && activeReservations === 0 && pendingRequests === 0;
+        },
       },
       {
         name: 'EBook',
         model: prisma.eBook,
-        where: { deletedAt: { not: null }, archivedAt: { lte: cutoff } },
+        where: {
+          deletedAt: { not: null },
+          OR: [
+            { archivedAt: { lte: cutoff } },
+            { archivedAt: null, deletedAt: { lte: cutoff } },
+          ],
+        },
         includeCover: true,
+        includeEBookFile: true,
       },
       {
         name: 'User',
         model: prisma.user,
-        where: { isActive: false, archivedAt: { lte: cutoff } },
+        where: {
+          isActive: false,
+          OR: [
+            { archivedAt: { lte: cutoff } },
+            { archivedAt: null, updatedAt: { lte: cutoff } },
+          ],
+        },
         includeCover: false,
+        includeEBookFile: false,
+        canDelete: async (id: string) => {
+          const [activeTransactions, activeReservations, pendingRequests] = await Promise.all([
+            prisma.borrowTransaction.count({ where: { userId: id, status: { in: ['ACTIVE', 'OVERDUE'] } } }),
+            prisma.reservation.count({ where: { userId: id, status: 'ACTIVE' } }),
+            prisma.borrowRequest.count({ where: { userId: id, status: 'PENDING' } }),
+          ]);
+          return activeTransactions === 0 && activeReservations === 0 && pendingRequests === 0;
+        },
       },
     ] as const;
 
-    const results = { processed: 0, deleted: 0, failed: 0 };
+    const results = { processed: 0, deleted: 0, blocked: 0, failed: 0 };
 
     for (const job of jobs) {
       try {
         const records = await (job.model as any).findMany({
           where: job.where,
-          select: { id: true, archivedAt: true, ...(job.includeCover ? { coverImage: true } : {}) },
+          select: {
+            id: true,
+            archivedAt: true,
+            ...(job.includeCover ? { coverImage: true } : {}),
+            ...(job.includeEBookFile ? { fileUrl: true } : {}),
+          },
         });
         results.processed += records.length;
 
         for (const record of records) {
           try {
+            if ('canDelete' in job && !(await job.canDelete(record.id))) {
+              results.blocked += 1;
+              console.warn(`Deferred purge of ${job.name} archive record ${record.id} because it has active circulation records.`);
+              continue;
+            }
             await (job.model as any).delete({ where: { id: record.id } });
             results.deleted += 1;
 
             if (record.coverImage) await tryDeleteUnreferencedCoverImage(record.coverImage);
+            if (record.fileUrl) await tryDeleteLocalEBookFile(record.fileUrl);
 
             await prisma.activityLog.create({
               data: {

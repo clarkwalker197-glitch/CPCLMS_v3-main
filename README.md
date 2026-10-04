@@ -48,6 +48,8 @@ Create a **public Vercel Blob** store. For a local backend or a backend hosted o
 
 Physical-book and e-book cover uploads are held in memory only long enough to validate and send them to Blob. The database stores the returned public HTTPS URL. Pasted external image URLs continue to be stored as supplied. The existing `coverImage` database field is reused; no schema migration is needed. Replacing a cover cleans up an old Blob object only when no book or e-book still references it. Archiving retains covers for restore; expired archives clean up unreferenced Blob objects after the database row is deleted.
 
+Archived users, books, and e-books are automatically purged after 15 days. The backend checks on startup and every 24 hours, so the actual purge can occur up to a day after the retention period. Completed borrowing and audit history is kept with its user/book references detached; expired e-book uploads and unreferenced cover images are also cleaned up. Purging waits while an archived user or book has an active loan, reservation, or pending borrow request.
+
 Existing `/uploads/...` cover paths are not rewritten or assigned invented URLs. External URLs continue to work. Any local-upload cover whose file is missing must be re-uploaded by a librarian; the old row remains unchanged until replaced. The `uploads/` static route remains for existing e-book documents and profile images, but book cover uploads no longer write there.
 
 Apply the database schema and generate Prisma Client:

@@ -184,23 +184,23 @@ export class AnalyticsService {
     ]);
 
     // Resolve top book details
-interface TopBookRaw { bookId: string; _count: { bookId: number } }
     interface BookInfo { id: string; title: string; author: string; accessionNo: string }
-    const bookIds = topBooksRaw.map((b: TopBookRaw) => b.bookId);
+    const bookIds = topBooksRaw.flatMap((book) => book.bookId ? [book.bookId] : []);
     const books: BookInfo[] = await prisma.book.findMany({
       where: { id: { in: bookIds } },
       select: { id: true, title: true, author: true, accessionNo: true },
     });
     const bookMap = new Map<string, BookInfo>(books.map((b: BookInfo) => [b.id, b]));
-    const topBooks = topBooksRaw.map((b: TopBookRaw) => {
+    const topBooks = topBooksRaw.flatMap((b) => {
+      if (!b.bookId) return [];
       const book = bookMap.get(b.bookId);
-      return {
+      return [{
         id: b.bookId,
         title: book?.title || 'Unknown',
         author: book?.author || 'Unknown',
         borrowCount: b._count.bookId,
         accessionNo: book?.accessionNo || 'N/A',
-      };
+      }];
     });
 
     // Aggregate overdue by user
@@ -388,6 +388,7 @@ interface TopBookRaw { bookId: string; _count: { bookId: number } }
     });
     const counts = new Map<string, number>();
     for (const transaction of transactions) {
+      if (!transaction.book) continue;
       const category = transaction.book.category;
       if (!category) continue;
       const categoryCode = category.slug.match(/^dewey-(\d{3})$/)?.[1];
@@ -500,12 +501,12 @@ interface TopBookRaw { bookId: string; _count: { bookId: number } }
       take: Math.min(10, Math.max(1, limit)),
     });
     const books = await prisma.book.findMany({
-      where: { id: { in: grouped.map((item) => item.bookId) } },
+      where: { id: { in: grouped.flatMap((item) => item.bookId ? [item.bookId] : []) } },
       select: { id: true, title: true, author: true },
     });
     const bookMap = new Map(books.map((book) => [book.id, book]));
     return grouped.map((item) => ({
-      ...(bookMap.get(item.bookId) || { id: item.bookId, title: 'Unknown', author: 'Unknown' }),
+      ...(item.bookId ? bookMap.get(item.bookId) : undefined) || { id: item.bookId || 'deleted', title: 'Deleted book', author: 'Unknown' },
       borrowCount: item._count.bookId,
     }));
   }
@@ -579,7 +580,7 @@ interface TopBookRaw { bookId: string; _count: { bookId: number } }
       take: 10,
     });
     const users = await prisma.user.findMany({
-      where: { id: { in: grouped.map((item) => item.userId) } },
+      where: { id: { in: grouped.flatMap((item) => item.userId ? [item.userId] : []) } },
       select: { id: true, firstName: true, lastName: true, department: true, role: true },
     });
     const userMap = new Map(users.map((user) => [user.id, user]));
@@ -589,7 +590,7 @@ interface TopBookRaw { bookId: string; _count: { bookId: number } }
       activeMembers,
       inactiveMembers,
       topBorrowers: grouped.map((item) => ({
-        ...(userMap.get(item.userId) || { id: item.userId, firstName: 'Unknown', lastName: 'member', department: null, role: null }),
+        ...(item.userId ? userMap.get(item.userId) : undefined) || { id: item.userId || 'deleted', firstName: 'Deleted', lastName: 'member', department: null, role: null },
         borrowCount: item._count.userId,
       })),
     };
@@ -615,6 +616,7 @@ interface TopBookRaw { bookId: string; _count: { bookId: number } }
     });
     const groups = new Map<string, Map<string, { title: string; author: string; borrowCount: number; category: string | null }>>();
     for (const transaction of transactions) {
+      if (!transaction.user || !transaction.book) continue;
       const groupName = transaction.user.department || 'Unassigned';
       const books = groups.get(groupName) || new Map();
       const existing = books.get(transaction.book.id) || {
@@ -642,4 +644,3 @@ interface TopBookRaw { bookId: string; _count: { bookId: number } }
 }
 
 export const analyticsService = new AnalyticsService();
-

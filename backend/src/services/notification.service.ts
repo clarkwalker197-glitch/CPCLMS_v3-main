@@ -229,6 +229,7 @@ export class NotificationService {
     });
 
     for (const txn of dueTomorrow) {
+      if (!txn.user || !txn.book) continue;
       const message = `Reminder: "${txn.book.title}" (${txn.book.accessionNo}) is due tomorrow (${txn.dueDate.toLocaleDateString()}). Please return or renew.`;
 
       await this.createNotification(
@@ -240,9 +241,8 @@ export class NotificationService {
       );
     }
 
-    return { sent: dueTomorrow.length };
+    return { sent: dueTomorrow.filter((txn) => txn.user && txn.book).length };
   }
 }
 
 export const notificationService = new NotificationService();
-

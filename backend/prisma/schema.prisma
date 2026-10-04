@@ -111,6 +111,7 @@ model User {
   faqsCreated             Faq[]                @relation("FaqCreatedBy")
   suggestions             Suggestion[]
   acquisitionRequests     AcquisitionRequest[]
+  idempotencyRecords      IdempotencyRecord[]
 
   @@map("users")
 }
@@ -289,6 +290,22 @@ model Reservation {
   @@index([status])
   @@index([reservationDate])
   @@map("reservations")
+}
+
+/// Server-side idempotency keys for safely retryable offline mutations.
+model IdempotencyRecord {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  key         String   @db.VarChar(64)
+  operation   String   @db.VarChar(50)
+  requestHash String   @map("request_hash") @db.VarChar(64)
+  resourceId  String   @map("resource_id") @db.VarChar(100)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([userId, key])
+  @@index([createdAt])
+  @@map("idempotency_records")
 }
 
 /// Audit trail for all system activities

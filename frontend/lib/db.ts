@@ -17,6 +17,7 @@ export class CpclmsDatabase extends Dexie {
   categories!: Table<LocalRecord, string>;
   users!: Table<LocalUser, string>;
   borrowRequests!: Table<LocalRecord, string>;
+  dashboard!: Table<LocalRecord, string>;
   syncQueue!: Table<SyncMutation, string>;
   meta!: Table<SyncMeta, string>;
 
@@ -32,6 +33,19 @@ export class CpclmsDatabase extends Dexie {
       reservations: 'id, updatedAt, userId, status',
       notifications: 'id, createdAt, isRead',
       syncQueue: 'id, userId, createdAt, type',
+      meta: 'key, updatedAt',
+    });
+    this.version(2).stores({
+      books: 'id, updatedAt, title, author, isbn, categoryId, classificationNumber',
+      ebooks: 'id, updatedAt, title, author, isbn, categoryId, classificationNumber',
+      categories: 'id, updatedAt, slug',
+      users: 'id, updatedAt, libraryId',
+      transactions: 'id, updatedAt, userId, status',
+      borrowRequests: 'id, updatedAt, userId, status',
+      reservations: 'id, updatedAt, userId, status',
+      notifications: 'id, userId, createdAt, isRead',
+      dashboard: 'id, updatedAt',
+      syncQueue: 'id, userId, createdAt, type, status, nextAttemptAt',
       meta: 'key, updatedAt',
     });
   }
@@ -51,17 +65,21 @@ export async function setSyncMeta(key: string, value: SyncMeta['value']): Promis
 export async function clearOfflineData(): Promise<void> {
   if (!canUseOfflineStorage()) return;
   await Promise.all([
-    db.books.clear(),
-    db.ebooks.clear(),
-    db.categories.clear(),
     db.users.clear(),
     db.transactions.clear(),
     db.borrowRequests.clear(),
     db.reservations.clear(),
     db.notifications.clear(),
+    db.dashboard.clear(),
     db.syncQueue.clear(),
-    db.meta.clear(),
+    db.meta.filter((record) => record.key.startsWith('lastFullSyncAt:')).delete(),
   ]);
+  if (typeof caches !== 'undefined') {
+    const sensitiveCacheNames = (await caches.keys()).filter((name) =>
+      /api-cache|cpc-library-shell/i.test(name)
+    );
+    await Promise.all(sensitiveCacheNames.map((name) => caches.delete(name)));
+  }
 }
 
 export type { BorrowRequestMutation };

@@ -4,25 +4,50 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import api from "@/lib/api";
 import Sidebar from "@/components/Sidebar";
+import { offlineDb } from "@/lib/offline-db";
 
 export default function ReservationsPage() {
   const { user } = useAuth();
   const [reservations, setReservations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [showingCached, setShowingCached] = useState(false);
   const isLibrarian = user?.role === "LIBRARIAN";
 
   const loadReservations = async () => {
     try {
       setLoading(true);
+      const cached = user
+        ? await offlineDb.reservations.where("userId").equals(user.id).toArray()
+        : [];
+      if (cached.length) setReservations(cached);
+      if (!navigator.onLine) {
+        setShowingCached(true);
+        setLoading(false);
+        return;
+      }
       const response = await api.getReservations();
       if (response.success) {
-        setReservations(response.data || []);
+        const localPending = cached.filter((reservation: any) =>
+          reservation._pending || reservation._syncStatus === "FAILED" || reservation._syncStatus === "CONFLICT"
+        );
+        const serverRecords = (response.data || []).map((reservation: any) => ({
+          ...reservation,
+          userId: reservation.userId || user?.id,
+        }));
+        await offlineDb.reservations.bulkPut(serverRecords);
+        setReservations([
+          ...serverRecords,
+          ...localPending.filter((local: any) => !serverRecords.some((remote: any) => remote.id === local.id)),
+        ]);
+        setShowingCached(false);
       } else {
-        setError(response.error || "Unable to load reservations.");
+        if (response.networkError && cached.length) setShowingCached(true);
+        else setError(response.error || "Unable to load reservations.");
       }
     } catch {
-      setError("Unable to load reservations.");
+      if (navigator.onLine) setError("Unable to load reservations.");
+      else setShowingCached(true);
     } finally {
       setLoading(false);
     }
@@ -62,6 +87,11 @@ export default function ReservationsPage() {
               <p className="mt-1 text-sm text-zinc-400">
                 {isLibrarian ? "See every active reservation and prioritize faculty first." : "Track your own reservations and pickup status."}
               </p>
+              {showingCached && (
+                <p className="mt-2 text-xs text-amber-300">
+                  Offline — showing the last synchronized reservations and any pending reservation intents.
+                </p>
+              )}
             </div>
           </div>
 
@@ -97,6 +127,11 @@ export default function ReservationsPage() {
                     {reservations.map((reservation: any) => {
                       const isOwner = user?.id === reservation.userId;
                       const isActive = reservation.status === "ACTIVE";
+                      const statusLabel = reservation._pending
+                        ? "Pending synchronization"
+                        : reservation._syncStatus === "FAILED" || reservation._syncStatus === "CONFLICT"
+                          ? `Not synchronized — ${reservation._syncError || "server rejected the request"}`
+                          : reservation.status;
                       return (
                         <tr key={reservation.id} className="border-t border-zinc-800 text-zinc-200">
                           <td className="px-4 py-3">
@@ -107,7 +142,9 @@ export default function ReservationsPage() {
                             {reservation.user ? `${reservation.user.firstName} ${reservation.user.lastName}` : "—"}
                             <div className="text-xs text-zinc-400">{reservation.user?.role || "—"}</div>
                           </td>
-                          <td className="px-4 py-3">#{reservation.queuePosition ?? 1}</td>
+                          <td className="px-4 py-3">
+                            {reservation._pending ? "Not assigned" : `#${reservation.queuePosition ?? 1}`}
+                          </td>
                           <td className="px-4 py-3">
                             <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${
                               reservation.status === "ACTIVE"
@@ -118,7 +155,7 @@ export default function ReservationsPage() {
                                     ? "bg-red-500/15 text-red-300"
                                     : "bg-zinc-700 text-zinc-300"
                             }`}>
-                              {reservation.status}
+                              {statusLabel}
                             </span>
                           </td>
                           <td className="px-4 py-3 text-zinc-400">

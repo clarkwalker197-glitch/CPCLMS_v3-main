@@ -77,6 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     api.clearTokens();
+    void clearOfflineData();
     localStorage.removeItem(LAST_ACTIVITY_STORAGE_KEY);
     lastActivityRef.current = Date.now();
     setUser(null);
@@ -109,6 +110,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const authFailure = typeof res.error === 'string' && /401|unauthorized|forbidden|token/i.test(res.error);
       if (authFailure) {
         api.clearTokens();
+        void clearOfflineData();
         localStorage.removeItem(LAST_ACTIVITY_STORAGE_KEY);
         lastActivityRef.current = Date.now();
         setUser(null);
@@ -152,6 +154,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const res = await api.login(identifier, password);
       if (res.success && res.data) {
         const nextUser = res.data.user;
+        await clearOfflineData();
         setUser(nextUser);
         void syncNow();
         lastActivityRef.current = Date.now();
@@ -169,6 +172,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const res = await api.googleLogin(credential);
       if (res.success && res.data) {
         const nextUser = res.data.user;
+        await clearOfflineData();
         setUser(nextUser);
         void syncNow();
         lastActivityRef.current = Date.now();
@@ -370,4 +374,3 @@ export function useAuth() {
   }
   return context;
 }
-

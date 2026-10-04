@@ -34,43 +34,75 @@ export default function StudentDashboardPage() {
   const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
   const [dueSoon, setDueSoon] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showingCached, setShowingCached] = useState(false);
 
   useEffect(() => {
+    const userId = user?.id || "";
+    if (!userId) return;
     async function load() {
       try {
-        const [cachedTransactions, cachedRequests] = await Promise.all([
-          offlineDb.transactions.orderBy("updatedAt").reverse().limit(5).toArray(),
-          offlineDb.borrowRequests.orderBy("updatedAt").reverse().toArray(),
+        const [cachedTransactions, cachedRequests, cachedDashboard] = await Promise.all([
+          offlineDb.transactions.where("userId").equals(userId).reverse().limit(5).toArray(),
+          offlineDb.borrowRequests.where("userId").equals(userId).toArray(),
+          offlineDb.dashboard.get(userId),
         ]);
         if (cachedTransactions.length) setRecentTransactions(cachedTransactions);
+        if (cachedDashboard?.snapshot) {
+          const cachedStats = cachedDashboard.snapshot as any;
+          setStats(cachedStats);
+          setDueSoon(cachedStats.dueSoon || []);
+          setShowingCached(true);
+        }
         if (cachedTransactions.length || cachedRequests.length) {
-          setStats({
-            myBorrowed: cachedTransactions.filter((transaction) => ["ACTIVE", "OVERDUE"].includes(String(transaction.status))).length,
-            myPendingRequests: cachedRequests.filter((request) => request.status === "PENDING").length,
-            myFines: cachedTransactions.reduce((total, transaction) => total + (!transaction.finePaid && !transaction.returnDate && ["ACTIVE", "OVERDUE"].includes(String(transaction.status)) && Number(transaction.fineAmount || 0) > 0 ? Number(transaction.fineAmount || 0) : 0), 0),
-          });
+          if (!cachedDashboard?.snapshot) {
+            setStats({
+              myBorrowed: cachedTransactions.filter((transaction) => ["ACTIVE", "OVERDUE"].includes(String(transaction.status))).length,
+              myPendingRequests: cachedRequests.filter((request) => request.status === "PENDING").length,
+              myFines: cachedTransactions.reduce((total, transaction) => total + (!transaction.finePaid && !transaction.returnDate && ["ACTIVE", "OVERDUE"].includes(String(transaction.status)) && Number(transaction.fineAmount || 0) > 0 ? Number(transaction.fineAmount || 0) : 0), 0),
+            });
+          }
           setLoading(false);
         }
 
-const [statsRes, txRes] = await Promise.all([
+        if (!navigator.onLine) {
+          setShowingCached(true);
+          return;
+        }
+
+        const [statsRes, txRes] = await Promise.all([
           api.getMyDashboardStats(),
           api.getTransactions({ limit: "5" }),
         ]);
-        if (statsRes.success) setStats(statsRes.data);
-        if (statsRes.success) setDueSoon(statsRes.data?.dueSoon || []);
+        if (statsRes.success) {
+          setStats(statsRes.data);
+          setDueSoon(statsRes.data?.dueSoon || []);
+          await offlineDb.dashboard.put({
+            id: userId,
+            userId,
+            snapshot: statsRes.data,
+            updatedAt: new Date().toISOString(),
+            syncedAt: Date.now(),
+          });
+          setShowingCached(false);
+        } else if (statsRes.networkError) {
+          setShowingCached(true);
+        }
         if (txRes.success) {
-          const nextTransactions = txRes.data || [];
+          const nextTransactions = (txRes.data || []).map((transaction: any) => ({
+            ...transaction,
+            userId: transaction.userId || userId,
+          }));
           setRecentTransactions(nextTransactions);
           await offlineDb.transactions.bulkPut(nextTransactions);
         }
       } catch {
-        // silent fail for demo
+        setShowingCached(true);
       } finally {
         setLoading(false);
       }
     }
     load();
-  }, []);
+  }, [user?.id]);
 
   const role = user?.role || "STUDENT";
   const isFaculty = role === "FACULTY";
@@ -104,6 +136,9 @@ const formatDate = (d?: string) =>
                     {isFaculty ? "Faculty" : "Student"}
                   </span>
                 </p>
+                {showingCached && (
+                  <p className="mt-2 text-xs text-amber-300">Showing last synchronized dashboard data.</p>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <NotificationBell />

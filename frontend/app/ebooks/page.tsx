@@ -12,6 +12,8 @@ import { AddEBookModal } from '@/components/AddEBookModal';
 import { EditEBookModal } from '@/components/EditEBookModal';
 import MobileBookTypeSelect from '@/components/MobileBookTypeSelect';
 import { DEWEY_MAIN_CATEGORIES, subcategoriesForMain } from '@/lib/categories';
+import { offlineDb } from '@/lib/offline-db';
+import { searchCachedBooks } from '@/lib/offline-api';
 import {
   Plus,
   Search,
@@ -55,6 +57,7 @@ export default function EBooksPage() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedEBook, setSelectedEBook] = useState<any | null>(null);
   const [togglingStatusId, setTogglingStatusId] = useState<string | null>(null);
+  const [showingCached, setShowingCached] = useState(false);
 
   const isLibrarian = user?.role === 'LIBRARIAN';
 
@@ -62,6 +65,26 @@ export default function EBooksPage() {
     setLoading(true);
     setError('');
     try {
+      const cachedBooks = await offlineDb.ebooks.toArray();
+      const cachedCategories = await offlineDb.categories.toArray();
+      const cachedParams: Record<string, string> = { sort, order: sortOrder };
+      if (search) cachedParams.search = search;
+      if (categoryFilter) cachedParams.categoryId = categoryFilter;
+      else if (mainCategoryFilter) cachedParams.categoryMain = mainCategoryFilter;
+      if (classificationFilter) cachedParams.classificationNumber = classificationFilter;
+      if (cachedBooks.length) {
+        setEbooks(searchCachedBooks(cachedBooks, cachedParams, cachedCategories));
+        setLoading(false);
+      }
+      if (cachedCategories.length) {
+        setCategories(cachedCategories.filter((category: any) => category.slug?.startsWith('dewey-')));
+      }
+      if (!navigator.onLine) {
+        setShowingCached(true);
+        if (!cachedBooks.length) setError('The e-book catalog is not available offline yet. Reconnect to synchronize it.');
+        return;
+      }
+
       const params: Record<string, string> = {};
       params.limit = '100';
       params.sort = sort;
@@ -74,10 +97,20 @@ export default function EBooksPage() {
         api.getEBooks(params),
         api.getCategories(),
       ]);
-      if (ebooksRes.success) setEbooks(ebooksRes.data || []);
+      if (ebooksRes.success) {
+        setEbooks(ebooksRes.data || []);
+        await offlineDb.ebooks.bulkPut(ebooksRes.data || []);
+        setShowingCached(false);
+      } else if (ebooksRes.networkError && cachedBooks.length) {
+        setEbooks(searchCachedBooks(cachedBooks, cachedParams, cachedCategories));
+        setShowingCached(true);
+      } else if (!ebooksRes.success) {
+        setError(ebooksRes.error || 'Failed to load e-books');
+      }
       if (catsRes.success) setCategories((catsRes.data || []).filter((category: any) => category.slug?.startsWith('dewey-')));
     } catch {
-      setError('Failed to load e-books');
+      setShowingCached(true);
+      if (!ebooks.length) setError('Failed to load e-books. Reconnect to synchronize the catalog.');
     } finally {
       setLoading(false);
     }
@@ -193,6 +226,11 @@ export default function EBooksPage() {
             <div>
               <h1 className="text-2xl font-bold text-white">E-Books</h1>
               <p className="mt-1 text-sm text-zinc-400">Browse and access digital books</p>
+              {showingCached && (
+                <p className="mt-2 text-xs text-amber-300">
+                  Offline — showing cached e-book details. File downloads require an internet connection.
+                </p>
+              )}
             </div>
             {isLibrarian && (
               <button

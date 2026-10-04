@@ -4,6 +4,8 @@
 // - Provides typed request/response methods
 // ============================================================
 
+import { reportNetworkStatus } from './network-status';
+
 function resolveApiBaseUrl(): string {
   const envValue = process.env.NEXT_PUBLIC_API_URL?.trim();
   if (envValue) return envValue.replace(/\/+$/, '');
@@ -62,6 +64,8 @@ export interface ApiResponse<T = unknown> {
   error?: string;
   rateLimited?: boolean;
   retryAfterMs?: number;
+  statusCode?: number;
+  networkError?: boolean;
   meta?: {
     page: number;
     limit: number;
@@ -77,6 +81,7 @@ export interface AuthTokens {
 
 class ApiClient {
   private baseUrl: string;
+  private refreshNetworkFailure = false;
 
   // In-flight request deduplication map (keyed by method + endpoint + body)
   private inflight = new Map<string, Promise<ApiResponse<any>>>();
@@ -103,11 +108,6 @@ class ApiClient {
     return localStorage.getItem('refreshToken');
   }
 
-  private hasRefreshCookie(): boolean {
-    if (typeof document === 'undefined') return false;
-    return document.cookie.split('; ').some((cookie) => cookie.startsWith('refreshToken='));
-  }
-
   private setTokens(accessToken: string, refreshToken?: string): void {
     localStorage.setItem('accessToken', accessToken);
     if (refreshToken) {
@@ -131,6 +131,19 @@ class ApiClient {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<ApiResponse<T>> {
+    const method = options.method || 'GET';
+    if (
+      method !== 'GET' &&
+      method !== 'HEAD' &&
+      typeof navigator !== 'undefined' &&
+      !navigator.onLine
+    ) {
+      return {
+        success: false,
+        error: 'An internet connection is required for this action.',
+      };
+    }
+
     const token = this.getToken();
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -153,11 +166,10 @@ class ApiClient {
       } as ApiResponse<T>;
     }
 
-    const method = options.method || 'GET';
     const body = options.body ? String(options.body) : '';
     // Deduplicate identical concurrent requests so we never fire the same
     // GET/POST more than once at a time (keyed by method + endpoint + body).
-    const cacheKey = `${method}:${endpoint}:${body}`;
+    const cacheKey = `${method}:${endpoint}:${body}:${headers['Idempotency-Key'] || ''}`;
     if (this.inflight.has(cacheKey)) {
       return this.inflight.get(cacheKey) as Promise<ApiResponse<T>>;
     }
@@ -179,6 +191,7 @@ class ApiClient {
         credentials: 'include',
         headers,
       });
+      reportNetworkStatus(true);
 
       // 429 — rate limited. Record a cooldown so the UI can show a message
       // and we suppress repeated identical calls for a short window.
@@ -195,6 +208,7 @@ class ApiClient {
           success: false,
           rateLimited: true,
           retryAfterMs: ApiClient.RATE_LIMIT_COOLDOWN_MS,
+          statusCode: response.status,
           error: data.error || 'Too many requests, please try again later.',
         } as ApiResponse<T>;
       }
@@ -206,16 +220,48 @@ class ApiClient {
         data = { success: false, error: 'Unexpected server response' } as ApiResponse<T>;
       }
 
+      if (response.status === 401) {
+        this.refreshNetworkFailure = false;
+        const refreshed = await this.refreshToken();
+        if (refreshed) {
+          headers['Authorization'] = 'Bearer ' + this.getToken();
+          const retryResponse = await fetch(`${this.baseUrl}${endpoint}`, {
+            ...options,
+            credentials: 'include',
+            headers,
+          });
+          reportNetworkStatus(true);
+          let retryData: ApiResponse<T>;
+          try {
+            retryData = await retryResponse.json();
+          } catch {
+            retryData = { success: false, error: 'Unexpected server response' } as ApiResponse<T>;
+          }
+          return retryResponse.ok
+            ? retryData
+            : {
+                ...retryData,
+                success: false,
+                statusCode: retryResponse.status,
+                error: retryData.error || retryResponse.statusText || 'Request failed. Please try again.',
+              };
+        }
+        if ((typeof navigator === 'undefined' || navigator.onLine) && !this.refreshNetworkFailure) {
+          this.clearTokens();
+          if (typeof window !== 'undefined') window.location.href = '/login';
+        }
+      }
+
       if (!response.ok) {
         return {
           ...data,
           success: false,
+          statusCode: response.status,
           error: data.error || response.statusText || 'Request failed. Please try again.',
         } as ApiResponse<T>;
       }
 
-      // If unauthorized, try refresh token
-      if (response.status === 401 && (this.getRefreshToken() || this.hasRefreshCookie())) {
+      if (response.ok && response.status === 401) {
         const refreshed = await this.refreshToken();
         if (refreshed) {
           headers['Authorization'] = `Bearer ${this.getToken()}`;
@@ -240,6 +286,7 @@ class ApiClient {
 
       return data;
     } catch (error) {
+      reportNetworkStatus(false);
       const message = error instanceof Error && error.name === 'TypeError'
         ? 'Unable to reach the server. Please check your connection and try again.'
         : 'Request failed. Please try again.';
@@ -256,6 +303,7 @@ class ApiClient {
       return {
         success: false,
         error: message,
+        networkError: true,
       } as ApiResponse<T>;
     } finally {
       this.inflight.delete(cacheKey);
@@ -265,7 +313,6 @@ class ApiClient {
   async refreshToken(): Promise<boolean> {
     try {
       const refreshToken = this.getRefreshToken();
-      if (!refreshToken) return false;
 
       const response = await fetch(`${this.baseUrl}/auth/refresh`, {
         method: 'POST',
@@ -274,6 +321,8 @@ class ApiClient {
         ...(refreshToken ? { body: JSON.stringify({ refreshToken }) } : {}),
       });
 
+      reportNetworkStatus(true);
+      if (!response.ok) return false;
       const data = await response.json();
       if (data.success && data.data) {
         this.setTokens(data.data.accessToken, data.data.refreshToken);
@@ -281,6 +330,8 @@ class ApiClient {
       }
       return false;
     } catch {
+      this.refreshNetworkFailure = true;
+      reportNetworkStatus(false);
       return false;
     }
   }
@@ -352,10 +403,11 @@ const response = await this.request<any>('/auth/register', {
     return this.uploadMultipart('/ebooks/upload', formData);
   }
 
-  async post<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
+  async post<T>(endpoint: string, body?: unknown, headers?: Record<string, string>): Promise<ApiResponse<T>> {
     return this.request<T>(endpoint, {
       method: 'POST',
       body: body ? JSON.stringify(body) : undefined,
+      headers,
     });
   }
 
@@ -472,6 +524,9 @@ async put<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
   }
 
   private async uploadMultipart(endpoint: string, formData: FormData, method = 'POST'): Promise<ApiResponse<any>> {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      return { success: false, error: 'An internet connection is required for this action.' };
+    }
     const remainingCooldown = this.rateLimitUntil - Date.now();
     if (remainingCooldown > 0) {
       return {
@@ -487,11 +542,26 @@ async put<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
       const headers: Record<string, string> = {};
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const response = await fetch(`${this.baseUrl}${endpoint}`, {
-        method,
-        headers,
-        body: formData,
-      });
+      let response: Response;
+      try {
+        response = await fetch(`${this.baseUrl}${endpoint}`, {
+          method,
+          credentials: 'include',
+          headers,
+          body: formData,
+        });
+        reportNetworkStatus(true);
+      } catch {
+        reportNetworkStatus(false);
+        return {
+          status: 0,
+          data: {
+            success: false,
+            error: 'Unable to reach the server. Please check your connection and try again.',
+            networkError: true,
+          },
+        };
+      }
 
       let data: ApiResponse<any>;
       try {
@@ -515,17 +585,25 @@ async put<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
       };
     }
 
-    if (status === 401 && this.getRefreshToken()) {
+    if (status === 401) {
+      this.refreshNetworkFailure = false;
       const refreshed = await this.refreshToken();
       if (refreshed) {
         ({ status, data } = await attempt());
-      } else {
+      } else if ((typeof navigator === 'undefined' || navigator.onLine) && !this.refreshNetworkFailure) {
         this.clearTokens();
         if (typeof window !== 'undefined') window.location.href = '/login';
       }
     }
 
-    return data;
+    return status >= 400
+      ? {
+          ...data,
+          success: false,
+          statusCode: status,
+          error: data.error || 'Request failed. Please try again.',
+        }
+      : data;
   }
 
   async updateBook(id: string, data: Record<string, unknown>): Promise<ApiResponse<any>> {
@@ -545,8 +623,10 @@ async put<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
 async createBorrowRequest(data: {
     bookIds: string[];
     notes?: string;
-  }): Promise<ApiResponse<any>> {
-    return this.post('/transactions/requests', { bookIds: data.bookIds, notes: data.notes });
+  }, idempotencyKey?: string): Promise<ApiResponse<any>> {
+    return this.post('/transactions/requests', { bookIds: data.bookIds, notes: data.notes }, idempotencyKey
+      ? { 'Idempotency-Key': idempotencyKey }
+      : undefined);
   }
 
   async getBorrowRequestBatch(transactionId: string): Promise<ApiResponse<any>> {
@@ -575,8 +655,10 @@ async createBorrowRequest(data: {
     return this.get(`/reservations${query}`);
   }
 
-  async reserveBook(bookId: string): Promise<ApiResponse<any>> {
-    return this.post('/reservations', { bookId });
+  async reserveBook(bookId: string, idempotencyKey?: string): Promise<ApiResponse<any>> {
+    return this.post('/reservations', { bookId }, idempotencyKey
+      ? { 'Idempotency-Key': idempotencyKey }
+      : undefined);
   }
 
   async cancelReservation(id: string): Promise<ApiResponse<any>> {
@@ -814,4 +896,3 @@ async payFine(id: string, amount: number): Promise<ApiResponse<any>> {
 export const api = new ApiClient(API_BASE_URL);
 
 export default api;
-

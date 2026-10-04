@@ -6,7 +6,10 @@ import { Bell, CheckCheck, BellOff } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import api from "@/lib/api";
 import { offlineDb } from "@/lib/offline-db";
-import { enqueueMutation } from "@/lib/offline-sync";
+import {
+  markAllNotificationsReadLocalFirst,
+  markNotificationReadLocalFirst,
+} from "@/lib/offline-api";
 
 interface NotificationItem {
   id: string;
@@ -47,15 +50,21 @@ export default function NotificationBell() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [showingCached, setShowingCached] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const loadNotifications = useCallback(async () => {
     if (!user) return;
     try {
-      const cached = await offlineDb.notifications.orderBy("createdAt").reverse().limit(20).toArray();
-      if (cached.length) {
-        setNotifications(cached as unknown as NotificationItem[]);
+      const cached = await offlineDb.notifications.where("userId").equals(user.id).sortBy("createdAt");
+      const recentCached = cached.slice(-20).reverse();
+      if (recentCached.length) {
+        setNotifications(recentCached as unknown as NotificationItem[]);
         setUnreadCount(cached.filter((notification) => !notification.isRead).length);
+      }
+      if (!navigator.onLine) {
+        setShowingCached(true);
+        return;
       }
       const [listRes, countRes] = await Promise.all([
         api.getNotifications({ limit: "20" }),
@@ -65,7 +74,13 @@ export default function NotificationBell() {
         const payload = listRes.data as any;
         const nextNotifications = payload.notifications || [];
         setNotifications(nextNotifications);
-        await offlineDb.notifications.bulkPut(nextNotifications);
+        await offlineDb.notifications.bulkPut(nextNotifications.map((notification: any) => ({
+          ...notification,
+          userId: user.id,
+        })));
+        setShowingCached(false);
+      } else if (listRes.networkError && recentCached.length) {
+        setShowingCached(true);
       }
       if (countRes.success && countRes.data) {
         setUnreadCount((countRes.data as any).unreadCount ?? 0);
@@ -102,18 +117,13 @@ export default function NotificationBell() {
       await loadNotifications();
       // Mark all as read once the panel is opened
       try {
-        if (!navigator.onLine) {
-          await enqueueMutation({
-            userId: user?.id || "unknown",
-            type: "MARK_ALL_NOTIFICATIONS_READ",
-            payload: {},
-          });
-        } else {
-          await api.markAllNotificationsRead();
+        if (user) {
+          const response = await markAllNotificationsReadLocalFirst(user.id);
+          if (response.success) {
+            setUnreadCount(0);
+            setNotifications((prev) => prev.map((notification) => ({ ...notification, isRead: true })));
+          }
         }
-        await offlineDb.notifications.toCollection().modify({ isRead: true });
-        setUnreadCount(0);
-        setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
       } catch {
         // Ignore
       }
@@ -125,15 +135,15 @@ export default function NotificationBell() {
     // Optionally mark this notification as read when clicked
     if (!n.isRead) {
       try {
-        if (!navigator.onLine) {
-          await enqueueMutation({ userId: user?.id || "unknown", type: "MARK_NOTIFICATION_READ", payload: { id: n.id } });
-        } else {
-          await api.markNotificationRead(n.id);
+        if (user) {
+          const response = await markNotificationReadLocalFirst(user.id, n.id);
+          if (response.success) {
+            setNotifications((prev) =>
+              prev.map((item) => (item.id === n.id ? { ...item, isRead: true } : item))
+            );
+            setUnreadCount((count) => Math.max(0, count - 1));
+          }
         }
-        await offlineDb.notifications.update(n.id, { isRead: true });
-        setNotifications((prev) =>
-          prev.map((item) => (item.id === n.id ? { ...item, isRead: true } : item))
-        );
       } catch {
         // Ignore
       }
@@ -175,6 +185,7 @@ export default function NotificationBell() {
             <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-semibold text-white">Notifications</h3>
+                {showingCached && <span className="text-[10px] text-amber-300">Cached</span>}
                 {hasUnread && (
                   <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-red-500/15 text-red-400 ring-1 ring-red-500/30">
                     {unreadCount} new
@@ -184,14 +195,15 @@ export default function NotificationBell() {
               <button
                 onClick={async () => {
                   try {
-                    if (!navigator.onLine) {
-                      await enqueueMutation({ userId: user?.id || "unknown", type: "MARK_ALL_NOTIFICATIONS_READ", payload: {} });
-                    } else {
-                      await api.markAllNotificationsRead();
+                    if (user) {
+                      const response = await markAllNotificationsReadLocalFirst(user.id);
+                      if (!response.success) return;
+                      setUnreadCount(0);
+                      setNotifications((previous) => previous.map((notification) => ({
+                        ...notification,
+                        isRead: true,
+                      })));
                     }
-                    await offlineDb.notifications.toCollection().modify({ isRead: true });
-                    setUnreadCount(0);
-                    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
                   } catch {
                     // Ignore
                   }
@@ -288,4 +300,3 @@ export default function NotificationBell() {
     </div>
   );
 }
-

@@ -93,6 +93,11 @@ export default function AnalyticsPage() {
     async function loadAnalytics() {
       setLoading(true);
       setError("");
+      if (!navigator.onLine) {
+        setError("Internet connection required to load authoritative analytics.");
+        setLoading(false);
+        return;
+      }
       try {
         const results = await Promise.all([
           api.getDashboardStats(),
@@ -127,6 +132,9 @@ export default function AnalyticsPage() {
       }
     }
     loadAnalytics();
+    const handleOnline = () => { void loadAnalytics(); };
+    window.addEventListener("online", handleOnline);
+    return () => window.removeEventListener("online", handleOnline);
   }, [departmentFilter, range, router, user]);
 
   const overview = stats?.overview || {};

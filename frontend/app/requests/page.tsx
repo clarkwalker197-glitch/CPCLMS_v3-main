@@ -14,6 +14,7 @@ import { QRDisplayModal } from "@/components/QRDisplayModal";
 import { QRScanner } from "@/components/QRScanner";
 import { ModalLayer } from "@/components/ModalLayer";
 import { formatBorrowId, normalizeBorrowId } from "@/lib/borrow-id";
+import { offlineDb } from "@/lib/offline-db";
 import {
   Search,
   BookOpen,
@@ -51,6 +52,13 @@ const reqStatusLabel: Record<string, string> = {
   APPROVED: "Approved",
   REJECTED: "Rejected",
 };
+
+function requestStatusText(request: any): string {
+  if (request._pending) return "Pending synchronization";
+  if (request._syncStatus === "CONFLICT") return "Conflict — server rejected";
+  if (request._syncStatus === "FAILED") return "Synchronization failed";
+  return reqStatusLabel[request.status] || request.status;
+}
 
 export default function RequestsPage() {
   const { user } = useAuth();
@@ -94,6 +102,7 @@ export default function RequestsPage() {
 
   const [successMsg, setSuccessMsg] = useState("");
   const [error, setError] = useState("");
+  const [showingCachedRequests, setShowingCachedRequests] = useState(false);
   const [selectedNote, setSelectedNote] = useState<string | null>(null);
 
   // Debounced search/filter values (300ms) to avoid per-keystroke API spam
@@ -191,6 +200,18 @@ export default function RequestsPage() {
   const loadRequests = useCallback(async () => {
     setReqLoading(true);
     try {
+      const cachedRecords = user
+        ? await offlineDb.borrowRequests.where("userId").equals(user.id).toArray()
+        : [];
+      if (cachedRecords.length) {
+        setRecords(cachedRecords);
+        setReqTotal(cachedRecords.length);
+      }
+      if (!navigator.onLine) {
+        setShowingCachedRequests(true);
+        return;
+      }
+
       const params: Record<string, string> = {
         page: String(reqPage),
         limit: String(REQUEST_PAGE_SIZE),
@@ -202,19 +223,35 @@ export default function RequestsPage() {
 
       const res = await api.getBorrowRequests(params);
       if (res.success) {
-        setRecords((res.data as any[]) || []);
-        setReqTotal(res.meta?.total ?? ((res.data as any[]) || []).length);
+        const serverRecords = (res.data as any[]) || [];
+        const localPending = cachedRecords.filter((request: any) =>
+          request._pending || request._syncStatus === "FAILED" || request._syncStatus === "CONFLICT"
+        );
+        await offlineDb.borrowRequests.bulkPut(serverRecords.map((request: any) => ({
+          ...request,
+          userId: request.userId || user?.id,
+        })));
+        const visibleRecords = [
+          ...serverRecords,
+          ...localPending.filter((local: any) => !serverRecords.some((remote: any) => remote.id === local.id)),
+        ];
+        setRecords(visibleRecords);
+        setReqTotal(res.meta?.total !== undefined ? res.meta.total + localPending.length : visibleRecords.length);
+        setShowingCachedRequests(false);
       } else if (res.rateLimited) {
         setError("You're moving too fast. Please wait a moment and try again.");
+      } else if (res.networkError && cachedRecords.length) {
+        setShowingCachedRequests(true);
       } else {
         setError(res.error || "Failed to load borrow requests");
       }
     } catch {
-      setError("Failed to load borrow requests");
+      if (navigator.onLine) setError("Failed to load borrow requests");
+      else setShowingCachedRequests(true);
     } finally {
       setReqLoading(false);
     }
-  }, [debouncedReqSearch, debouncedReqStatus, reqPage, reqSort, reqSortOrder]);
+  }, [debouncedReqSearch, debouncedReqStatus, reqPage, reqSort, reqSortOrder, user]);
 
   useEffect(() => {
     loadRequests();
@@ -548,6 +585,11 @@ export default function RequestsPage() {
                 <p className="text-sm text-zinc-400 mt-1">
                   Review and manage borrowing transactions · {reqTotal} total
                 </p>
+                {showingCachedRequests && (
+                  <p className="mt-2 text-xs text-amber-300">
+                    Offline — showing last synchronized requests. Locally queued requests remain pending until the server accepts them.
+                  </p>
+                )}
               </div>
             </div>
 
@@ -669,7 +711,7 @@ export default function RequestsPage() {
                           </td>
                           <td className="px-6 py-4">
                             <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${reqStatusBadge[req.status] || "bg-zinc-500/15 text-zinc-400 ring-1 ring-zinc-500/30"}`}>
-                              {reqStatusLabel[req.status] || req.status}
+                              {requestStatusText(req)}
                             </span>
                           </td>
                           <td className="px-6 py-4 text-right">
@@ -711,7 +753,7 @@ export default function RequestsPage() {
                     <div className="grid grid-cols-2 gap-3 py-4 text-sm"><div><p className="text-xs text-zinc-500">Member</p><p className="mt-1 break-words text-zinc-300">{req.user?.firstName} {req.user?.lastName}</p><p className="text-xs text-zinc-500">{req.user?.libraryId || ""}</p></div><div><p className="text-xs text-zinc-500">Request Date</p><p className="mt-1 text-zinc-300">{formatDate(req.requestDate)}</p></div><div className="col-span-2"><p className="text-xs text-zinc-500">Notes</p><p className="mt-1 whitespace-pre-wrap break-words text-zinc-300">{req.notes || "—"}</p></div></div>
                     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-800/80 pt-3">
                       <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${reqStatusBadge[req.status] || "bg-zinc-500/15 text-zinc-400 ring-1 ring-zinc-500/30"}`}>
-                        {reqStatusLabel[req.status] || req.status}
+                        {requestStatusText(req)}
                       </span>
                       <div className="flex flex-wrap gap-2">
                         {isLibrarian && req.status === "PENDING" && (

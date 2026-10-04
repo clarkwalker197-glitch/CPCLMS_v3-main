@@ -111,34 +111,52 @@ The seed script creates demo users. Use the credentials documented in `backend/p
 - Manual transaction ID fallback for QR approval
 - Gmail SMTP password-reset verification codes
 - In-app notification badge, dropdown, read state, and deep-link navigation
-- Offline-first catalog, personal records, notifications, and queued borrow requests
+- Offline-capable catalog, personal records, notifications, and pending borrow/reservation requests
 - Reports, analytics, activity logs, and profile management
 
 ## Offline-First Behavior
 
-The frontend uses Dexie over IndexedDB as an optional local cache. After a successful
-online session, the app stores the physical/e-book catalog, categories, current user,
-personal borrow requests and transactions, reservations, and recent notifications.
-Cached records render immediately on later visits while the API refreshes them in the
-background. The server remains authoritative whenever it is reachable.
+The frontend uses Dexie over IndexedDB for the cached physical/e-book catalog,
+categories, a minimal profile, dashboard snapshots, and account-scoped personal
+requests, transactions, reservations, and notifications. The service worker caches
+the application shell and static assets only; it does not cache API responses or
+authentication data. Unavailable navigations use `public/offline.html`.
 
-Borrow requests and notification read actions made while offline are stored in an
-ordered queue. The queue is pushed in creation order when the browser fires an
-`online` event or the app starts with a connection. A small status indicator reports
-offline mode or pending actions. Logging out clears the local database for privacy.
+Borrow requests and reservation intents created offline are explicitly shown as
+**Pending synchronization** and do not change cached availability, queue position,
+or transaction status. On reconnect, the centralized queue submits them to Express.
+The backend validates current state and role/priority rules, and idempotency keys
+deduplicate retries. Transient network/server failures use exponential backoff;
+permanent validation/authentication failures and conflicts remain visible as failed
+items and are not silently retried. Faculty reservation priority remains enforced by
+the backend transaction service.
 
-Offline limitations for this first pass:
+Notification read actions may be queued. Borrow approval, reservation pickup/cancel,
+returns, QR transaction confirmation, librarian mutations, and analytics are
+online-only. E-book metadata may be cached; file downloads still need a connection.
+The persistent connection indicator labels offline and cached state. Logging out
+clears private IndexedDB records, queued mutations, and legacy API/page caches while
+preserving the public catalog cache.
+
+Deployments must apply the new `20261005000000_add_mutation_idempotency` Prisma
+migration before enabling the updated frontend/backend together. Do not reset or
+recreate the production database.
+
+Offline limitations:
 
 - A user must have logged in successfully at least once on that device.
-- QR approval, librarian mutations, new authentication, and e-book file downloads
-	still require a live connection.
+- New authentication, QR confirmation, librarian mutations, returns, and ebook file
+	downloads still require a live connection.
 - IndexedDB can be disabled or cleared by browser policy; the app then falls back to
 	its normal online API behavior.
 
-To test it, run the frontend, log in while online, open the catalog and dashboard,
-then use browser DevTools to switch Network to Offline. Reload those pages and submit
-a borrow request or mark notifications as read. Restore the connection and confirm
-the pending indicator clears and the request appears after synchronization.
+To test it, run the frontend and backend, apply the idempotency migration to a
+non-production test database, then log in while online and open the catalog,
+dashboard, and reservations. Switch browser DevTools to Offline, reload cached
+pages, search the catalog, and create a borrow request and reservation. Confirm both
+show pending synchronization without appearing approved/confirmed. Restore the
+connection and verify that the server response replaces each local intent and that
+repeated queue delivery with the same key does not create duplicates.
 
 ## QR Approval Flow
 

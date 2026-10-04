@@ -12,6 +12,7 @@ import BorrowHistoryCard from "@/components/BorrowHistoryCard";
 import api from "@/lib/api";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { offlineDb } from "@/lib/offline-db";
 import {
   Users,
   Library,
@@ -35,6 +36,7 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<any>(null);
   const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showingCached, setShowingCached] = useState(false);
 
   useEffect(() => {
     if (user && user.role !== "LIBRARIAN") {
@@ -44,14 +46,47 @@ export default function DashboardPage() {
 
     async function load() {
       try {
+        const cachedDashboard = user?.id ? await offlineDb.dashboard.get(user.id) : undefined;
+        if (cachedDashboard?.snapshot) {
+          setStats(cachedDashboard.snapshot);
+          setShowingCached(true);
+        }
+        if (user?.id) {
+          const cachedTransactions = await offlineDb.transactions
+            .where("userId").equals(user.id).reverse().limit(5).toArray();
+          if (cachedTransactions.length) setRecentTransactions(cachedTransactions);
+        }
+        if (!navigator.onLine) return;
+
         const [statsRes, txRes] = await Promise.all([
           api.getDashboardStats(),
           api.getTransactions({ limit: "5" }),
         ]);
-        if (statsRes.success) setStats(statsRes.data);
-        setRecentTransactions(txRes.success ? (txRes.data || []) : []);
+        if (statsRes.success) {
+          setStats(statsRes.data);
+          setShowingCached(false);
+          if (user?.id) {
+            await offlineDb.dashboard.put({
+              id: user.id,
+              userId: user.id,
+              snapshot: statsRes.data,
+              updatedAt: new Date().toISOString(),
+              syncedAt: Date.now(),
+            });
+          }
+        } else if (statsRes.networkError) {
+          setShowingCached(true);
+        }
+        if (txRes.success) {
+          const transactions = (txRes.data || []).map((transaction: any) => ({
+            ...transaction,
+            userId: transaction.userId || user?.id,
+          }));
+          setRecentTransactions(transactions);
+          await offlineDb.transactions.bulkPut(transactions);
+        }
       } catch {
-        // silent fail for demo
+        setShowingCached(true);
       } finally {
         setLoading(false);
       }
@@ -61,10 +96,10 @@ export default function DashboardPage() {
 
   const ov = stats?.overview || {};
   const statsCards = [
-    { title: "Total Books", value: ov.totalBooks ?? 0, icon: Library, accent: "bg-blue-500/15 text-blue-400" },
-    { title: "Active Members", value: ov.totalUsers ?? 0, icon: Users, accent: "bg-violet-500/15 text-violet-400" },
-    { title: "Books Borrowed", value: ov.activeBorrows ?? 0, icon: BookMarked, accent: "bg-emerald-500/15 text-emerald-400" },
-    { title: "Overdue Books", value: ov.overdueBooks ?? 0, icon: AlertTriangle, accent: "bg-red-500/15 text-red-400" },
+    { title: "Total Books", value: ov.totalBooks ?? "—", icon: Library, accent: "bg-blue-500/15 text-blue-400" },
+    { title: "Active Members", value: ov.totalUsers ?? "—", icon: Users, accent: "bg-violet-500/15 text-violet-400" },
+    { title: "Books Borrowed", value: ov.activeBorrows ?? "—", icon: BookMarked, accent: "bg-emerald-500/15 text-emerald-400" },
+    { title: "Overdue Books", value: ov.overdueBooks ?? "—", icon: AlertTriangle, accent: "bg-red-500/15 text-red-400" },
   ];
 
   const formatDate = (d?: string) =>
@@ -83,6 +118,9 @@ export default function DashboardPage() {
               <div>
                 <h1 className="text-2xl font-bold text-white">Library Dashboard</h1>
                 <p className="text-sm text-zinc-400 mt-1">Welcome back! Here&apos;s your library overview.</p>
+                {showingCached && (
+                  <p className="mt-2 text-xs text-amber-300">Showing last synchronized dashboard data — not live analytics.</p>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <NotificationBell />

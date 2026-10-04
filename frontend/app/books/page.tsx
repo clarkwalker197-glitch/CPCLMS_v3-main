@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/auth-context";
 import api from "@/lib/api";
 import MediaImage from "@/components/MediaImage";
 import { offlineDb } from "@/lib/offline-db";
+import { createReservationLocalFirst, searchCachedBooks } from "@/lib/offline-api";
 import { useDebounce } from "@/lib/useDebounce";
 import { BookBorrowModal } from "@/components/BookBorrowModal";
 import { AddBookModal } from "@/components/AddBookModal";
@@ -62,6 +63,8 @@ export default function BooksPage() {
   const [selectedBook, setSelectedBook] = useState<any | null>(null);
   const [successMsg, setSuccessMsg] = useState("");
   const [togglingStatusId, setTogglingStatusId] = useState<string | null>(null);
+  const [showingCachedCatalog, setShowingCachedCatalog] = useState(false);
+  const [catalogUpdatedAt, setCatalogUpdatedAt] = useState<number | null>(null);
 
   const isLibrarian = user?.role === "LIBRARIAN";
 
@@ -77,12 +80,28 @@ export default function BooksPage() {
       const cachedBooks = await offlineDb.books.toArray();
       const cachedCategories = await offlineDb.categories.toArray();
       const hasServerFilters = Boolean(debouncedSearch || categoryFilter || mainCategoryFilter || classificationFilter);
-      if (cachedBooks.length && !hasServerFilters) {
-        setBooks(cachedBooks.map((book) => ({ ...book, bookType: "physical" })));
+      const localParams: Record<string, string> = {
+        sort,
+        order: sortOrder,
+      };
+      if (debouncedSearch) localParams.search = debouncedSearch;
+      if (categoryFilter) localParams.categoryId = categoryFilter;
+      else if (mainCategoryFilter) localParams.categoryMain = mainCategoryFilter;
+      if (classificationFilter) localParams.classificationNumber = classificationFilter;
+      if (cachedBooks.length) {
+        setBooks(searchCachedBooks(cachedBooks, localParams, cachedCategories).map((book) => ({ ...book, bookType: "physical" })));
         setLoading(false);
       }
+      const cachedSync = await offlineDb.meta.get("booksLastSyncedAt");
+      setCatalogUpdatedAt(typeof cachedSync?.value === "number" ? cachedSync.value : null);
       if (cachedCategories.length) {
         setCategories(cachedCategories.filter((category) => String(category.slug || "").startsWith("dewey-")));
+      }
+
+      if (!navigator.onLine) {
+        setShowingCachedCatalog(true);
+        if (!cachedBooks.length) setError("This catalog is not available offline yet. Reconnect to synchronize it.");
+        return;
       }
 
       const params: Record<string, string> = {};
@@ -97,12 +116,37 @@ export default function BooksPage() {
       if (requestId !== requestSequence.current) return;
       if (booksRes.success) {
         setBooks((booksRes.data || []).map((book: any) => ({ ...book, bookType: "physical" })));
-        if (!hasServerFilters) await offlineDb.books.bulkPut(booksRes.data || []);
+        await offlineDb.books.bulkPut(booksRes.data || []);
+        if (!hasServerFilters) {
+          const syncedAt = Date.now();
+          await offlineDb.meta.put({ key: "booksLastSyncedAt", value: syncedAt, updatedAt: syncedAt });
+          setCatalogUpdatedAt(syncedAt);
+        }
+        setShowingCachedCatalog(false);
       } else if (booksRes.rateLimited) {
         setError("You're moving too fast. Please wait a moment and try again.");
+      } else if (booksRes.networkError && cachedBooks.length) {
+        setBooks(searchCachedBooks(cachedBooks, localParams, cachedCategories).map((book) => ({ ...book, bookType: "physical" })));
+        setShowingCachedCatalog(true);
+      } else if (!booksRes.success) {
+        setError(booksRes.error || "Unable to load the catalog.");
       }
     } catch {
-      if (requestId === requestSequence.current) setError("Unable to load the catalog. Connect once to download the catalog.");
+      if (requestId === requestSequence.current) {
+        const cachedBooks = await offlineDb.books.toArray();
+        if (cachedBooks.length) {
+          const cachedCategories = await offlineDb.categories.toArray();
+          const params: Record<string, string> = { sort, order: sortOrder };
+          if (debouncedSearch) params.search = debouncedSearch;
+          if (categoryFilter) params.categoryId = categoryFilter;
+          else if (mainCategoryFilter) params.categoryMain = mainCategoryFilter;
+          if (classificationFilter) params.classificationNumber = classificationFilter;
+          setBooks(searchCachedBooks(cachedBooks, params, cachedCategories).map((book) => ({ ...book, bookType: "physical" })));
+          setShowingCachedCatalog(true);
+        } else {
+          setError("Unable to load the catalog. Connect once to download the catalog.");
+        }
+      }
     } finally {
       if (requestId === requestSequence.current) setLoading(false);
     }
@@ -115,6 +159,7 @@ export default function BooksPage() {
   }, [loadData]);
 
   useEffect(() => {
+    if (!navigator.onLine) return;
     api.getCategories().then(async (response) => {
       if (!response.success || !response.data) return;
       const deweyCategories = response.data.filter((category: any) => category.slug?.startsWith("dewey-"));
@@ -162,9 +207,11 @@ export default function BooksPage() {
 
     try {
       setError('');
-      const res = await api.reserveBook(book.id);
+      const res = await createReservationLocalFirst(user.id, book);
       if (res.success) {
-        setSuccessMsg(`Reservation placed for "${book.title}".`);
+        setSuccessMsg(res.queued
+          ? `Reservation for "${book.title}" is pending synchronization.`
+          : `Reservation placed for "${book.title}".`);
         loadData();
         setTimeout(() => setSuccessMsg(''), 4000);
         return;
@@ -308,6 +355,12 @@ export default function BooksPage() {
             <div>
               <h1 className="text-2xl font-bold text-white">Books Collection</h1>
               <p className="mt-1 text-sm text-zinc-400">Manage your library&apos;s book collection</p>
+              {showingCachedCatalog && (
+                <p className="mt-2 text-xs text-amber-300">
+                  Showing cached catalog
+                  {catalogUpdatedAt ? ` — last synchronized ${new Date(catalogUpdatedAt).toLocaleString()}` : " — synchronization time unavailable"}.
+                </p>
+              )}
             </div>
             {isLibrarian && (
               <button

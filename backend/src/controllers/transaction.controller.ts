@@ -7,6 +7,16 @@ import { transactionService } from '../services';
 import { asyncHandler } from '../utils/asyncHandler';
 import { sendSuccess } from '../utils/helpers';
 import { AuthenticatedRequest } from '../types';
+import { BadRequestError } from '../utils/errors';
+
+function getIdempotencyKey(req: Request): string | undefined {
+  const key = req.get('Idempotency-Key');
+  if (!key) return undefined;
+  if (!/^[A-Za-z0-9._:-]{1,64}$/.test(key)) {
+    throw new BadRequestError('Invalid Idempotency-Key header');
+  }
+  return key;
+}
 
 // ============================================================
 // Borrow Requests
@@ -25,6 +35,7 @@ export const createBorrowRequest = asyncHandler(
       userId: req.user!.userId,
       bookIds: normalizedBookIds,
       notes,
+      idempotencyKey: getIdempotencyKey(req),
       auditContext: { ipAddress: req.ip, userAgent: req.get('user-agent') },
     });
     sendSuccess(res, request, 'Borrow request submitted', 201);
@@ -204,7 +215,8 @@ export const reserveBook = asyncHandler(
     const reservation = await transactionService.reserveBook(
       req.user!.userId,
       bookId,
-      { ipAddress: req.ip, userAgent: req.get('user-agent') }
+      { ipAddress: req.ip, userAgent: req.get('user-agent') },
+      getIdempotencyKey(req)
     );
     sendSuccess(res, reservation, 'Book reserved successfully', 201);
   }

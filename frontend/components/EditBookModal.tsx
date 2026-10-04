@@ -231,6 +231,11 @@ export function EditBookModal(props: {
         });
         fd.append('coverImage', coverFile);
 
+        if (!navigator.onLine) {
+          setError('An internet connection is required to update the book.');
+          return;
+        }
+
         const token = localStorage.getItem('accessToken');
         const headers: Record<string, string> = {};
         if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -239,6 +244,7 @@ export function EditBookModal(props: {
           `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'}/books/${props.book.id}`,
           {
             method: 'PUT',
+            credentials: 'include',
             headers,
             body: fd,
           }

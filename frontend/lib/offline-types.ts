@@ -20,8 +20,11 @@ export type LocalUser = LocalRecord & {
 
 export type SyncMutationType =
   | 'CREATE_BORROW_REQUEST'
+  | 'CREATE_RESERVATION'
   | 'MARK_NOTIFICATION_READ'
   | 'MARK_ALL_NOTIFICATIONS_READ';
+
+export type SyncMutationStatus = 'PENDING' | 'SYNCING' | 'FAILED' | 'CONFLICT';
 
 export type SyncMutation = {
   id: string;
@@ -30,6 +33,9 @@ export type SyncMutation = {
   payload: Record<string, unknown>;
   createdAt: number;
   attempts: number;
+  idempotencyKey: string;
+  status: SyncMutationStatus;
+  nextAttemptAt?: number;
   lastError?: string;
 };
 
@@ -43,4 +49,9 @@ export type BorrowRequestMutation = {
   bookIds: string[];
   notes?: string;
   localRequestIds?: string[];
+};
+
+export type ReservationMutation = {
+  bookId: string;
+  localReservationId: string;
 };

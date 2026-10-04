@@ -19,10 +19,21 @@ export function OfflineIndicator() {
   const [failed, setFailed] = useState(0);
   const [lastSynced, setLastSynced] = useState<number | null>(null);
   const [justSynced, setJustSynced] = useState(false);
+  const [visible, setVisible] = useState(true);
 
   useEffect(() => {
-    let wasSyncing = false;
+    const displayDuration = 5000;
+    let wasSyncing = isSyncing();
+    let previousPending: number | null = null;
+    let previousFailed: number | null = null;
     let completeTimer: ReturnType<typeof setTimeout> | undefined;
+    let visibilityTimer: ReturnType<typeof setTimeout> | undefined;
+    const showTemporarily = () => {
+      setVisible(true);
+      if (visibilityTimer) clearTimeout(visibilityTimer);
+      visibilityTimer = setTimeout(() => setVisible(false), displayDuration);
+    };
+    let currentOnline = navigator.onLine;
     const update = async () => {
       const [nextPending, nextFailed, lastSync] = await Promise.all([
         pendingMutationCount(),
@@ -34,28 +45,53 @@ export function OfflineIndicator() {
       setFailed(nextFailed);
       setLastSynced(lastSync);
       setSyncing(nextSyncing);
+      if (
+        wasSyncing !== nextSyncing ||
+        (previousPending !== null && previousPending !== nextPending) ||
+        (previousFailed !== null && previousFailed !== nextFailed)
+      ) {
+        showTemporarily();
+      }
       if (wasSyncing && !nextSyncing && nextPending === 0 && nextFailed === 0) {
         setJustSynced(true);
+        showTemporarily();
         if (completeTimer) clearTimeout(completeTimer);
-        completeTimer = setTimeout(() => setJustSynced(false), 5000);
+        completeTimer = setTimeout(() => setJustSynced(false), displayDuration);
       }
       wasSyncing = nextSyncing;
+      previousPending = nextPending;
+      previousFailed = nextFailed;
     };
     const handleNetwork = (event: Event) => {
       const statusEvent = event as CustomEvent<{ online: boolean }>;
-      setOnline(statusEvent.detail.online);
+      if (currentOnline !== statusEvent.detail.online) {
+        currentOnline = statusEvent.detail.online;
+        setOnline(currentOnline);
+        showTemporarily();
+      }
       if (statusEvent.detail.online) void syncNow();
     };
     const handleOnline = () => {
-      setOnline(true);
+      if (!currentOnline) {
+        currentOnline = true;
+        setOnline(true);
+        showTemporarily();
+      }
       void syncNow();
     };
-    const handleOffline = () => setOnline(false);
+    const handleOffline = () => {
+      if (currentOnline) {
+        currentOnline = false;
+        setOnline(false);
+        showTemporarily();
+      }
+    };
     const handleServiceWorkerMessage = (event: MessageEvent) => {
       if (event.data?.type === 'CPCLMS_SYNC') void syncNow();
     };
 
-    setOnline(navigator.onLine);
+    setOnline(currentOnline);
+    showTemporarily();
     void update();
     void syncNow();
     const unsubscribe = subscribeToSync(() => void update());
@@ -70,8 +106,11 @@ export function OfflineIndicator() {
       window.removeEventListener('offline', handleOffline);
       navigator.serviceWorker?.removeEventListener('message', handleServiceWorkerMessage);
       if (completeTimer) clearTimeout(completeTimer);
+      if (visibilityTimer) clearTimeout(visibilityTimer);
     };
   }, []);
+
+  if (!visible) return null;
 
   const isOnline = online !== false;
   const message = failed > 0

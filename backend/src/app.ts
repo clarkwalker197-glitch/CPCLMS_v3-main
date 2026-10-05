@@ -14,9 +14,42 @@ import { archiveRetentionService, notificationService } from './services';
 import { UPLOADS_ROOT } from './middlewares/upload';
 
 const app = express();
-const allowedOrigins = Array.isArray(env.FRONTEND_URL)
+const configuredOrigins = (Array.isArray(env.FRONTEND_URL)
   ? env.FRONTEND_URL
-  : [env.FRONTEND_URL];
+  : [env.FRONTEND_URL]).map((origin) => origin.replace(/\/+$/, ''));
+const allowedOrigins = new Set([
+  ...configuredOrigins,
+  'http://localhost:3000',
+  'http://localhost:4000',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:4000',
+  'https://localhost:3000',
+  'https://localhost:4000',
+  'https://127.0.0.1:3000',
+  'https://127.0.0.1:4000',
+]);
+
+const isAllowedOrigin = (origin: string | undefined): boolean => {
+  if (!origin) return true;
+
+  const normalizedOrigin = origin.replace(/\/+$/, '');
+  if (allowedOrigins.has(normalizedOrigin)) return true;
+
+  try {
+    const { hostname, protocol } = new URL(normalizedOrigin);
+    const trustedHostSuffixes = ['.vercel.app', '.netlify.app', '.railway.app', '.fly.dev'];
+    const isKnownPreviewHost = trustedHostSuffixes.some((suffix) => hostname.endsWith(suffix));
+    const isLocalHost = ['localhost', '127.0.0.1', '0.0.0.0'].includes(hostname);
+
+    if (isKnownPreviewHost || (isLocalHost && ['http:', 'https:'].includes(protocol))) {
+      return true;
+    }
+  } catch {
+    // Ignore malformed origins and reject them below.
+  }
+
+  return false;
+};
 
 // ============================================================
 // Security Middleware
@@ -24,16 +57,17 @@ const allowedOrigins = Array.isArray(env.FRONTEND_URL)
 app.use(helmet());
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (isAllowedOrigin(origin)) {
       callback(null, true);
       return;
     }
 
-    callback(new Error('Not allowed by CORS'));
+    callback(null, false);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
+  optionsSuccessStatus: 204,
 }));
 
 // ============================================================

@@ -15,7 +15,12 @@ function resolveApiBaseUrl(): string {
     if (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0') {
       return 'http://localhost:4000/api';
     }
-    return '/api';
+
+    if (process.env.NODE_ENV === 'production') {
+      console.warn('[API] NEXT_PUBLIC_API_URL is not configured. Ensure the backend is reachable at the current origin or set NEXT_PUBLIC_API_URL for production.');
+    }
+
+    return `${window.location.origin}/api`;
   }
 
   return 'http://localhost:4000/api';

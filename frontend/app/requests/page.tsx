@@ -15,6 +15,7 @@ import { QRScanner } from "@/components/QRScanner";
 import { ModalLayer } from "@/components/ModalLayer";
 import { formatBorrowId, normalizeBorrowId } from "@/lib/borrow-id";
 import { offlineDb } from "@/lib/offline-db";
+import { isSyncing, subscribeToSync } from "@/lib/offline-sync";
 import {
   Search,
   BookOpen,
@@ -269,13 +270,18 @@ export default function RequestsPage() {
       const res = await api.getBorrowRequests(params);
       if (res.success) {
         const serverRecords = (res.data as any[]) || [];
-        const localPending = cachedRecords.filter((request: any) =>
-          request._pending || request._syncStatus === "FAILED" || request._syncStatus === "CONFLICT"
-        );
         await offlineDb.borrowRequests.bulkPut(serverRecords.map((request: any) => ({
           ...request,
           userId: request.userId || user?.id,
         })));
+        // Sync can finish while the server request is in flight; don't merge
+        // pending rows from the stale cache snapshot taken before that sync.
+        const latestCachedRecords = user
+          ? await offlineDb.borrowRequests.where("userId").equals(user.id).toArray()
+          : cachedRecords;
+        const localPending = latestCachedRecords.filter((request: any) =>
+          request._pending || request._syncStatus === "FAILED" || request._syncStatus === "CONFLICT"
+        );
         const visibleRecords = [
           ...serverRecords,
           ...localPending.filter((local: any) => !serverRecords.some((remote: any) => remote.id === local.id)),
@@ -300,6 +306,15 @@ export default function RequestsPage() {
 
   useEffect(() => {
     loadRequests();
+  }, [loadRequests]);
+
+  useEffect(() => {
+    let wasSyncing = isSyncing();
+    return subscribeToSync(() => {
+      const syncing = isSyncing();
+      if (wasSyncing && !syncing) void loadRequests();
+      wasSyncing = syncing;
+    });
   }, [loadRequests]);
 
   useEffect(() => {

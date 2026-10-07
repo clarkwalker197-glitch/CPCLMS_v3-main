@@ -837,7 +837,7 @@ async payFine(id: string, amount: number): Promise<ApiResponse<any>> {
     publishYear?: number;
     edition?: string;
     categoryId: string;
-    classificationNumber: string;
+    classificationNumber?: string;
     description?: string;
     coverImage?: string;
     language?: string;

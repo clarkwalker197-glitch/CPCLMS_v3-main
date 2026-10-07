@@ -4,7 +4,7 @@ import { useState, useRef } from "react";
 import { Dialog, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import api from "@/lib/api";
-import { categoryDisplayName, categoryForClassification, categoryIdForDewey, DEWEY_MAIN_CATEGORIES, mainCategoryForClassification, normalizeClassificationNumber, sanitizeClassificationInput, subcategoriesForMain } from "@/lib/categories";
+import { categoryDisplayName, categoryIdForDewey, DEWEY_MAIN_CATEGORIES, subcategoriesForMain } from "@/lib/categories";
 import { BookOpen, Upload, Link2, FileText, X } from "lucide-react";
 
 interface Category {
@@ -40,12 +40,10 @@ export function AddEBookModal(props: {
     publishYear: "",
     edition: "",
     categoryId: "",
-    classificationNumber: "",
     description: "",
     coverImage: "",
     language: "English",
     fileUrl: "",
-    fileSizeMb: "",
     format: "PDF" as "PDF" | "EPUB" | "MOBI",
   };
   const [mode, setMode] = useState<"upload" | "link">("upload");
@@ -61,20 +59,6 @@ export function AddEBookModal(props: {
   const update = (field: keyof typeof form) => (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => setForm((f) => ({ ...f, [field]: e.target.value }));
-
-  const updateClassificationNumber = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = sanitizeClassificationInput(e.target.value);
-    const detected = categoryForClassification(value);
-    const mainCategory = mainCategoryForClassification(value);
-    const categoryId = detected ? categoryIdForDewey(detected, props.categories) : undefined;
-    setMainCategoryCode(mainCategory?.code || "");
-    setForm((current) => ({ ...current, classificationNumber: value, categoryId: categoryId || "" }));
-  };
-
-  const normalizeClassification = () => setForm((current) => ({
-    ...current,
-    classificationNumber: normalizeClassificationNumber(current.classificationNumber) || current.classificationNumber,
-  }));
 
   const reset = () => {
     setForm(emptyForm);
@@ -129,9 +113,8 @@ export function AddEBookModal(props: {
     e.preventDefault();
     setError("");
 
-    const classificationNumber = normalizeClassificationNumber(form.classificationNumber);
-    if (!form.isbn.trim() || !form.title.trim() || !form.author.trim() || !form.categoryId || !classificationNumber) {
-      setError("ISBN, title, author, category, and a valid Dewey classification number are required.");
+    if (!form.isbn.trim() || !form.title.trim() || !form.author.trim() || !form.categoryId) {
+      setError("ISBN, title, author, and category are required.");
       return;
     }
 
@@ -156,7 +139,6 @@ export function AddEBookModal(props: {
         if (form.publishYear) fd.append("publishYear", form.publishYear);
         if (form.edition.trim()) fd.append("edition", form.edition.trim());
         fd.append("categoryId", form.categoryId);
-        fd.append("classificationNumber", classificationNumber);
         if (form.description.trim()) fd.append("description", form.description.trim());
         fd.append("language", form.language.trim() || "English");
         fd.append("file", ebookFile as File);
@@ -171,12 +153,10 @@ export function AddEBookModal(props: {
           publishYear: form.publishYear ? Number(form.publishYear) : undefined,
           edition: form.edition.trim() || undefined,
           categoryId: form.categoryId,
-          classificationNumber,
           description: form.description.trim() || undefined,
           coverImage: form.coverImage.trim() || undefined,
           language: form.language.trim() || "English",
           fileUrl: form.fileUrl.trim(),
-          fileSize: form.fileSizeMb ? Math.round(Number(form.fileSizeMb) * 1024 * 1024) : undefined,
           format: form.format,
         });
       }
@@ -269,7 +249,7 @@ export function AddEBookModal(props: {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
           <div>
             <label className={labelClass}>ISBN *</label>
             <input
@@ -279,10 +259,6 @@ export function AddEBookModal(props: {
               placeholder="e.g., 978-0132350884"
               required
             />
-          </div>
-          <div>
-            <label className={labelClass}>Classification Number *</label>
-            <input className={inputClass} value={form.classificationNumber} onChange={updateClassificationNumber} onBlur={normalizeClassification} inputMode="decimal" maxLength={9} placeholder="e.g., 812.54" required />
           </div>
         </div>
 
@@ -439,27 +415,14 @@ export function AddEBookModal(props: {
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className={labelClass}>Cover Image URL</label>
-                <input
-                  className={inputClass}
-                  value={form.coverImage}
-                  onChange={update("coverImage")}
-                  placeholder="https://.../cover.jpg"
-                />
-              </div>
-              <div>
-                <label className={labelClass}>File Size (MB)</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  className={inputClass}
-                  value={form.fileSizeMb}
-                  onChange={update("fileSizeMb")}
-                  placeholder="e.g., 4.2"
-                />
-              </div>
+            <div>
+              <label className={labelClass}>Cover Image URL</label>
+              <input
+                className={inputClass}
+                value={form.coverImage}
+                onChange={update("coverImage")}
+                placeholder="https://.../cover.jpg"
+              />
             </div>
           </>
         )}

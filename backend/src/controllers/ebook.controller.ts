@@ -8,7 +8,6 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { sendSuccess } from '../utils/helpers';
 import { BadRequestError } from '../utils/errors';
 import { formatFromExtension } from '../middlewares/upload';
-import { normalizeClassificationNumber } from '../constants/categories';
 import { storeCoverImage, tryDeleteNewCoverImage } from '../services/cover-image-storage.service';
 
 /**
@@ -49,14 +48,10 @@ export const uploadEBook = asyncHandler(async (req: Request, res: Response) => {
     throw new BadRequestError('An e-book file is required');
   }
 
-  const { isbn, title, author, publisher, publishYear, edition, categoryId, classificationNumber, description, language, coverImage: coverImageUrl } = req.body;
+  const { isbn, title, author, publisher, publishYear, edition, categoryId, description, language, coverImage: coverImageUrl } = req.body;
 
-  if (!isbn || !title || !author || !categoryId || !classificationNumber) {
-    throw new BadRequestError('ISBN, title, author, category, and classification number are required');
-  }
-  const normalizedClassificationNumber = normalizeClassificationNumber(classificationNumber);
-  if (!normalizedClassificationNumber) {
-    throw new BadRequestError('Classification number must be between 000 and 999 with up to 5 decimal places');
+  if (!isbn || !title || !author || !categoryId) {
+    throw new BadRequestError('ISBN, title, author, and category are required');
   }
 
   const fileUrl = `/uploads/ebooks/${uploadedFile.filename}`;
@@ -70,7 +65,6 @@ export const uploadEBook = asyncHandler(async (req: Request, res: Response) => {
       publishYear: publishYear ? Number(publishYear) : undefined,
       edition: edition || undefined,
       categoryId: categoryId || undefined,
-      classificationNumber: normalizedClassificationNumber,
       description: description || undefined,
       coverImage: uploadedCoverUrl || coverImageUrl || undefined,
       language: language || 'English',
@@ -101,5 +95,4 @@ export const deleteEBook = asyncHandler(async (req: Request, res: Response) => {
   await ebookService.deleteEBook(req.params.id);
   sendSuccess(res, null, 'E-Book deleted successfully');
 });
-
 

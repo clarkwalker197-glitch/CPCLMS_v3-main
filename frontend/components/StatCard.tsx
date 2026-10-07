@@ -1,5 +1,7 @@
+import type { ReactNode } from "react";
+
 interface StatCardProps {
-  title: string;
+  title: ReactNode;
   value: string | number;
   icon: any;
   description?: string;
@@ -16,7 +18,7 @@ export function StatCard({ title, value, icon: Icon, description, accent = "bg-b
         </div>
       </div>
       <p className="mt-3 truncate text-2xl font-bold text-white sm:mt-4 sm:text-3xl">{value}</p>
-      <p className="mt-1 break-words text-xs leading-5 text-zinc-400 sm:text-sm">{title}</p>
+      <div className="mt-1 break-words text-xs leading-5 text-zinc-400 sm:text-sm">{title}</div>
       {description && <p className="mt-1 break-words text-xs text-zinc-500">{description}</p>}
     </div>
   );

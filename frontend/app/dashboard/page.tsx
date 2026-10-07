@@ -37,6 +37,8 @@ export default function DashboardPage() {
   const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showingCached, setShowingCached] = useState(false);
+  const [showEBooks, setShowEBooks] = useState(false);
+  const [showFaculty, setShowFaculty] = useState(false);
 
   useEffect(() => {
     if (user && user.role !== "LIBRARIAN") {
@@ -95,9 +97,59 @@ export default function DashboardPage() {
   }, [user, router]);
 
   const ov = stats?.overview || {};
+  const toggleTitle = (
+    ariaLabel: string,
+    leftLabel: string,
+    rightLabel: string,
+    isRightSelected: boolean,
+    onSelect: (selected: boolean) => void,
+  ) => (
+    <div
+      role="group"
+      aria-label={ariaLabel}
+      className="relative grid w-full grid-cols-2 rounded-full border border-zinc-700/80 bg-zinc-950/70 p-0.5 text-[10px] leading-4 sm:text-xs"
+    >
+      <span
+        aria-hidden="true"
+        className={`absolute bottom-0.5 top-0.5 w-[calc(50%-2px)] rounded-full bg-blue-500/15 shadow-[0_0_10px_rgba(59,130,246,0.15)] ring-1 ring-blue-500/30 transition-transform duration-200 ${
+          isRightSelected ? "translate-x-[calc(100%+2px)]" : "translate-x-0"
+        }`}
+      />
+      <button
+        type="button"
+        aria-pressed={!isRightSelected}
+        onClick={() => onSelect(false)}
+        className={`relative z-10 min-w-0 whitespace-nowrap rounded-full px-1 py-1 transition-colors ${
+          !isRightSelected ? "text-blue-300" : "text-zinc-400 hover:text-zinc-200"
+        }`}
+      >
+        <span className="block truncate">{leftLabel}</span>
+      </button>
+      <button
+        type="button"
+        aria-pressed={isRightSelected}
+        onClick={() => onSelect(true)}
+        className={`relative z-10 min-w-0 whitespace-nowrap rounded-full px-1 py-1 transition-colors ${
+          isRightSelected ? "text-blue-300" : "text-zinc-400 hover:text-zinc-200"
+        }`}
+      >
+        <span className="block truncate">{rightLabel}</span>
+      </button>
+    </div>
+  );
   const statsCards = [
-    { title: "Total Books", value: ov.totalBooks ?? "—", icon: Library, accent: "bg-blue-500/15 text-blue-400" },
-    { title: "Active Members", value: ov.totalUsers ?? "—", icon: Users, accent: "bg-violet-500/15 text-violet-400" },
+    {
+      title: toggleTitle("Book totals", "Total Books", "Total Ebooks", showEBooks, setShowEBooks),
+      value: (showEBooks ? ov.totalEBooks : ov.totalBooks) ?? "—",
+      icon: Library,
+      accent: "bg-blue-500/15 text-blue-400",
+    },
+    {
+      title: toggleTitle("Active members", "Active Students", "Active Faculty", showFaculty, setShowFaculty),
+      value: (showFaculty ? stats?.userRoles?.faculty : ov.totalUsers) ?? "—",
+      icon: Users,
+      accent: "bg-violet-500/15 text-violet-400",
+    },
     { title: "Books Borrowed", value: ov.activeBorrows ?? "—", icon: BookMarked, accent: "bg-emerald-500/15 text-emerald-400" },
     { title: "Overdue Books", value: ov.overdueBooks ?? "—", icon: AlertTriangle, accent: "bg-red-500/15 text-red-400" },
   ];
@@ -141,8 +193,8 @@ export default function DashboardPage() {
                 ? Array.from({ length: 4 }).map((_, i) => (
                   <div key={i} className="h-32 rounded-2xl bg-zinc-900 animate-pulse" />
                 ))
-                : statsCards.map((card) => (
-                  <StatCard key={card.title} {...card} />
+                : statsCards.map((card, index) => (
+                  <StatCard key={index} {...card} />
                 ))}
             </div>
 

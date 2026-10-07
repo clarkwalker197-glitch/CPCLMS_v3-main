@@ -354,18 +354,20 @@ async function scheduleQueueRetry(): Promise<void> {
   if (!userId || !canUseOfflineStorage() || !isOnline()) return;
   if (retryTimer) clearTimeout(retryTimer);
   const now = Date.now();
-  const pendingMutations = await db.syncQueue.where('userId').equals(userId)
+  const retryableMutations = await db.syncQueue.where('userId').equals(userId)
     .filter((mutation) =>
-      mutation.status === 'PENDING' &&
-      typeof mutation.nextAttemptAt === 'number' &&
-      mutation.nextAttemptAt > now
+      mutation.status === 'PENDING' || mutation.status === 'SYNCING'
     )
     .toArray();
-  const nextAttemptAt = pendingMutations.reduce<number | undefined>((soonest, mutation) => {
-    const attemptAt = mutation.nextAttemptAt;
-    return typeof attemptAt === 'number'
-      ? soonest === undefined ? attemptAt : Math.min(soonest, attemptAt)
-      : soonest;
+  const nextAttemptAt = retryableMutations.reduce<number | undefined>((soonest, mutation) => {
+    const retryAt = mutation.status === 'SYNCING'
+      ? (mutation.lastAttemptAt ?? mutation.createdAt) + STUCK_SYNC_TIMEOUT_MS
+      : mutation.nextAttemptAt;
+    return typeof retryAt === 'number' && retryAt > now
+      ? soonest === undefined ? retryAt : Math.min(soonest, retryAt)
+      : typeof retryAt === 'number' && mutation.status === 'SYNCING'
+        ? now
+        : soonest;
   }, undefined);
   if (nextAttemptAt === undefined) {
     retryTimer = undefined;

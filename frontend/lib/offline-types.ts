@@ -36,6 +36,7 @@ export type SyncMutation = {
   idempotencyKey: string;
   status: SyncMutationStatus;
   nextAttemptAt?: number;
+  lastAttemptAt?: number;
   lastError?: string;
 };
 

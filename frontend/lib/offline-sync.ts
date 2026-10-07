@@ -6,6 +6,7 @@ export const SYNC_EVENT = 'cpclms-sync';
 const SYNC_BATCH_SIZE = 2;
 const SYNC_BATCH_DELAY_MS = 150;
 const MAX_SYNC_ATTEMPTS = 6;
+const STUCK_SYNC_TIMEOUT_MS = 2 * 60_000;
 let syncing = false;
 let syncRequested = false;
 let retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -351,12 +352,26 @@ export async function pendingMutationCount(): Promise<number> {
 async function scheduleQueueRetry(): Promise<void> {
   const userId = currentUserId();
   if (!userId || !canUseOfflineStorage() || !isOnline()) return;
-  const next = await db.syncQueue.where('userId').equals(userId)
-    .filter((mutation) => mutation.status === 'PENDING' && Boolean(mutation.nextAttemptAt))
-    .sortBy('createdAt');
-  if (!next.length) return;
-  const delayMs = Math.max(0, (next[0].nextAttemptAt || Date.now()) - Date.now());
   if (retryTimer) clearTimeout(retryTimer);
+  const now = Date.now();
+  const pendingMutations = await db.syncQueue.where('userId').equals(userId)
+    .filter((mutation) =>
+      mutation.status === 'PENDING' &&
+      typeof mutation.nextAttemptAt === 'number' &&
+      mutation.nextAttemptAt > now
+    )
+    .toArray();
+  const nextAttemptAt = pendingMutations.reduce<number | undefined>((soonest, mutation) => {
+    const attemptAt = mutation.nextAttemptAt;
+    return typeof attemptAt === 'number'
+      ? soonest === undefined ? attemptAt : Math.min(soonest, attemptAt)
+      : soonest;
+  }, undefined);
+  if (nextAttemptAt === undefined) {
+    retryTimer = undefined;
+    return;
+  }
+  const delayMs = nextAttemptAt - now;
   retryTimer = setTimeout(() => {
     retryTimer = undefined;
     void syncNow();
@@ -385,21 +400,45 @@ export async function lastSyncTime(): Promise<number | null> {
 export async function pushQueue(): Promise<void> {
   const userId = currentUserId();
   if (!canUseOfflineStorage() || !userId) return;
-  const mutations = await db.syncQueue.where('userId').equals(userId).sortBy('createdAt');
 
-  for (const storedMutation of mutations) {
-    if (storedMutation.status === 'FAILED' || storedMutation.status === 'CONFLICT') continue;
-    if (storedMutation.nextAttemptAt && storedMutation.nextAttemptAt > Date.now()) break;
-    const mutation: SyncMutation = {
-      ...storedMutation,
-      idempotencyKey: storedMutation.idempotencyKey || crypto.randomUUID(),
-      status: 'PENDING',
-    };
-    if (!storedMutation.idempotencyKey || !storedMutation.status) {
-      await db.syncQueue.put(mutation);
+  const push = async (): Promise<void> => {
+    const now = Date.now();
+    const storedMutations = await db.syncQueue.where('userId').equals(userId).toArray();
+    const stuckMutations = storedMutations.filter((mutation) =>
+      mutation.status === 'SYNCING' &&
+      now - (mutation.lastAttemptAt ?? mutation.createdAt) >= STUCK_SYNC_TIMEOUT_MS
+    );
+    await Promise.all(stuckMutations.map((mutation) =>
+      db.syncQueue.update(mutation.id, {
+        status: 'PENDING',
+        nextAttemptAt: undefined,
+        lastAttemptAt: undefined,
+      })
+    ));
+
+    const mutations = await db.syncQueue.where('userId').equals(userId).sortBy('createdAt');
+
+    for (const storedMutation of mutations) {
+      if (storedMutation.status === 'FAILED' || storedMutation.status === 'CONFLICT') continue;
+      if (storedMutation.status === 'SYNCING') continue;
+      if (storedMutation.nextAttemptAt && storedMutation.nextAttemptAt > Date.now()) continue;
+      const mutation: SyncMutation = {
+        ...storedMutation,
+        idempotencyKey: storedMutation.idempotencyKey || crypto.randomUUID(),
+        status: 'PENDING',
+      };
+      if (!storedMutation.idempotencyKey || !storedMutation.status) {
+        await db.syncQueue.put(mutation);
+      }
+      await db.syncQueue.update(mutation.id, { status: 'SYNCING', lastAttemptAt: Date.now() });
+      if (!(await pushMutation(mutation))) break;
     }
-    await db.syncQueue.update(mutation.id, { status: 'SYNCING' });
-    if (!(await pushMutation(mutation))) break;
+  };
+
+  if (typeof navigator !== 'undefined' && navigator.locks) {
+    await navigator.locks.request('cpclms-sync', push);
+  } else {
+    await push();
   }
 }
 

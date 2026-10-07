@@ -160,7 +160,7 @@ export async function createBorrowRequestLocalFirst(
     await db.borrowRequests.bulkPut(records.map((record: LocalRecord) => ({ ...record, userId })));
     return response;
   }
-  if (response.networkError || (response.statusCode !== undefined && response.statusCode >= 500)) {
+  if (response.networkError || response.rateLimited || (response.statusCode !== undefined && response.statusCode >= 500)) {
     return queueBorrowRequest(userId, data, idempotencyKey);
   }
   return response;
@@ -204,7 +204,7 @@ export async function createReservationLocalFirst(
     await db.reservations.put({ ...response.data, userId });
     return response;
   }
-  if (response.networkError || (response.statusCode !== undefined && response.statusCode >= 500)) {
+  if (response.networkError || response.rateLimited || (response.statusCode !== undefined && response.statusCode >= 500)) {
     return queueReservation();
   }
   return response;

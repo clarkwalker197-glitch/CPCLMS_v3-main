@@ -141,10 +141,6 @@ export const uploadBookCover = (req: Request, res: Response, next: NextFunction)
       next(error);
       return;
     }
-    if (req.is('multipart/form-data') && !req.file) {
-      next(new BadRequestError('A cover image file is required for multipart uploads'));
-      return;
-    }
     next();
   });
 };

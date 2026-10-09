@@ -6,7 +6,7 @@ import { useAuth } from "@/lib/auth-context";
 import api from "@/lib/api";
 import MediaImage from "@/components/MediaImage";
 import { offlineDb } from "@/lib/offline-db";
-import { createReservationLocalFirst, searchCachedBooks } from "@/lib/offline-api";
+import { searchCachedBooks } from "@/lib/offline-api";
 import { useDebounce } from "@/lib/useDebounce";
 import { BookBorrowModal } from "@/components/BookBorrowModal";
 import { AddBookModal } from "@/components/AddBookModal";
@@ -207,11 +207,9 @@ export default function BooksPage() {
 
     try {
       setError('');
-      const res = await createReservationLocalFirst(user.id, book);
+      const res = await api.reserveBook(book.id);
       if (res.success) {
-        setSuccessMsg(res.queued
-          ? `Reservation for "${book.title}" is pending synchronization.`
-          : `Reservation placed for "${book.title}".`);
+        setSuccessMsg(`Reservation placed for "${book.title}".`);
         loadData();
         setTimeout(() => setSuccessMsg(''), 4000);
         return;
@@ -239,10 +237,8 @@ export default function BooksPage() {
     setShowBorrowModal(true);
   };
 
-  const handleBorrowSuccess = (queued = false) => {
-    setSuccessMsg(queued
-      ? "Request saved offline and will be sent when you reconnect."
-      : "Request sent! Waiting for librarian approval.");
+  const handleBorrowSuccess = () => {
+    setSuccessMsg("Request sent! Waiting for librarian approval.");
     setCart([]);
     loadData();
     setTimeout(() => setSuccessMsg(""), 4000);

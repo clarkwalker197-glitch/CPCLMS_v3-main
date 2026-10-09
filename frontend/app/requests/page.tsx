@@ -15,7 +15,6 @@ import { QRScanner } from "@/components/QRScanner";
 import { ModalLayer } from "@/components/ModalLayer";
 import { formatBorrowId, normalizeBorrowId } from "@/lib/borrow-id";
 import { offlineDb } from "@/lib/offline-db";
-import { isSyncing, subscribeToSync } from "@/lib/offline-sync";
 import {
   Search,
   BookOpen,
@@ -55,9 +54,6 @@ const reqStatusLabel: Record<string, string> = {
 };
 
 function requestStatusText(request: any): string {
-  if (request._pending) return "Pending synchronization";
-  if (request._syncStatus === "CONFLICT") return "Conflict — server rejected";
-  if (request._syncStatus === "FAILED") return "Synchronization failed";
   return reqStatusLabel[request.status] || request.status;
 }
 
@@ -247,7 +243,8 @@ export default function RequestsPage() {
     setReqLoading(true);
     try {
       const cachedRecords = user
-        ? await offlineDb.borrowRequests.where("userId").equals(user.id).toArray()
+        ? (await offlineDb.borrowRequests.where("userId").equals(user.id).toArray())
+          .filter((request: any) => !request._pending && !String(request.id).startsWith("local-borrow-"))
         : [];
       if (cachedRecords.length) {
         setRecords(cachedRecords);
@@ -274,20 +271,8 @@ export default function RequestsPage() {
           ...request,
           userId: request.userId || user?.id,
         })));
-        // Sync can finish while the server request is in flight; don't merge
-        // pending rows from the stale cache snapshot taken before that sync.
-        const latestCachedRecords = user
-          ? await offlineDb.borrowRequests.where("userId").equals(user.id).toArray()
-          : cachedRecords;
-        const localPending = latestCachedRecords.filter((request: any) =>
-          request._pending || request._syncStatus === "FAILED" || request._syncStatus === "CONFLICT"
-        );
-        const visibleRecords = [
-          ...serverRecords,
-          ...localPending.filter((local: any) => !serverRecords.some((remote: any) => remote.id === local.id)),
-        ];
-        setRecords(visibleRecords);
-        setReqTotal(res.meta?.total !== undefined ? res.meta.total + localPending.length : visibleRecords.length);
+        setRecords(serverRecords);
+        setReqTotal(res.meta?.total ?? serverRecords.length);
         setShowingCachedRequests(false);
       } else if (res.rateLimited) {
         setError("You're moving too fast. Please wait a moment and try again.");
@@ -306,15 +291,6 @@ export default function RequestsPage() {
 
   useEffect(() => {
     loadRequests();
-  }, [loadRequests]);
-
-  useEffect(() => {
-    let wasSyncing = isSyncing();
-    return subscribeToSync(() => {
-      const syncing = isSyncing();
-      if (wasSyncing && !syncing) void loadRequests();
-      wasSyncing = syncing;
-    });
   }, [loadRequests]);
 
   useEffect(() => {
@@ -652,7 +628,7 @@ export default function RequestsPage() {
                 </p>
                 {showingCachedRequests && (
                   <p className="mt-2 text-xs text-amber-300">
-                    Offline — showing last synchronized requests. Locally queued requests remain pending until the server accepts them.
+                    Offline — showing last synchronized requests.
                   </p>
                 )}
               </div>

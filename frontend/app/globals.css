@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+:where(*) {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :where(*) {
+    scroll-behavior: auto;
+  }
+}
+
 @keyframes cpc-route-enter {
   from { opacity: 0; }
   to { opacity: 1; }

@@ -19,28 +19,7 @@ Cordova Public College Library Management System. The project contains an Expres
 ```powershell
 cd backend
 npm install
-copy .env.example .env
 ```
-
-Edit `backend/.env` with:
-
-```env
-NODE_ENV=development
-PORT=4000
-DATABASE_URL=postgresql://...
-JWT_SECRET=at-least-16-characters
-JWT_EXPIRES_IN=15m
-JWT_REFRESH_SECRET=another-secret-at-least-16
-JWT_REFRESH_EXPIRES_IN=7d
-FRONTEND_URL=http://localhost:3000
-COOKIE_SECRET=change-this-secret
-RATE_LIMIT_ENABLED=false
-EMAIL_USER=yourgmail@gmail.com
-EMAIL_PASS=your_16_digit_gmail_app_password
-BLOB_READ_WRITE_TOKEN=your_vercel_blob_read_write_token
-```
-
-`EMAIL_PASS` must be a Gmail App Password. Do not use a normal Gmail account password. Keep `.env` private.
 
 ### Persistent Cover Image Storage
 

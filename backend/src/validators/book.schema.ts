@@ -104,7 +104,7 @@ export const createEBookSchema = z.object({
     publishYear: z.coerce.number().int().min(1000).max(9999).optional(),
     edition: z.string().optional(),
     categoryId: categoryIdSchema,
-    classificationNumber: classificationNumberSchema,
+    classificationNumber: classificationNumberSchema.optional(),
     description: z.string().optional(),
     coverImage: z.string().url().optional(),
     language: z.string().default('English'),
@@ -160,4 +160,3 @@ export type CreateCategoryInput = z.infer<typeof createCategorySchema>['body'];
 export type UpdateCategoryInput = z.infer<typeof updateCategorySchema>['body'];
 export type CreateEBookInput = z.infer<typeof createEBookSchema>['body'];
 export type UpdateEBookInput = z.infer<typeof updateEBookSchema>['body'];
-

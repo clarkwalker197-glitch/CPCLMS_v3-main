@@ -107,6 +107,14 @@ export const createUserSchema = z.object({
       });
     }
 
+    if (data.role === 'STUDENT' && !/^\d{8}$/.test(data.libraryId?.trim() || '')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['libraryId'],
+        message: 'Student ID Number must contain exactly 8 digits',
+      });
+    }
+
     if ((data.role === 'STUDENT' || data.role === 'FACULTY') && !data.department) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -189,4 +197,3 @@ export type RegisterInput = z.infer<typeof registerSchema>['body'];
 export type CreateUserInput = z.infer<typeof createUserSchema>['body'];
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>['body'];
 export type RefreshTokenInput = z.infer<typeof refreshTokenSchema>['body'];
-

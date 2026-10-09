@@ -169,8 +169,14 @@ const [usersRes, statsRes] = await Promise.all([
   ) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const value = field === "firstName" || field === "lastName"
       ? sanitizeNameInput(event.target.value)
-      : event.target.value;
-    setMemberForm((current) => ({ ...current, [field]: value }));
+      : field === "libraryId" && memberForm.role === "STUDENT"
+        ? event.target.value.replace(/\D/g, "").slice(0, 8)
+        : event.target.value;
+    setMemberForm((current) => ({
+      ...current,
+      [field]: value,
+      ...(field === "role" ? { libraryId: "" } : {}),
+    }));
     setMemberFormError("");
   };
 
@@ -195,6 +201,11 @@ const [usersRes, statsRes] = await Promise.all([
 
     if ((memberForm.role === "LIBRARIAN" || memberForm.role === "FACULTY") && !memberForm.libraryId.trim()) {
       setMemberFormError(`ID Number is required for ${memberForm.role === "LIBRARIAN" ? "Librarian" : "Faculty"} accounts.`);
+      return;
+    }
+
+    if (memberForm.role === "STUDENT" && !/^\d{8}$/.test(memberForm.libraryId.trim())) {
+      setMemberFormError("Student ID Number must contain exactly 8 digits.");
       return;
     }
 
@@ -449,18 +460,20 @@ const [usersRes, statsRes] = await Promise.all([
                 </div>
               </div>
 
-              {(memberForm.role === "LIBRARIAN" || memberForm.role === "FACULTY") && (
-                <div>
-                  <label className="block text-sm font-medium text-zinc-300 mb-1.5">ID Number *</label>
-                  <input
-                    required
-                    value={memberForm.libraryId}
-                    onChange={handleAddMemberChange("libraryId")}
-                    className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
-                    placeholder={memberForm.role === "LIBRARIAN" ? "e.g., LIB-2026-0001" : "Faculty ID number"}
-                  />
-                </div>
-              )}
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-1.5">ID Number *</label>
+                <input
+                  required
+                  type="text"
+                  inputMode={memberForm.role === "STUDENT" ? "numeric" : undefined}
+                  maxLength={memberForm.role === "STUDENT" ? 8 : undefined}
+                  pattern={memberForm.role === "STUDENT" ? "[0-9]{8}" : undefined}
+                  value={memberForm.libraryId}
+                  onChange={handleAddMemberChange("libraryId")}
+                  className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
+                  placeholder={memberForm.role === "STUDENT" ? "8-digit ID number" : memberForm.role === "LIBRARIAN" ? "e.g., LIB-2026-0001" : "Faculty ID number"}
+                />
+              </div>
 
               {(memberForm.role === "STUDENT" || memberForm.role === "FACULTY") && (
                 <div>

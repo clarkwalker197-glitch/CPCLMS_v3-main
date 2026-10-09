@@ -6,10 +6,6 @@ import { Bell, CheckCheck, BellOff } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import api from "@/lib/api";
 import { offlineDb } from "@/lib/offline-db";
-import {
-  markAllNotificationsReadLocalFirst,
-  markNotificationReadLocalFirst,
-} from "@/lib/offline-api";
 
 interface NotificationItem {
   id: string;
@@ -51,6 +47,7 @@ export default function NotificationBell() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [showingCached, setShowingCached] = useState(false);
+  const [actionError, setActionError] = useState("");
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const loadNotifications = useCallback(async () => {
@@ -118,14 +115,17 @@ export default function NotificationBell() {
       // Mark all as read once the panel is opened
       try {
         if (user) {
-          const response = await markAllNotificationsReadLocalFirst(user.id);
+          const response = await api.markAllNotificationsRead();
           if (response.success) {
             setUnreadCount(0);
             setNotifications((prev) => prev.map((notification) => ({ ...notification, isRead: true })));
+            setActionError("");
+          } else {
+            setActionError(response.error || "Unable to mark notifications as read.");
           }
         }
       } catch {
-        // Ignore
+        setActionError("Unable to mark notifications as read.");
       }
       setLoading(false);
     }
@@ -136,16 +136,19 @@ export default function NotificationBell() {
     if (!n.isRead) {
       try {
         if (user) {
-          const response = await markNotificationReadLocalFirst(user.id, n.id);
+          const response = await api.markNotificationRead(n.id);
           if (response.success) {
             setNotifications((prev) =>
               prev.map((item) => (item.id === n.id ? { ...item, isRead: true } : item))
             );
             setUnreadCount((count) => Math.max(0, count - 1));
+            setActionError("");
+          } else {
+            setActionError(response.error || "Unable to mark notification as read.");
           }
         }
       } catch {
-        // Ignore
+        setActionError("Unable to mark notification as read.");
       }
     }
 
@@ -196,16 +199,20 @@ export default function NotificationBell() {
                 onClick={async () => {
                   try {
                     if (user) {
-                      const response = await markAllNotificationsReadLocalFirst(user.id);
-                      if (!response.success) return;
-                      setUnreadCount(0);
-                      setNotifications((previous) => previous.map((notification) => ({
-                        ...notification,
-                        isRead: true,
-                      })));
+                      const response = await api.markAllNotificationsRead();
+                      if (response.success) {
+                        setUnreadCount(0);
+                        setNotifications((previous) => previous.map((notification) => ({
+                          ...notification,
+                          isRead: true,
+                        })));
+                        setActionError("");
+                      } else {
+                        setActionError(response.error || "Unable to mark notifications as read.");
+                      }
                     }
                   } catch {
-                    // Ignore
+                    setActionError("Unable to mark notifications as read.");
                   }
                 }}
                 className="inline-flex items-center gap-1 text-[11px] font-medium text-zinc-400 hover:text-white transition-colors"
@@ -214,6 +221,7 @@ export default function NotificationBell() {
                 Mark all read
               </button>
             </div>
+            {actionError && <p className="px-4 py-2 text-xs text-red-400">{actionError}</p>}
 
             {/* Notification list */}
             <div className="max-h-[calc(100dvh-11rem)] overflow-y-auto sm:max-h-96">

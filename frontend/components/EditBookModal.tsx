@@ -50,6 +50,31 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+async function hasValidCoverSignature(file: File): Promise<boolean> {
+  const bytes = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+
+  if (file.type === "image/jpeg") {
+    return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  }
+  if (file.type === "image/png") {
+    return bytes.length >= 8
+      && bytes[0] === 0x89
+      && bytes[1] === 0x50
+      && bytes[2] === 0x4e
+      && bytes[3] === 0x47
+      && bytes[4] === 0x0d
+      && bytes[5] === 0x0a
+      && bytes[6] === 0x1a
+      && bytes[7] === 0x0a;
+  }
+  if (file.type === "image/webp") {
+    return bytes.length >= 12
+      && String.fromCharCode(...bytes.slice(0, 4)) === "RIFF"
+      && String.fromCharCode(...bytes.slice(8, 12)) === "WEBP";
+  }
+  return false;
+}
+
 export function EditBookModal(props: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -79,6 +104,7 @@ export function EditBookModal(props: {
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [coverError, setCoverError] = useState("");
   const coverInputRef = useRef<HTMLInputElement>(null);
 
   // Initialize form when book changes
@@ -104,6 +130,7 @@ export function EditBookModal(props: {
       setOriginalCoverImage(props.book.coverImage || "");
       setCoverFile(null);
       setError("");
+      setCoverError("");
     }
   }, [props.book, props.open]);
 
@@ -111,9 +138,7 @@ export function EditBookModal(props: {
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => setForm((f) => ({ ...f, [field]: e.target.value }));
 
-  const clearCoverError = () => setError((currentError) => (
-    /cover image/i.test(currentError) ? "" : currentError
-  ));
+  const clearCoverError = () => setCoverError("");
 
   const updateClassificationNumber = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = sanitizeClassificationInput(e.target.value);
@@ -129,8 +154,9 @@ export function EditBookModal(props: {
     classificationNumber: normalizeClassificationNumber(current.classificationNumber) || current.classificationNumber,
   }));
 
-  const onPickCoverFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const onPickCoverFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.currentTarget;
+    const file = input.files?.[0];
     if (!file) {
       clearCoverError();
       return;
@@ -138,18 +164,31 @@ export function EditBookModal(props: {
     const extension = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
     const allowedExtensions = ACCEPTED_COVER_TYPES[file.type];
     if (!allowedExtensions?.includes(extension)) {
-      setError("Cover image must be a JPG, PNG, or WEBP file.");
+      setCoverError("Choose a JPG, PNG, or WEBP cover image with a matching file type.");
       setCoverFile(null);
-      e.target.value = "";
+      input.value = "";
       return;
     }
     if (file.size > MAX_COVER_MB * 1024 * 1024) {
-      setError(`Cover image must be under ${MAX_COVER_MB}MB.`);
+      setCoverError(`Cover image must be ${MAX_COVER_MB}MB or smaller.`);
       setCoverFile(null);
-      e.target.value = "";
+      input.value = "";
       return;
     }
-    setError("");
+    try {
+      if (!await hasValidCoverSignature(file)) {
+        setCoverError("The selected file is not a valid JPG, PNG, or WEBP image.");
+        setCoverFile(null);
+        input.value = "";
+        return;
+      }
+    } catch {
+      setCoverError("Could not read the selected cover image. Please choose it again.");
+      setCoverFile(null);
+      input.value = "";
+      return;
+    }
+    setCoverError("");
     setCoverFile(file);
   };
 
@@ -167,6 +206,7 @@ export function EditBookModal(props: {
     setCoverFile(null);
     setOriginalCoverImage("");
     setError("");
+    setCoverError("");
   };
 
   const handleClose = () => {
@@ -449,6 +489,9 @@ export function EditBookModal(props: {
               <Upload className="w-3.5 h-3.5" />
               Choose cover image
             </button>
+          )}
+          {coverError && (
+            <p className="mt-2 text-sm text-red-400" role="alert">{coverError}</p>
           )}
           {!coverFile && originalCoverImage && (
             <div className="space-y-2">

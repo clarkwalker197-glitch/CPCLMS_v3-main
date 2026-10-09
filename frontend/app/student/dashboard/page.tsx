@@ -41,11 +41,14 @@ export default function StudentDashboardPage() {
     if (!userId) return;
     async function load() {
       try {
-        const [cachedTransactions, cachedRequests, cachedDashboard] = await Promise.all([
+        const [cachedTransactions, allCachedRequests, cachedDashboard] = await Promise.all([
           offlineDb.transactions.where("userId").equals(userId).reverse().limit(5).toArray(),
           offlineDb.borrowRequests.where("userId").equals(userId).toArray(),
           offlineDb.dashboard.get(userId),
         ]);
+        const cachedRequests = allCachedRequests.filter((request: any) =>
+          !request._pending && !String(request.id).startsWith("local-borrow-")
+        );
         if (cachedTransactions.length) setRecentTransactions(cachedTransactions);
         if (cachedDashboard?.snapshot) {
           const cachedStats = cachedDashboard.snapshot as any;

@@ -4,7 +4,6 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { User, getUser, isAuthenticated as checkAuth } from './auth';
 import api from './api';
 import { clearOfflineData } from './offline-db';
-import { syncNow } from './offline-sync';
 import { ModalLayer } from '@/components/ModalLayer';
 
 const IDLE_TIMEOUT_MS = 7 * 24 * 60 * 60 * 1000;
@@ -103,7 +102,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (res.success && res.data) {
         setUser(res.data);
         localStorage.setItem('user', JSON.stringify(res.data));
-        void syncNow();
         return;
       }
 
@@ -156,7 +154,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const nextUser = res.data.user;
         await clearOfflineData();
         setUser(nextUser);
-        void syncNow();
         lastActivityRef.current = Date.now();
         setStoredLastActivity(lastActivityRef.current);
         return { success: true, user: nextUser };
@@ -174,7 +171,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const nextUser = res.data.user;
         await clearOfflineData();
         setUser(nextUser);
-        void syncNow();
         lastActivityRef.current = Date.now();
         setStoredLastActivity(lastActivityRef.current);
         return { success: true, user: nextUser };

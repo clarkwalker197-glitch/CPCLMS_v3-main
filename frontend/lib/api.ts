@@ -87,6 +87,7 @@ export interface AuthTokens {
 class ApiClient {
   private baseUrl: string;
   private refreshNetworkFailure = false;
+  private refreshInFlight: Promise<boolean> | null = null;
 
   // In-flight request deduplication map (keyed by method + endpoint + body)
   private inflight = new Map<string, Promise<ApiResponse<any>>>();
@@ -108,11 +109,6 @@ class ApiClient {
     return localStorage.getItem('accessToken');
   }
 
-  private getRefreshToken(): string | null {
-    if (typeof window === 'undefined') return null;
-    return localStorage.getItem('refreshToken');
-  }
-
   private setTokens(accessToken: string, refreshToken?: string): void {
     localStorage.setItem('accessToken', accessToken);
     if (refreshToken) {
@@ -130,6 +126,22 @@ class ApiClient {
     if (typeof document !== 'undefined') {
       document.cookie = 'refreshToken=; Max-Age=0; path=/; SameSite=Lax; Secure';
     }
+  }
+
+  private redirectToLoginForExpiredSession(): void {
+    if (typeof window === 'undefined') return;
+    this.clearTokens();
+    if (window.location.pathname !== '/login') {
+      window.location.replace('/login?reason=session-expired');
+    }
+  }
+
+  private async refreshAfterUnauthorized(): Promise<boolean> {
+    const refreshed = await this.refreshToken();
+    if (!refreshed && !this.refreshNetworkFailure) {
+      this.redirectToLoginForExpiredSession();
+    }
+    return refreshed;
   }
 
   private async request<T>(
@@ -225,11 +237,22 @@ class ApiClient {
         data = { success: false, error: 'Unexpected server response' } as ApiResponse<T>;
       }
 
-      if (response.status === 401) {
-        this.refreshNetworkFailure = false;
-        const refreshed = await this.refreshToken();
-        if (refreshed) {
-          headers['Authorization'] = 'Bearer ' + this.getToken();
+      if (response.status === 401 && headers['Authorization'] && ![
+        '/auth/login',
+        '/auth/register',
+        '/auth/google',
+      ].includes(endpoint)) {
+        const requestToken = headers['Authorization'].slice('Bearer '.length);
+        let currentToken = this.getToken();
+        let shouldRetry = currentToken !== null && currentToken !== requestToken;
+
+        if (!shouldRetry) {
+          shouldRetry = await this.refreshAfterUnauthorized();
+          currentToken = this.getToken();
+        }
+
+        if (shouldRetry && currentToken) {
+          headers['Authorization'] = `Bearer ${currentToken}`;
           const retryResponse = await fetch(`${this.baseUrl}${endpoint}`, {
             ...options,
             credentials: 'include',
@@ -242,6 +265,9 @@ class ApiClient {
           } catch {
             retryData = { success: false, error: 'Unexpected server response' } as ApiResponse<T>;
           }
+          if (retryResponse.status === 401) {
+            this.redirectToLoginForExpiredSession();
+          }
           return retryResponse.ok
             ? retryData
             : {
@@ -250,10 +276,6 @@ class ApiClient {
                 statusCode: retryResponse.status,
                 error: retryData.error || retryResponse.statusText || 'Request failed. Please try again.',
               };
-        }
-        if ((typeof navigator === 'undefined' || navigator.onLine) && !this.refreshNetworkFailure) {
-          this.clearTokens();
-          if (typeof window !== 'undefined') window.location.href = '/login';
         }
       }
 
@@ -264,29 +286,6 @@ class ApiClient {
           statusCode: response.status,
           error: data.error || response.statusText || 'Request failed. Please try again.',
         } as ApiResponse<T>;
-      }
-
-      if (response.ok && response.status === 401) {
-        const refreshed = await this.refreshToken();
-        if (refreshed) {
-          headers['Authorization'] = `Bearer ${this.getToken()}`;
-          const retryResponse = await fetch(`${this.baseUrl}${endpoint}`, {
-            ...options,
-            credentials: 'include',
-            headers,
-          });
-          try {
-            const retryData = await retryResponse.json();
-            return retryData as ApiResponse<T>;
-          } catch {
-            return { success: false, error: 'Unexpected server response' } as ApiResponse<T>;
-          }
-        }
-        // Refresh failed
-        this.clearTokens();
-        if (typeof window !== 'undefined') {
-          window.location.href = '/login';
-        }
       }
 
       return data;
@@ -316,20 +315,30 @@ class ApiClient {
   }
 
   async refreshToken(): Promise<boolean> {
-    try {
-      const refreshToken = this.getRefreshToken();
+    if (this.refreshInFlight) return this.refreshInFlight;
 
+    this.refreshNetworkFailure = false;
+    const refreshPromise = this.performTokenRefresh();
+    this.refreshInFlight = refreshPromise;
+    try {
+      return await refreshPromise;
+    } finally {
+      if (this.refreshInFlight === refreshPromise) this.refreshInFlight = null;
+    }
+  }
+
+  private async performTokenRefresh(): Promise<boolean> {
+    try {
       const response = await fetch(`${this.baseUrl}/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        ...(refreshToken ? { body: JSON.stringify({ refreshToken }) } : {}),
       });
 
       reportNetworkStatus(true);
       if (!response.ok) return false;
       const data = await response.json();
-      if (data.success && data.data) {
+      if (data.success && data.data?.accessToken) {
         this.setTokens(data.data.accessToken, data.data.refreshToken);
         return true;
       }
@@ -405,9 +414,21 @@ const response = await this.request<any>('/auth/register', {
       credentials: 'include',
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
-    let response = await fetchDownload(this.getToken());
-    if (response.status === 401 && await this.refreshToken()) {
-      response = await fetchDownload(this.getToken());
+    let requestToken = this.getToken();
+    let response = await fetchDownload(requestToken);
+    if (response.status === 401 && requestToken) {
+      const currentToken = this.getToken();
+      if (currentToken && currentToken !== requestToken) {
+        requestToken = currentToken;
+        response = await fetchDownload(requestToken);
+      } else if (await this.refreshAfterUnauthorized()) {
+        requestToken = this.getToken();
+        response = await fetchDownload(requestToken);
+      }
+    }
+    if (response.status === 401) {
+      this.redirectToLoginForExpiredSession();
+      throw new Error('Your session has expired. Please sign in again.');
     }
     if (!response.ok) {
       let message = response.statusText || 'Download failed';
@@ -564,8 +585,10 @@ async put<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
       };
     }
 
+    let attemptToken: string | null = null;
     const attempt = async (): Promise<{ status: number; data: ApiResponse<any> }> => {
       const token = this.getToken();
+      attemptToken = token;
       const headers: Record<string, string> = {};
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
@@ -613,13 +636,13 @@ async put<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
     }
 
     if (status === 401) {
-      this.refreshNetworkFailure = false;
-      const refreshed = await this.refreshToken();
+      const currentToken = this.getToken();
+      const tokenWasUpdated = Boolean(currentToken && attemptToken !== currentToken);
+      const refreshed = tokenWasUpdated
+        || (Boolean(currentToken) && await this.refreshAfterUnauthorized());
       if (refreshed) {
         ({ status, data } = await attempt());
-      } else if ((typeof navigator === 'undefined' || navigator.onLine) && !this.refreshNetworkFailure) {
-        this.clearTokens();
-        if (typeof window !== 'undefined') window.location.href = '/login';
+        if (status === 401) this.redirectToLoginForExpiredSession();
       }
     }
 
@@ -891,19 +914,27 @@ async payFine(id: string, amount: number): Promise<ApiResponse<any>> {
 
   async downloadReport(type: string, format: 'pdf' | 'xlsx' = 'pdf'): Promise<void> {
     const endpoint = `/reports/${encodeURIComponent(type)}?format=${format}`;
-    const request = () => fetch(`${this.baseUrl}${endpoint}`, {
-      headers: this.getToken() ? { Authorization: `Bearer ${this.getToken()}` } : {},
+    const request = (token: string | null) => fetch(`${this.baseUrl}${endpoint}`, {
+      credentials: 'include',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
-    let response = await request();
+    let requestToken = this.getToken();
+    let response = await request(requestToken);
 
-    if (response.status === 401 && this.getRefreshToken()) {
-      if (await this.refreshToken()) {
-        response = await request();
-      } else {
-        this.clearTokens();
-        window.location.href = '/login';
-        throw new Error('Your session has expired. Please sign in again.');
+    if (response.status === 401 && requestToken) {
+      const currentToken = this.getToken();
+      if (currentToken && currentToken !== requestToken) {
+        requestToken = currentToken;
+        response = await request(requestToken);
+      } else if (await this.refreshAfterUnauthorized()) {
+        requestToken = this.getToken();
+        response = await request(requestToken);
       }
+    }
+
+    if (response.status === 401) {
+      this.redirectToLoginForExpiredSession();
+      throw new Error('Your session has expired. Please sign in again.');
     }
 
     if (!response.ok) {

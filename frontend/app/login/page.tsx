@@ -27,6 +27,9 @@ export default function LoginPage() {
   const returnTo = searchParams.get('returnTo');
   const resetMessage = searchParams.get('reset') === 'success' ? 'Password reset successfully. You can now sign in.' : '';
   const inactivityMessage = searchParams.get('reason') === 'inactivity' ? 'You have been logged out due to inactivity.' : '';
+  const sessionExpiredMessage = searchParams.get('reason') === 'session-expired'
+    ? 'Your session expired. Please sign in again.'
+    : '';
 
   useEffect(() => {
     if (!loading && isAuthenticated) {
@@ -149,6 +152,11 @@ export default function LoginPage() {
                   {inactivityMessage && (
                     <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-sm text-amber-300">
                       {inactivityMessage}
+                    </div>
+                  )}
+                  {sessionExpiredMessage && (
+                    <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-sm text-amber-300">
+                      {sessionExpiredMessage}
                     </div>
                   )}
 

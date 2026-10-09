@@ -9,6 +9,7 @@ import { sendSuccess } from '../utils/helpers';
 import { AuthenticatedRequest } from '../types';
 import { DEPARTMENTS } from '../constants/departments';
 import { env } from '../config/env';
+import { UnauthorizedError } from '../utils/errors';
 import {
   storeProfileImage,
   tryDeleteNewProfileImage,
@@ -30,7 +31,7 @@ const setRefreshCookie = (res: Response, token: string, expiresAt: Date): void =
   res.cookie('refreshToken', token, {
     httpOnly: true,
     secure: env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
     path: '/',
     signed: true,
     expires: expiresAt,
@@ -41,7 +42,7 @@ const clearRefreshCookie = (res: Response): void => {
   res.clearCookie('refreshToken', {
     httpOnly: true,
     secure: env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
     path: '/',
   });
 };
@@ -106,9 +107,14 @@ export const createUser = asyncHandler(async (req: AuthenticatedRequest, res: Re
  */
 export const refreshToken = asyncHandler(async (req: Request, res: Response) => {
   const token = getRefreshTokenFromRequest(req);
-  const result = await authService.refreshAccessToken(token);
-  setRefreshCookie(res, result.refreshToken, new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
-  sendSuccess(res, result, 'Token refreshed successfully');
+  try {
+    const result = await authService.refreshAccessToken(token);
+    setRefreshCookie(res, result.refreshToken, new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
+    sendSuccess(res, result, 'Token refreshed successfully');
+  } catch (error) {
+    if (error instanceof UnauthorizedError) clearRefreshCookie(res);
+    throw error;
+  }
 });
 
 /**

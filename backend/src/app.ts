@@ -21,6 +21,8 @@ const configuredOrigins = (Array.isArray(env.FRONTEND_URL)
   : [env.FRONTEND_URL]).map((origin) => origin.replace(/\/+$/, ''));
 const allowedOrigins = new Set([
   ...configuredOrigins,
+  'https://cpc-library.online',
+  'https://www.cpc-library.online',
   'http://localhost:3000',
   'http://localhost:4000',
   'http://127.0.0.1:3000',

@@ -158,6 +158,8 @@ If Forgot Password returns an email configuration error, check that `EMAIL_USER`
 cd backend
 npm run build
 
+test for cubic
+
 cd ..\frontend
 npx tsc --noEmit
 ```

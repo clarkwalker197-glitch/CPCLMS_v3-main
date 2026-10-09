@@ -822,12 +822,17 @@ async payFine(id: string, amount: number): Promise<ApiResponse<any>> {
   async updateAcquisitionRequest(id: string, data: Record<string, unknown>): Promise<ApiResponse<any>> { return this.patch(`/acquisition-requests/${id}`, data); }
 
   // Policies
-  async getPolicies(): Promise<ApiResponse<any[]>> {
-    return this.get('/policies');
+  async getPolicies<T = any>(): Promise<ApiResponse<T>> {
+    return this.request<T>('/policies', { cache: 'no-store' });
   }
 
-  async updatePolicy(key: string, value: string, description?: string): Promise<ApiResponse<any>> {
-    return this.put('/policies', { key, value, description });
+  async updatePolicy(
+    key: string,
+    value: string,
+    expectedUpdatedAt: string | null,
+    description?: string,
+  ): Promise<ApiResponse<any>> {
+    return this.put('/policies', { key, value, description, expectedUpdatedAt });
   }
 
   // Activity Logs

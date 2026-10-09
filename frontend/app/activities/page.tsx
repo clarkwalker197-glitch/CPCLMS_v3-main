@@ -43,6 +43,7 @@ const ACTION_OPTIONS = [
   "CHANGE_PASSWORD",
   "ROLE_CHANGE",
   "PERMISSION_CHANGE",
+  "UPDATE_POLICY",
   "UPDATE_SETTINGS",
   "DELETE_USER",
 ];
@@ -191,6 +192,7 @@ export default function ActivitiesPage() {
     ROLE_CHANGE: "bg-violet-500/15 text-violet-400 ring-violet-500/30",
     PERMISSION_CHANGE: "bg-violet-500/15 text-violet-400 ring-violet-500/30",
     UPDATE_SETTINGS: "bg-amber-500/15 text-amber-400 ring-amber-500/30",
+    UPDATE_POLICY: "bg-amber-500/15 text-amber-400 ring-amber-500/30",
     DELETE_BOOK: "bg-red-500/15 text-red-400 ring-red-500/30",
     PAY_FINE: "bg-emerald-500/15 text-emerald-400 ring-emerald-500/30",
     BORROW: "bg-cyan-500/15 text-cyan-400 ring-cyan-500/30",

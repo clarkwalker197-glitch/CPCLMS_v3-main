@@ -1,6 +1,6 @@
 "use client";
 
-  import { useState, useEffect } from "react";
+  import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
 import Sidebar from "@/components/Sidebar";
 import api from "@/lib/api";
@@ -73,41 +73,63 @@ export default function PoliciesPage() {
   const [editData, setEditData] = useState<LibraryInfo>(DEFAULT_LIBRARY_INFO);
   const [successMsg, setSuccessMsg] = useState("");
   const [loadError, setLoadError] = useState("");
+  const [saveError, setSaveError] = useState("");
+  const [policyUpdatedAt, setPolicyUpdatedAt] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   const isLibrarian = user?.role === "LIBRARIAN";
   const canViewPage = user?.role === "STUDENT" || user?.role === "FACULTY" || user?.role === "LIBRARIAN";
 
-  useEffect(() => {
-    const loadLibraryInfo = async () => {
-      const response = await api.get<Array<{ key: string; value: string }>>("/policies");
-      if (!response.success || !Array.isArray(response.data)) {
-        setLoadError(response.error || "Unable to load library information");
+  const refreshLibraryInfo = useCallback(async (force = false) => {
+    const response = await api.get<Array<{ key: string; value: string; updatedAt?: string }>>("/policies");
+    if (!response.success || !Array.isArray(response.data)) {
+      setLoadError(response.error || "Unable to load the latest library policies. Please try again.");
+      return;
+    }
+
+    const savedPolicy = response.data.find((policy) => policy.key === "LIBRARY_INFO");
+    let next = DEFAULT_LIBRARY_INFO;
+    if (savedPolicy) {
+      try {
+        next = JSON.parse(savedPolicy.value) as LibraryInfo;
+      } catch {
+        setLoadError("Saved library information is invalid. Please contact a librarian.");
         return;
       }
+    }
+    const latestUpdatedAt = savedPolicy?.updatedAt ?? null;
+    if (!force && isEditing && policyUpdatedAt !== latestUpdatedAt) {
+      setLoadError("This policy was updated by another librarian. Reload the latest version before saving.");
+      return;
+    }
 
-      const savedPolicy = response.data.find((policy) => policy.key === "LIBRARY_INFO");
-      let next = DEFAULT_LIBRARY_INFO;
-      if (savedPolicy) {
-        try {
-          next = JSON.parse(savedPolicy.value) as LibraryInfo;
-        } catch {
-          setLoadError("Saved library information is invalid");
-          return;
-        }
-      }
-      setLibraryInfo(next);
-      setEditData(next);
+    setLoadError("");
+    setLibraryInfo(next);
+    if (!isEditing || force) setEditData(next);
+    setPolicyUpdatedAt(latestUpdatedAt);
+  }, [isEditing, policyUpdatedAt]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    void refreshLibraryInfo();
+    const intervalId = window.setInterval(() => void refreshLibraryInfo(), 30_000);
+    const handleFocus = () => void refreshLibraryInfo();
+    window.addEventListener("focus", handleFocus);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", handleFocus);
     };
-    void loadLibraryInfo();
-  }, []);
+  }, [refreshLibraryInfo, user?.id]);
 
   const handleEditStart = () => {
     setEditData(libraryInfo ?? DEFAULT_LIBRARY_INFO);
+    setSaveError("");
     setIsEditing(true);
   };
 
   const handleEditCancel = () => {
     setIsEditing(false);
+    setSaveError("");
   };
 
   const handleEditChange = (field: keyof LibraryInfo, value: any) => {
@@ -139,19 +161,69 @@ export default function PoliciesPage() {
   };
 
   const handleSave = async () => {
-    const response = await api.put("/policies", {
-      key: "LIBRARY_INFO",
-      value: JSON.stringify(editData),
-      description: "Public library and head librarian information",
-    });
-    if (!response.success) {
-      setSuccessMsg(response.error || "Unable to update library information");
+    setSaveError("");
+    const requiredText: Array<[keyof LibraryInfo, string]> = [
+      ["title", "Title"],
+      ["introduction", "Introduction"],
+      ["location", "Location"],
+      ["address", "Address"],
+      ["openingHours", "Opening hours"],
+      ["closingHours", "Closing hours"],
+      ["librarianName", "Librarian name"],
+      ["librarianPosition", "Librarian position"],
+      ["librarianEmail", "Librarian email"],
+      ["librarianExtension", "Librarian extension"],
+      ["librarianOffice", "Librarian office"],
+    ];
+    const missingField = requiredText.find(([field]) => !String(editData[field]).trim());
+    if (missingField) {
+      setSaveError(`${missingField[1]} is required.`);
       return;
     }
-    setLibraryInfo(editData);
-    setIsEditing(false);
-    setSuccessMsg("Library information updated successfully");
-    setTimeout(() => setSuccessMsg(""), 4000);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editData.librarianEmail.trim())) {
+      setSaveError("Enter a valid librarian email address.");
+      return;
+    }
+    const rules = editData.rules.map((item) => item.trim());
+    const services = editData.services.map((item) => item.trim());
+    if (!rules.length || rules.some((item) => !item)) {
+      setSaveError("Add at least one non-empty library rule and remove any blank rules.");
+      return;
+    }
+    if (!services.length || services.some((item) => !item)) {
+      setSaveError("Add at least one non-empty library service and remove any blank services.");
+      return;
+    }
+
+    const normalized = {
+      ...editData,
+      ...Object.fromEntries(requiredText.map(([field]) => [field, String(editData[field]).trim()])),
+      rules,
+      services,
+    } as LibraryInfo;
+    setIsSaving(true);
+    try {
+      const response = await api.updatePolicy(
+        "LIBRARY_INFO",
+        JSON.stringify(normalized),
+        policyUpdatedAt,
+        "Public library and head librarian information",
+      );
+      if (!response.success) {
+        setSaveError(response.error || "Unable to save the policy. Please try again.");
+        return;
+      }
+      setLibraryInfo(normalized);
+      setEditData(normalized);
+      setPolicyUpdatedAt(response.data?.updatedAt ?? null);
+      setIsEditing(false);
+      setSuccessMsg("Library information updated successfully. Users will see the update shortly.");
+      window.setTimeout(() => setSuccessMsg(""), 4000);
+    } catch {
+      setSaveError("Unable to save the policy right now. Please check your connection and try again.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   if (!canViewPage) {
@@ -190,6 +262,42 @@ export default function PoliciesPage() {
             <div className="mb-6 p-4 bg-emerald-500/15 border border-emerald-500/30 rounded-lg text-emerald-400 flex items-center gap-2">
               <Check className="w-5 h-5" />
               {successMsg}
+            </div>
+          )}
+          {loadError && libraryInfo && (
+            <div role="alert" className="mb-6 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-300">
+              {loadError}
+              {isEditing && loadError.includes("another librarian") && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEditing(false);
+                    setSaveError("");
+                    void refreshLibraryInfo(true);
+                  }}
+                  className="ml-2 font-semibold underline underline-offset-2"
+                >
+                  Discard edits and reload
+                </button>
+              )}
+            </div>
+          )}
+          {saveError && (
+            <div role="alert" className="mb-6 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
+              {saveError}
+              {saveError.includes("another administrator") && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEditing(false);
+                    setSaveError("");
+                    void refreshLibraryInfo(true);
+                  }}
+                  className="ml-2 font-semibold underline underline-offset-2"
+                >
+                  Discard edits and reload
+                </button>
+              )}
             </div>
           )}
 
@@ -499,16 +607,18 @@ export default function PoliciesPage() {
               <div className="flex gap-3 justify-end">
                 <button
                   onClick={handleEditCancel}
+                  disabled={isSaving}
                   className="px-6 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium rounded-lg transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSave}
-                  className="inline-flex items-center gap-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
+                  disabled={isSaving}
+                  className="inline-flex items-center gap-2 px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors disabled:cursor-wait disabled:opacity-60"
                 >
                   <Check className="w-4 h-4" />
-                  Save Changes
+                  {isSaving ? "Saving..." : "Save Changes"}
                 </button>
               </div>
             </div>

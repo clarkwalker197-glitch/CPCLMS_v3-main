@@ -9,18 +9,20 @@ import { sendSuccess } from '../utils/helpers';
 import { AuthenticatedRequest } from '../types';
 
 export const listPolicies = asyncHandler(async (_req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   const policies = await policyService.listPolicies();
   sendSuccess(res, policies);
 });
 
 export const getPolicy = asyncHandler(async (req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   const policy = await policyService.getPolicyByKey(req.params.key);
   sendSuccess(res, policy);
 });
 
 export const upsertPolicy = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const { key, value, description } = req.body;
-  const policy = await policyService.upsertPolicy(key, value, description, {
+  const { key, value, description, expectedUpdatedAt } = req.body;
+  const policy = await policyService.upsertPolicy(key, value, description, expectedUpdatedAt, {
     userId: req.user!.userId,
     ipAddress: req.ip,
   });

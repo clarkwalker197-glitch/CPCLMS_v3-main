@@ -12,7 +12,7 @@ router.use(authenticate);
 
 router.get('/', activityController.listActivityLogs);
 router.get('/actions', activityController.getDistinctActions);
+router.get('/export.csv', activityController.exportActivityLogs);
 router.get('/:id', activityController.getActivityLog);
 
 export default router;
-

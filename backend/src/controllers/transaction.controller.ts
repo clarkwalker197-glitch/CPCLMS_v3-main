@@ -193,7 +193,12 @@ export const declareMissing = asyncHandler(
 export const payFine = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const { amount } = req.body;
-    const transaction = await transactionService.payFine(req.params.id, amount);
+    const transaction = await transactionService.payFine(
+      req.params.id,
+      amount,
+      req.user!.userId,
+      { ipAddress: req.ip, userAgent: req.get('user-agent') },
+    );
     sendSuccess(res, transaction, 'Fine paid successfully');
   }
 );

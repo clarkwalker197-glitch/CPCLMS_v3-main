@@ -400,6 +400,28 @@ const response = await this.request<any>('/auth/register', {
     return this.request<T>(endpoint);
   }
 
+  async download(endpoint: string): Promise<Blob> {
+    const fetchDownload = (token: string | null) => fetch(`${this.baseUrl}${endpoint}`, {
+      credentials: 'include',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    let response = await fetchDownload(this.getToken());
+    if (response.status === 401 && await this.refreshToken()) {
+      response = await fetchDownload(this.getToken());
+    }
+    if (!response.ok) {
+      let message = response.statusText || 'Download failed';
+      try {
+        const data = await response.json();
+        if (typeof data.error === 'string') message = data.error;
+      } catch {
+        // Keep the HTTP status message when the server does not return JSON.
+      }
+      throw new Error(message);
+    }
+    return response.blob();
+  }
+
   // Multipart upload (e-book file + optional cover image). Bypasses the
   // JSON request pipeline since FormData needs the browser to set its own
   // Content-Type header (with the multipart boundary) — setting it manually

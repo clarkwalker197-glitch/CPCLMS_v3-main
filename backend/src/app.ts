@@ -10,7 +10,7 @@ import { env } from './config/env';
 import routes from './routes';
 import { apiLimiter } from './middlewares/rateLimiter';
 import { errorHandler } from './middlewares/errorHandler';
-import { archiveRetentionService, notificationService } from './services';
+import { archiveRetentionService, notificationService, purgeExpiredActivityLogs } from './services';
 import { UPLOADS_ROOT } from './middlewares/upload';
 
 const app = express();
@@ -192,6 +192,7 @@ function startServer(port: number, maxRetries = 3): void {
 startServer(env.PORT);
 
 const ARCHIVE_RETENTION_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const ACTIVITY_LOG_RETENTION_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const DUE_REMINDER_INTERVAL_MS = 60 * 60 * 1000;
 
 void archiveRetentionService.purgeExpiredArchives().catch((error) => {
@@ -202,11 +203,21 @@ void notificationService.sendDueDateReminders().catch((error) => {
   console.error('Due-date reminder check failed at startup:', error);
 });
 
+void purgeExpiredActivityLogs().catch((error) => {
+  console.error('Activity log retention check failed at startup:', error);
+});
+
 setInterval(() => {
   void archiveRetentionService.purgeExpiredArchives().catch((error) => {
     console.error('Scheduled archive retention check failed:', error);
   });
 }, ARCHIVE_RETENTION_INTERVAL_MS);
+
+setInterval(() => {
+  void purgeExpiredActivityLogs().catch((error) => {
+    console.error('Scheduled activity log retention check failed:', error);
+  });
+}, ACTIVITY_LOG_RETENTION_INTERVAL_MS);
 
 setInterval(() => {
   void notificationService.sendDueDateReminders().catch((error) => {
@@ -215,4 +226,3 @@ setInterval(() => {
 }, DUE_REMINDER_INTERVAL_MS);
 
 export default app;
-

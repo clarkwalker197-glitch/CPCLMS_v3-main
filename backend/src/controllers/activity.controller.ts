@@ -9,13 +9,12 @@ import { sendSuccess } from '../utils/helpers';
 import { AuthenticatedRequest } from '../types';
 import { getPaginationParams, buildPaginationMeta } from '../utils/pagination';
 
+const SYSTEM_ACTIONS = ['TOKEN_REFRESH', 'SESSION_CHECK', 'SYSTEM', 'EMAIL_SENT'];
+
 export const listActivityLogs = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { page, limit, skip, take } = getPaginationParams(req.query as Record<string, unknown>);
 
-const where: any = {};
-
-  // Exclude system-generated actions (token refresh, session checks, etc.)
-  const SYSTEM_ACTIONS = ['TOKEN_REFRESH', 'SESSION_CHECK', 'SYSTEM'];
+  const where: any = { deletedAt: null };
 
   // Filter by user (librarian can see all, normal users see own)
   if (req.user!.role !== 'LIBRARIAN') {
@@ -39,7 +38,11 @@ const where: any = {};
     const s = req.query.search as string;
     where.OR = [
       { action: { contains: s, mode: 'insensitive' } },
+      { userId: { contains: s, mode: 'insensitive' } },
       { entity: { contains: s, mode: 'insensitive' } },
+      { entityId: { contains: s, mode: 'insensitive' } },
+      { description: { contains: s, mode: 'insensitive' } },
+      { actorName: { contains: s, mode: 'insensitive' } },
       { user: { firstName: { contains: s, mode: 'insensitive' } } },
       { user: { lastName: { contains: s, mode: 'insensitive' } } },
       { user: { libraryId: { contains: s, mode: 'insensitive' } } },
@@ -73,7 +76,7 @@ const where: any = {};
 
 export const getActivityLog = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const log = await prisma.activityLog.findUnique({
-    where: { id: req.params.id },
+    where: { id: req.params.id, deletedAt: null },
     include: {
       user: { select: { id: true, firstName: true, lastName: true, libraryId: true, role: true } },
     },
@@ -95,6 +98,7 @@ export const getActivityLog = asyncHandler(async (req: AuthenticatedRequest, res
 
 export const getDistinctActions = asyncHandler(async (_req: Request, res: Response) => {
   const actions = await prisma.activityLog.groupBy({
+    where: { deletedAt: null, action: { notIn: SYSTEM_ACTIONS } },
     by: ['action'],
     _count: { action: true },
     orderBy: { _count: { action: 'desc' } },
@@ -105,3 +109,39 @@ export const getDistinctActions = asyncHandler(async (_req: Request, res: Respon
   sendSuccess(res, actionList);
 });
 
+export const exportActivityLogs = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  if (req.user!.role !== 'LIBRARIAN') {
+    res.status(403).json({ success: false, error: 'Only librarians can export activity logs' });
+    return;
+  }
+
+  const logs = await prisma.activityLog.findMany({
+    where: { deletedAt: null, action: { notIn: SYSTEM_ACTIONS } },
+    include: { user: { select: { firstName: true, lastName: true } } },
+    orderBy: { createdAt: 'desc' },
+  });
+  const cell = (value: unknown) => {
+    const raw = value == null ? '' : String(value);
+    const safe = /^\s*[=+\-@]/.test(raw) ? `'${raw}` : raw;
+    return `"${safe.replace(/"/g, '""')}"`;
+  };
+  const rows = [
+    ['Timestamp', 'User ID', 'User name', 'Action', 'Description', 'Entity', 'Entity ID', 'IP address'],
+    ...logs.map((log) => [
+      log.createdAt.toISOString(),
+      log.userId,
+      log.actorName || (log.user ? `${log.user.firstName} ${log.user.lastName}`.trim() : 'System'),
+      log.action,
+      log.description,
+      log.entity,
+      log.entityId,
+      log.ipAddress,
+    ]),
+  ];
+
+  res
+    .status(200)
+    .type('text/csv')
+    .attachment(`activity-logs-${new Date().toISOString().slice(0, 10)}.csv`)
+    .send(rows.map((row) => row.map(cell).join(',')).join('\r\n'));
+});

@@ -10,6 +10,7 @@
 // ============================================================
 
 import { Prisma } from '@prisma/client';
+import { Role } from '@prisma/client';
 import { prisma } from '../config';
 import { env } from '../config/env';
 import { NotFoundError, BadRequestError, ConflictError } from '../utils/errors';
@@ -18,7 +19,7 @@ import { getSortParams } from '../utils/sorting';
 import { generateQRFromText } from '../utils/qrcode';
 import { policyService } from './policy.service';
 import { notificationService } from './notification.service';
-import { Role } from '@prisma/client';
+import { recordActivity } from './activity-log.service';
 import crypto from 'crypto';
 
 type ActivityRequestContext = { ipAddress?: string; userAgent?: string };
@@ -623,7 +624,7 @@ export class TransactionService {
       await tx.activityLog.create({
         data: {
           userId,
-          action: 'BORROW_CONFIRMATION',
+          action: 'BORROW',
           entity: 'BorrowRequest',
           entityId: transactionId,
           ipAddress: auditContext?.ipAddress,
@@ -1252,7 +1253,12 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
   /**
    * Pay fine for an overdue/returned transaction
    */
-  async payFine(transactionId: string, amount: number) {
+  async payFine(
+    transactionId: string,
+    amount: number,
+    actorUserId: string,
+    auditContext?: ActivityRequestContext,
+  ) {
     const transaction = await prisma.borrowTransaction.findUnique({
       where: { id: transactionId },
     });
@@ -1268,13 +1274,31 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
       );
     }
 
-    const updated = await prisma.borrowTransaction.update({
-      where: { id: transactionId },
-      data: { finePaid: true },
-      include: {
-        book: { select: { title: true, accessionNo: true } },
-        user: { select: { firstName: true, lastName: true, libraryId: true } },
-      },
+    const updated = await prisma.$transaction(async (tx) => {
+      const paidTransaction = await tx.borrowTransaction.update({
+        where: { id: transactionId },
+        data: { finePaid: true },
+        include: {
+          book: { select: { title: true, accessionNo: true } },
+          user: { select: { firstName: true, lastName: true, libraryId: true } },
+        },
+      });
+      await recordActivity({
+        userId: actorUserId,
+        action: 'PAY_FINE',
+        description: `Paid fine for "${paidTransaction.book?.title || 'Deleted book'}"`,
+        entity: 'BorrowTransaction',
+        entityId: transactionId,
+        ipAddress: auditContext?.ipAddress,
+        details: {
+          bookTitle: paidTransaction.book?.title || 'Deleted book',
+          borrowerName: paidTransaction.user ? `${paidTransaction.user.firstName} ${paidTransaction.user.lastName}` : 'Unknown member',
+          fineAmount: transaction.fineAmount,
+          status: 'Paid',
+          ...(auditContext?.userAgent ? { userAgent: auditContext.userAgent } : {}),
+        },
+      }, tx);
+      return paidTransaction;
     });
 
     if (transaction.userId) {

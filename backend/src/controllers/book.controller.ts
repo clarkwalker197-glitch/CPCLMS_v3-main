@@ -3,10 +3,9 @@
 // ============================================================
 
 import { Request, Response } from 'express';
-import { prisma } from '../config';
 import { bookService } from '../services';
 import { asyncHandler } from '../utils/asyncHandler';
-import { sendSuccess, sendError } from '../utils/helpers';
+import { sendSuccess } from '../utils/helpers';
 import { storeCoverImage, tryDeleteNewCoverImage, tryDeleteUnreferencedCoverImage } from '../services/cover-image-storage.service';
 import { AuthenticatedRequest } from '../types';
 
@@ -33,12 +32,16 @@ export const getBook = asyncHandler(async (req: Request, res: Response) => {
 /**
  * POST /api/books
  */
-export const createBook = asyncHandler(async (req: Request, res: Response) => {
+export const createBook = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const uploadedCover = req.file ? await storeCoverImage(req.file) : undefined;
   try {
     const book = await bookService.createBook({
       ...req.body,
       ...(uploadedCover ? { coverImage: uploadedCover } : {}),
+    }, {
+      userId: req.user!.userId,
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
     });
     sendSuccess(res, book, 'Book created successfully', 201);
   } catch (error) {
@@ -57,16 +60,10 @@ export const updateBook = asyncHandler(async (req: AuthenticatedRequest, res: Re
     const book = await bookService.updateBook(req.params.id, {
       ...req.body,
       ...(uploadedCover ? { coverImage: uploadedCover } : {}),
-    });
-    await prisma.activityLog.create({
-      data: {
-        userId: req.user!.userId,
-        action: 'UPDATE_BOOK',
-        entity: 'Book',
-        entityId: book.id,
-        ipAddress: req.ip,
-        details: { bookTitle: book.title, accessionNo: book.accessionNo, ...(req.get('user-agent') ? { userAgent: req.get('user-agent')! } : {}) },
-      },
+    }, {
+      userId: req.user!.userId,
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
     });
     if (uploadedCover && existingBook?.coverImage !== uploadedCover) {
       await tryDeleteUnreferencedCoverImage(existingBook?.coverImage);
@@ -81,8 +78,12 @@ export const updateBook = asyncHandler(async (req: AuthenticatedRequest, res: Re
 /**
  * DELETE /api/books/:id
  */
-export const deleteBook = asyncHandler(async (req: Request, res: Response) => {
-  await bookService.deleteBook(req.params.id);
+export const deleteBook = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  await bookService.deleteBook(req.params.id, {
+    userId: req.user!.userId,
+    ipAddress: req.ip,
+    userAgent: req.get('user-agent'),
+  });
   sendSuccess(res, null, 'Book deleted successfully');
 });
 
@@ -129,4 +130,3 @@ export const deleteCategory = asyncHandler(async (req: Request, res: Response) =
   await bookService.deleteCategory(req.params.id);
   sendSuccess(res, null, 'Category deleted successfully');
 });
-

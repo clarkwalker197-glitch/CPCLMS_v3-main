@@ -4,12 +4,14 @@ import { useState, useEffect, useCallback } from "react";
 import api from "@/lib/api";
 import Sidebar from "@/components/Sidebar";
 import ResponsiveTable from "@/components/ResponsiveTable";
+import { useAuth } from "@/lib/auth-context";
 import {
   Search,
   ScrollText,
   ChevronLeft,
   ChevronRight,
   Filter,
+  Download,
   X,
 } from "lucide-react";
 import { ModalLayer } from "@/components/ModalLayer";
@@ -19,18 +21,34 @@ const PAGE_SIZE = 15;
 const ACTION_OPTIONS = [
   "LOGIN",
   "REGISTER",
+  "FAILED_LOGIN",
+  "ADD_BOOK",
+  "UPDATE_BOOK",
+  "DELETE_BOOK",
+  "IMPORT_BOOKS",
   "BORROW_REQUEST",
   "APPROVE_REQUEST",
   "REJECT_REQUEST",
+  "BORROW",
   "RETURN_BOOK",
+  "DECLARE_MISSING",
+  "PAY_FINE",
   "RESERVE_BOOK",
   "CANCEL_RESERVATION",
   "CREATE_USER",
-  "UPDATE_BOOK",
+  "EDIT_MEMBER",
+  "DEACTIVATE_MEMBER",
+  "ACTIVATE_MEMBER",
+  "RESET_PASSWORD",
+  "CHANGE_PASSWORD",
+  "ROLE_CHANGE",
+  "PERMISSION_CHANGE",
+  "UPDATE_SETTINGS",
   "DELETE_USER",
 ];
 
 export default function ActivitiesPage() {
+  const { user } = useAuth();
   const [activities, setActivities] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -42,6 +60,7 @@ export default function ActivitiesPage() {
   const [selectedActivity, setSelectedActivity] = useState<any>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
+  const [isExporting, setIsExporting] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -98,11 +117,41 @@ export default function ActivitiesPage() {
   };
 
   const formatAction = (action: string) =>
-    action.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+    action === "ADD_BOOK"
+      ? "Add book"
+      : action === "UPDATE_BOOK"
+        ? "Edit book"
+        : action === "DELETE_BOOK"
+          ? "Delete book"
+          : action === "BORROW"
+            ? "Borrow book"
+            : action.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
-  const actorName = (log: any) => log.user
-    ? `${log.user.firstName || ""} ${log.user.lastName || ""}`.trim() || "Unknown user"
-    : "System";
+  const actorName = (log: any) => log.actorName
+    || (log.user ? `${log.user.firstName || ""} ${log.user.lastName || ""}`.trim() : "")
+    || log.details?.performedByName
+    || (log.userId ? "Unknown user" : "System");
+
+  const activityStatus = (log: any) =>
+    log.details?.status || (log.action === "FAILED_LOGIN" ? "Failed" : "Success");
+
+  const exportLogs = async () => {
+    setIsExporting(true);
+    setError("");
+    try {
+      const blob = await api.download("/activities/export.csv");
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `activity-logs-${new Date().toISOString().slice(0, 10)}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (exportError) {
+      setError(exportError instanceof Error ? exportError.message : "Unable to export activity logs.");
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   const openActivityDetails = async (log: any) => {
     setSelectedActivity(log);
@@ -123,6 +172,8 @@ export default function ActivitiesPage() {
     LOGIN: "bg-blue-500/15 text-blue-400 ring-blue-500/30",
     LOGIN_GOOGLE: "bg-blue-500/15 text-blue-400 ring-blue-500/30",
     REGISTER: "bg-sky-500/15 text-sky-400 ring-sky-500/30",
+    FAILED_LOGIN: "bg-red-500/15 text-red-400 ring-red-500/30",
+    ADD_BOOK: "bg-emerald-500/15 text-emerald-400 ring-emerald-500/30",
     TOKEN_REFRESH: "bg-indigo-500/15 text-indigo-400 ring-indigo-500/30",
     LOGOUT: "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30",
     BORROW_REQUEST: "bg-cyan-500/15 text-cyan-400 ring-cyan-500/30",
@@ -132,6 +183,17 @@ export default function ActivitiesPage() {
     RESERVE_BOOK: "bg-amber-500/15 text-amber-400 ring-amber-500/30",
     CANCEL_RESERVATION: "bg-orange-500/15 text-orange-400 ring-orange-500/30",
     CREATE_USER: "bg-teal-500/15 text-teal-400 ring-teal-500/30",
+    EDIT_MEMBER: "bg-cyan-500/15 text-cyan-400 ring-cyan-500/30",
+    DEACTIVATE_MEMBER: "bg-rose-500/15 text-rose-400 ring-rose-500/30",
+    ACTIVATE_MEMBER: "bg-green-500/15 text-green-400 ring-green-500/30",
+    RESET_PASSWORD: "bg-orange-500/15 text-orange-400 ring-orange-500/30",
+    CHANGE_PASSWORD: "bg-orange-500/15 text-orange-400 ring-orange-500/30",
+    ROLE_CHANGE: "bg-violet-500/15 text-violet-400 ring-violet-500/30",
+    PERMISSION_CHANGE: "bg-violet-500/15 text-violet-400 ring-violet-500/30",
+    UPDATE_SETTINGS: "bg-amber-500/15 text-amber-400 ring-amber-500/30",
+    DELETE_BOOK: "bg-red-500/15 text-red-400 ring-red-500/30",
+    PAY_FINE: "bg-emerald-500/15 text-emerald-400 ring-emerald-500/30",
+    BORROW: "bg-cyan-500/15 text-cyan-400 ring-cyan-500/30",
     UPDATE_BOOK: "bg-violet-500/15 text-violet-400 ring-violet-500/30",
     DELETE_USER: "bg-rose-500/15 text-rose-400 ring-rose-500/30",
     SYSTEM: "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30",
@@ -152,6 +214,8 @@ export default function ActivitiesPage() {
     };
 
     switch (action) {
+      case "ADD_BOOK":
+        return details.bookTitle ? `Book: ${details.bookTitle}` : "Book added";
       case "BORROW_REQUEST":
         return details.bookTitle ? `Book: ${details.bookTitle}` : "Borrow request submitted";
       case "APPROVE_REQUEST":
@@ -216,21 +280,37 @@ export default function ActivitiesPage() {
               <p className="text-sm text-zinc-400 mt-1">
                 Track all system activities and user actions ({total} total)
               </p>
+              <p className="mt-2 text-xs text-zinc-500">
+                Logs older than 60 days are automatically removed. Critical audit actions are retained.
+              </p>
             </div>
-            {(search || actionFilter || dateFilter !== "all") && (
-              <button
-                onClick={() => {
-                  setSearch("");
-                  setActionFilter("");
-                  setDateFilter("all");
-                  setCurrentPage(1);
-                }}
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white text-sm font-semibold rounded-xl transition-colors"
-              >
-                <Filter className="w-4 h-4" />
-                Clear Filters
-              </button>
-            )}
+            <div className="flex flex-wrap items-center gap-3">
+              {user?.role === "LIBRARIAN" && (
+                <button
+                  type="button"
+                  onClick={() => void exportLogs()}
+                  disabled={isExporting}
+                  className="inline-flex items-center gap-2 rounded-xl border border-blue-500/40 bg-blue-500/10 px-4 py-2.5 text-sm font-semibold text-blue-300 transition-colors hover:bg-blue-500/20 disabled:cursor-wait disabled:opacity-60"
+                >
+                  <Download className="h-4 w-4" aria-hidden="true" />
+                  {isExporting ? "Exporting..." : "Export CSV"}
+                </button>
+              )}
+              {(search || actionFilter || dateFilter !== "all") && (
+                <button
+                  onClick={() => {
+                    setSearch("");
+                    setActionFilter("");
+                    setDateFilter("all");
+                    setCurrentPage(1);
+                  }}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white text-sm font-semibold rounded-xl transition-colors"
+                >
+                  <Filter className="w-4 h-4" />
+                  Clear Filters
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Controls */}
@@ -319,7 +399,7 @@ export default function ActivitiesPage() {
                         <td className="px-6 py-4 text-zinc-400 whitespace-nowrap">{formatTimestamp(log.createdAt)}</td>
                         <td className="px-6 py-4">
                           <p className="text-zinc-100 font-medium">{actorName(log)}</p>
-                          <p className="text-xs text-zinc-500">{log.user?.libraryId || "—"}</p>
+                          <p className="text-xs text-zinc-500">ID: {log.userId || "—"}{log.user?.libraryId ? ` · ${log.user.libraryId}` : ""}</p>
                         </td>
                         <td className="px-6 py-4">
                           <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${actionBadge[log.action] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>
@@ -328,12 +408,12 @@ export default function ActivitiesPage() {
                         </td>
                         <td className="px-6 py-4 text-zinc-400 max-w-[420px] hidden lg:table-cell">
                           <button type="button" onClick={() => void openActivityDetails(log)} title="View full activity details" className="block max-w-[380px] truncate text-left transition-colors hover:text-blue-300">
-                            {formatDetails(log.action, log.details)}
+                            {log.description || formatDetails(log.action, log.details)}
                           </button>
                         </td>
                         <td className="px-6 py-4">
                           <span className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 bg-emerald-500/15 text-emerald-400 ring-emerald-500/30">
-                            Success
+                            {activityStatus(log)}
                           </span>
                         </td>
                       </tr>
@@ -347,15 +427,15 @@ export default function ActivitiesPage() {
                 <article key={log.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-lg shadow-black/10">
                   <div className="border-b border-zinc-800/80 pb-3">
                     <p className="font-semibold text-zinc-100 break-words">{actorName(log)}</p>
-                    <p className="mt-1 text-xs text-zinc-500">{log.user?.libraryId || "—"}</p>
+                    <p className="mt-1 text-xs text-zinc-500">ID: {log.userId || "—"}{log.user?.libraryId ? ` · ${log.user.libraryId}` : ""}</p>
                   </div>
                   <div className="grid grid-cols-2 gap-3 py-4 text-sm">
                     <div><p className="text-xs text-zinc-500">Timestamp</p><p className="mt-1 text-zinc-300">{formatTimestamp(log.createdAt)}</p></div>
-                    <div className="col-span-2"><p className="text-xs text-zinc-500">Details</p><button type="button" onClick={() => void openActivityDetails(log)} className="mt-1 break-words text-left text-zinc-300 hover:text-blue-300">{formatDetails(log.action, log.details)}</button></div>
+                    <div className="col-span-2"><p className="text-xs text-zinc-500">Details</p><button type="button" onClick={() => void openActivityDetails(log)} className="mt-1 break-words text-left text-zinc-300 hover:text-blue-300">{log.description || formatDetails(log.action, log.details)}</button></div>
                   </div>
                   <div className="flex items-center justify-between gap-3 border-t border-zinc-800/80 pt-3">
                     <span className={`inline-flex max-w-[70%] items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${actionBadge[log.action] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>{formatAction(log.action)}</span>
-                    <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-400 ring-1 ring-emerald-500/30">Success</span>
+                    <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${activityStatus(log) === "Failed" ? "bg-red-500/15 text-red-400 ring-red-500/30" : "bg-emerald-500/15 text-emerald-400 ring-emerald-500/30"}`}>{activityStatus(log)}</span>
                   </div>
                 </article>
               ))
@@ -434,6 +514,7 @@ export default function ActivitiesPage() {
                       RESERVE_BOOK: "Reserved",
                       CANCEL_RESERVATION: "Cancelled",
                       CREATE_USER: "Created",
+                      ADD_BOOK: "Added",
                       UPDATE_BOOK: "Updated",
                       DELETE_USER: "Archived",
                       REGISTER: "Registered",
@@ -445,8 +526,9 @@ export default function ActivitiesPage() {
                     return <>
                       <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         <div><dt className="text-xs font-medium uppercase tracking-wide text-zinc-500">Full timestamp</dt><dd className="mt-1 text-sm text-zinc-200">{selectedActivity.createdAt ? new Date(selectedActivity.createdAt).toLocaleString("en-PH", { dateStyle: "full", timeStyle: "long" }) : "—"}</dd></div>
-                        <div><dt className="text-xs font-medium uppercase tracking-wide text-zinc-500">User</dt><dd className="mt-1 text-sm text-zinc-200">{actorName(selectedActivity)} <span className="text-zinc-400">({selectedActivity.user?.libraryId || "—"})</span></dd></div>
+                        <div><dt className="text-xs font-medium uppercase tracking-wide text-zinc-500">User</dt><dd className="mt-1 break-all text-sm text-zinc-200">{actorName(selectedActivity)} <span className="text-zinc-400">(ID: {selectedActivity.userId || "—"}{selectedActivity.user?.libraryId ? ` · ${selectedActivity.user.libraryId}` : ""})</span></dd></div>
                         <div><dt className="text-xs font-medium uppercase tracking-wide text-zinc-500">Action</dt><dd className="mt-1 text-sm text-zinc-200">{formatAction(selectedActivity.action)}</dd></div>
+                        <div className="sm:col-span-2"><dt className="text-xs font-medium uppercase tracking-wide text-zinc-500">Description</dt><dd className="mt-1 break-words text-sm text-zinc-200">{selectedActivity.description || formatDetails(selectedActivity.action, details)}</dd></div>
                         <div><dt className="text-xs font-medium uppercase tracking-wide text-zinc-500">Status</dt><dd className="mt-1 text-sm text-emerald-400">{formatAction(String(statusLabel))}</dd></div>
                         <div><dt className="text-xs font-medium uppercase tracking-wide text-zinc-500">IP address</dt><dd className="mt-1 break-all text-sm text-zinc-200">{selectedActivity.ipAddress || "Not recorded"}</dd></div>
                         <div><dt className="text-xs font-medium uppercase tracking-wide text-zinc-500">Device / Browser</dt><dd className="mt-1 break-words text-sm text-zinc-200">{String(device)}</dd></div>

@@ -311,20 +311,24 @@ model IdempotencyRecord {
 
 /// Audit trail for all system activities
 model ActivityLog {
-  id        String   @id @default(cuid())
-  userId    String?  @map("user_id")
-  user      User?    @relation(fields: [userId], references: [id])
-  action    String   @db.VarChar(100) /// e.g., "BORROW", "RETURN", "CREATE_USER", "UPDATE_BOOK"
-  entity    String   @db.VarChar(100) /// e.g., "BorrowTransaction", "User", "Book"
-  entityId  String?  @map("entity_id") @db.VarChar(100)
-  details   Json? /// Flexible payload for additional context
-  ipAddress String?  @map("ip_address") @db.VarChar(45)
-  createdAt DateTime @default(now()) @map("created_at")
+  id          String    @id @default(cuid())
+  userId      String?   @map("user_id")
+  user        User?     @relation(fields: [userId], references: [id])
+  actorName   String    @default("System") @map("actor_name") @db.VarChar(255)
+  action      String    @db.VarChar(100) /// e.g., "BORROW", "RETURN", "CREATE_USER", "UPDATE_BOOK"
+  description String    @default("Activity recorded") @db.VarChar(500)
+  entity      String    @db.VarChar(100) /// e.g., "BorrowTransaction", "User", "Book"
+  entityId    String?   @map("entity_id") @db.VarChar(100)
+  details     Json? /// Flexible payload for additional context
+  ipAddress   String?   @map("ip_address") @db.VarChar(45)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  deletedAt   DateTime? @map("deleted_at")
 
   @@index([userId])
   @@index([action])
   @@index([entity])
   @@index([createdAt])
+  @@index([deletedAt])
   @@map("activity_logs")
 }
 

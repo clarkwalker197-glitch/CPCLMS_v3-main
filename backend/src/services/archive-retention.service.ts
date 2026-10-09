@@ -121,21 +121,6 @@ export class ArchiveRetentionService {
 
             if (record.coverImage) await tryDeleteUnreferencedCoverImage(record.coverImage);
             if (record.fileUrl) await tryDeleteLocalEBookFile(record.fileUrl);
-
-            await prisma.activityLog.create({
-              data: {
-                userId: null,
-                action: 'SYSTEM',
-                entity: job.name,
-                entityId: record.id,
-                details: {
-                  type: 'ARCHIVE_RETENTION_PURGE',
-                  archivedAt: record.archivedAt,
-                  deletedAt: new Date().toISOString(),
-                  retentionDays: ARCHIVE_RETENTION_DAYS,
-                },
-              },
-            });
           } catch (error) {
             results.failed += 1;
             console.error(`Failed to purge expired ${job.name} archive record ${record.id}:`, error);

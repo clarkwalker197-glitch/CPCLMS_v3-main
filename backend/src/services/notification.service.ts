@@ -180,31 +180,13 @@ export class NotificationService {
   // Email Delivery
   // ============================================================
 
-  /**
-   * Simulated email sending — logs to console and creates activity log
-   */
+  /** Send an email without adding routine delivery noise to the audit log. */
   async sendEmail(payload: EmailPayload): Promise<void> {
     await sendEmailMessage({
       to: payload.to,
       subject: payload.subject,
       text: payload.body,
     });
-
-    // Log the email in ActivityLog
-    if (payload.userId) {
-      await prisma.activityLog.create({
-        data: {
-          userId: payload.userId,
-          action: 'EMAIL_SENT',
-          entity: 'Notification',
-          details: {
-            type: 'email',
-            subject: payload.subject,
-            to: payload.to,
-          },
-        },
-      });
-    }
   }
 
   /**

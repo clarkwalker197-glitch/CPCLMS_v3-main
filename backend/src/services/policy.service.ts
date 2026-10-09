@@ -4,6 +4,7 @@
 
 import { prisma } from '../config';
 import { NotFoundError, ConflictError } from '../utils/errors';
+import { recordActivity } from './activity-log.service';
 
 export class PolicyService {
   /**
@@ -25,23 +26,50 @@ export class PolicyService {
   /**
    * Update or create a policy (upsert)
    */
-  async upsertPolicy(key: string, value: string, description?: string) {
-    const policy = await prisma.policy.upsert({
-      where: { key },
-      update: { value, description },
-      create: { key, value, description },
+  async upsertPolicy(
+    key: string,
+    value: string,
+    description: string | undefined,
+    actor: { userId: string; ipAddress?: string },
+  ) {
+    return prisma.$transaction(async (tx) => {
+      const policy = await tx.policy.upsert({
+        where: { key },
+        update: { value, description },
+        create: { key, value, description },
+      });
+      await recordActivity({
+        userId: actor.userId,
+        action: 'UPDATE_SETTINGS',
+        description: `Updated system setting "${key}"`,
+        entity: 'Policy',
+        entityId: key,
+        ipAddress: actor.ipAddress,
+        details: { key, value },
+      }, tx);
+      return policy;
     });
-    return policy;
   }
 
   /**
    * Delete a policy
    */
-  async deletePolicy(key: string) {
-    const policy = await prisma.policy.findUnique({ where: { key } });
-    if (!policy) throw new NotFoundError(`Policy '${key}'`);
+  async deletePolicy(key: string, actor: { userId: string; ipAddress?: string }) {
+    await prisma.$transaction(async (tx) => {
+      const policy = await tx.policy.findUnique({ where: { key } });
+      if (!policy) throw new NotFoundError(`Policy '${key}'`);
 
-    await prisma.policy.delete({ where: { key } });
+      await tx.policy.delete({ where: { key } });
+      await recordActivity({
+        userId: actor.userId,
+        action: 'UPDATE_SETTINGS',
+        description: `Deleted system setting "${key}"`,
+        entity: 'Policy',
+        entityId: key,
+        ipAddress: actor.ipAddress,
+        details: { key, change: 'deleted' },
+      }, tx);
+    });
   }
 
   /**
@@ -66,4 +94,3 @@ export class PolicyService {
 }
 
 export const policyService = new PolicyService();
-

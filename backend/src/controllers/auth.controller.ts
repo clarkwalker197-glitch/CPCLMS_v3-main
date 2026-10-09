@@ -73,7 +73,7 @@ export const googleLogin = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const resetPassword = asyncHandler(async (req: Request, res: Response) => {
-  const result = await authService.resetPassword(req.body.token, req.body.newPassword);
+  const result = await authService.resetPassword(req.body.token, req.body.newPassword, req.ip, req.get('user-agent'));
   sendSuccess(res, result, result.message);
 });
 
@@ -101,8 +101,7 @@ export const createUser = asyncHandler(async (req: AuthenticatedRequest, res: Re
  */
 export const refreshToken = asyncHandler(async (req: Request, res: Response) => {
   const token = getRefreshTokenFromRequest(req);
-  const ipAddress = req.ip;
-  const result = await authService.refreshAccessToken(token, ipAddress);
+  const result = await authService.refreshAccessToken(token);
   setRefreshCookie(res, result.refreshToken, new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
   sendSuccess(res, result, 'Token refreshed successfully');
 });
@@ -142,7 +141,7 @@ export const updateProfile = asyncHandler(async (req: AuthenticatedRequest, res:
     : req.body.removeProfilePicture === 'true'
       ? null
       : undefined;
-  const user = await authService.updateProfile(req.user!.userId, { ...req.body, avatar });
+  const user = await authService.updateProfile(req.user!.userId, { ...req.body, avatar }, req.ip, req.get('user-agent'));
   sendSuccess(res, user, 'Profile updated successfully');
 });
 
@@ -151,7 +150,7 @@ export const updateProfile = asyncHandler(async (req: AuthenticatedRequest, res:
  */
 export const changePassword = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { currentPassword, newPassword } = req.body;
-  await authService.changePassword(req.user!.userId, currentPassword, newPassword);
+  await authService.changePassword(req.user!.userId, currentPassword, newPassword, req.ip, req.get('user-agent'));
   sendSuccess(res, null, 'Password changed successfully');
 });
 
@@ -183,8 +182,7 @@ export const deleteUser = asyncHandler(async (req: AuthenticatedRequest, res: Re
  * PATCH /api/auth/users/:id/toggle-status  (LIBRARIAN only)
  */
 export const toggleUserStatus = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const user = await authService.toggleUserStatus(req.params.id, req.user!.userId);
+  const user = await authService.toggleUserStatus(req.params.id, req.user!.userId, req.ip, req.get('user-agent'));
   const status = user.isActive ? 'activated' : 'deactivated';
   sendSuccess(res, user, `User ${status} successfully`);
 });
-

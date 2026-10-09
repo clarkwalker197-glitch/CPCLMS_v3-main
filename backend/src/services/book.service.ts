@@ -9,6 +9,7 @@ import { getPaginationParams, buildPaginationMeta } from '../utils/pagination';
 import { CreateBookInput, UpdateBookInput, CreateCategoryInput } from '../validators';
 import { DEWEY_SECOND_SUMMARY, normalizeClassificationNumber } from '../constants/categories';
 import { getSortParams } from '../utils/sorting';
+import { recordActivity } from './activity-log.service';
 
 export class BookService {
   // ============================================================
@@ -128,7 +129,10 @@ export class BookService {
   /**
    * Create a new book
    */
-  async createBook(data: CreateBookInput) {
+  async createBook(
+    data: CreateBookInput,
+    actor: { userId: string; ipAddress?: string; userAgent?: string },
+  ) {
     const existing = await prisma.book.findUnique({
       where: { accessionNo: data.accessionNo },
     });
@@ -142,30 +146,56 @@ export class BookService {
       throw new BadRequestError('Available copies must be between 0 and total copies');
     }
 
-    const book = await prisma.book.create({
-      data: {
-        isbn: data.isbn,
-        accessionNo: data.accessionNo,
-        title: data.title,
-        author: data.author,
-        publisher: data.publisher || null,
-        publishYear: data.publishYear ? Number(data.publishYear) : null,
-        edition: data.edition || null,
-        pages: data.pages ? Number(data.pages) : null,
-        categoryId: data.categoryId,
-        classificationNumber: normalizeClassificationNumber(data.classificationNumber),
-        replacementValue: new Prisma.Decimal(Number(data.replacementValue ?? 0)),
-        description: data.description || null,
-        coverImage: data.coverImage || null,
-        language: data.language || 'English',
-        shelf: data.shelf || null,
-        row: data.row || null,
-        copies,
-        availableCopies,
-      },
-      include: {
-        category: { select: { id: true, name: true, slug: true } },
-      },
+    const book = await prisma.$transaction(async (tx) => {
+      const createdBook = await tx.book.create({
+        data: {
+          isbn: data.isbn,
+          accessionNo: data.accessionNo,
+          title: data.title,
+          author: data.author,
+          publisher: data.publisher || null,
+          publishYear: data.publishYear ? Number(data.publishYear) : null,
+          edition: data.edition || null,
+          pages: data.pages ? Number(data.pages) : null,
+          categoryId: data.categoryId,
+          classificationNumber: normalizeClassificationNumber(data.classificationNumber),
+          replacementValue: new Prisma.Decimal(Number(data.replacementValue ?? 0)),
+          description: data.description || null,
+          coverImage: data.coverImage || null,
+          language: data.language || 'English',
+          shelf: data.shelf || null,
+          row: data.row || null,
+          copies,
+          availableCopies,
+        },
+        include: {
+          category: { select: { id: true, name: true, slug: true } },
+        },
+      });
+      const user = await tx.user.findUnique({
+        where: { id: actor.userId },
+        select: { firstName: true, lastName: true },
+      });
+      const performedByName = user
+        ? `${user.firstName} ${user.lastName}`.trim()
+        : undefined;
+
+      await recordActivity({
+        userId: actor.userId,
+        action: 'ADD_BOOK',
+        description: `Added book "${createdBook.title}"`,
+        entity: 'Book',
+        entityId: createdBook.id,
+        ipAddress: actor.ipAddress,
+        details: {
+          bookId: createdBook.id,
+          bookTitle: createdBook.title,
+          ...(performedByName ? { performedByName } : {}),
+          ...(actor.userAgent ? { userAgent: actor.userAgent } : {}),
+        },
+      }, tx);
+
+      return createdBook;
     });
 
     return book;
@@ -174,29 +204,49 @@ export class BookService {
   /**
    * Update a book
    */
-  async updateBook(id: string, input: UpdateBookInput) {
+  async updateBook(
+    id: string,
+    input: UpdateBookInput,
+    actor: { userId: string; ipAddress?: string; userAgent?: string },
+  ) {
     const book = await prisma.book.findUnique({ where: { id } });
     if (!book) throw new NotFoundError('Book');
 
-    const updated = await prisma.book.update({
-      where: { id },
-      data: {
-        ...input,
-        ...(input.publishYear !== undefined && { publishYear: Number(input.publishYear) }),
-        ...(input.pages !== undefined && { pages: Number(input.pages) }),
-        ...(input.copies !== undefined && { copies: Number(input.copies) }),
-        ...(input.availableCopies !== undefined && { availableCopies: Number(input.availableCopies) }),
-        ...(input.replacementValue !== undefined && { replacementValue: new Prisma.Decimal(Number(input.replacementValue)) }),
-        ...(input.classificationNumber !== undefined && {
-          classificationNumber: normalizeClassificationNumber(input.classificationNumber),
-        }),
-        ...(input.copies !== undefined && {
-          availableCopies: Number(input.copies) - (book.copies - book.availableCopies),
-        }),
-      },
-      include: {
-        category: { select: { id: true, name: true, slug: true } },
-      },
+    const updated = await prisma.$transaction(async (tx) => {
+      const updatedBook = await tx.book.update({
+        where: { id },
+        data: {
+          ...input,
+          ...(input.publishYear !== undefined && { publishYear: Number(input.publishYear) }),
+          ...(input.pages !== undefined && { pages: Number(input.pages) }),
+          ...(input.copies !== undefined && { copies: Number(input.copies) }),
+          ...(input.availableCopies !== undefined && { availableCopies: Number(input.availableCopies) }),
+          ...(input.replacementValue !== undefined && { replacementValue: new Prisma.Decimal(Number(input.replacementValue)) }),
+          ...(input.classificationNumber !== undefined && {
+            classificationNumber: normalizeClassificationNumber(input.classificationNumber),
+          }),
+          ...(input.copies !== undefined && {
+            availableCopies: Number(input.copies) - (book.copies - book.availableCopies),
+          }),
+        },
+        include: {
+          category: { select: { id: true, name: true, slug: true } },
+        },
+      });
+      await recordActivity({
+        userId: actor.userId,
+        action: 'UPDATE_BOOK',
+        description: `Edited book "${updatedBook.title}"`,
+        entity: 'Book',
+        entityId: updatedBook.id,
+        ipAddress: actor.ipAddress,
+        details: {
+          bookTitle: updatedBook.title,
+          accessionNo: updatedBook.accessionNo,
+          ...(actor.userAgent ? { userAgent: actor.userAgent } : {}),
+        },
+      }, tx);
+      return updatedBook;
     });
 
     return updated;
@@ -205,7 +255,10 @@ export class BookService {
   /**
    * Delete a book
    */
-  async deleteBook(id: string) {
+  async deleteBook(
+    id: string,
+    actor: { userId: string; ipAddress?: string; userAgent?: string },
+  ) {
     const book = await prisma.book.findUnique({ where: { id } });
     if (!book) throw new NotFoundError('Book');
 
@@ -218,7 +271,22 @@ export class BookService {
     }
 
     const archivedAt = new Date();
-    await prisma.book.update({ where: { id }, data: { deletedAt: archivedAt, archivedAt } });
+    await prisma.$transaction(async (tx) => {
+      await tx.book.update({ where: { id }, data: { deletedAt: archivedAt, archivedAt } });
+      await recordActivity({
+        userId: actor.userId,
+        action: 'DELETE_BOOK',
+        description: `Deleted book "${book.title}"`,
+        entity: 'Book',
+        entityId: book.id,
+        ipAddress: actor.ipAddress,
+        details: {
+          bookId: book.id,
+          bookTitle: book.title,
+          ...(actor.userAgent ? { userAgent: actor.userAgent } : {}),
+        },
+      }, tx);
+    });
   }
 
   async listArchivedBooks() {
@@ -364,4 +432,3 @@ export class BookService {
 }
 
 export const bookService = new BookService();
-

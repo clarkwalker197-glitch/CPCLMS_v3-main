@@ -9,6 +9,11 @@ import { sendSuccess } from '../utils/helpers';
 import { AuthenticatedRequest } from '../types';
 import { DEPARTMENTS } from '../constants/departments';
 import { env } from '../config/env';
+import {
+  storeProfileImage,
+  tryDeleteNewProfileImage,
+  tryDeleteUnreferencedProfileImage,
+} from '../services/profile-image-storage.service';
 
 const getRefreshTokenFromRequest = (req: Request): string | undefined => {
   const signedCookieToken = typeof (req as any).signedCookies?.refreshToken === 'string'
@@ -136,12 +141,33 @@ export const getProfile = asyncHandler(async (req: AuthenticatedRequest, res: Re
 });
 
 export const updateProfile = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const removePicture = req.body.removeProfilePicture === 'true';
+  const isChangingPicture = Boolean(req.file) || removePicture;
+  const currentAvatar = isChangingPicture
+    ? (await authService.getProfile(req.user!.userId)).avatar
+    : undefined;
   const avatar = req.file
-    ? `/uploads/profiles/${req.file.filename}`
-    : req.body.removeProfilePicture === 'true'
+    ? await storeProfileImage(req.file)
+    : removePicture
       ? null
       : undefined;
-  const user = await authService.updateProfile(req.user!.userId, { ...req.body, avatar }, req.ip, req.get('user-agent'));
+
+  let user;
+  try {
+    user = await authService.updateProfile(
+      req.user!.userId,
+      { ...req.body, avatar },
+      req.ip,
+      req.get('user-agent')
+    );
+  } catch (error) {
+    if (req.file) await tryDeleteNewProfileImage(avatar);
+    throw error;
+  }
+
+  if (currentAvatar && currentAvatar !== avatar) {
+    await tryDeleteUnreferencedProfileImage(currentAvatar);
+  }
   sendSuccess(res, user, 'Profile updated successfully');
 });
 

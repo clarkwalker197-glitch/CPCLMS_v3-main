@@ -76,8 +76,14 @@ export default withPWA({
   workboxOptions: {
     runtimeCaching: [
       {
+        urlPattern: ({ url }: { url: URL }) =>
+          url.pathname.startsWith("/uploads/profiles/"),
+        handler: "NetworkOnly",
+      },
+      {
         urlPattern: ({ request, url }: { request: Request; url: URL }) =>
           !url.pathname.startsWith("/api/") &&
+          !url.pathname.startsWith("/uploads/profiles/") &&
           (
             request.destination === "image" ||
             request.destination === "font" ||

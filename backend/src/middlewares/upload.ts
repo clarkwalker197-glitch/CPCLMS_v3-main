@@ -146,10 +146,7 @@ export const uploadBookCover = (req: Request, res: Response, next: NextFunction)
 };
 
 export const uploadProfilePicture = multer({
-  storage: multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, PROFILES_DIR),
-    filename: (_req, file, cb) => cb(null, safeFilename(file.originalname)),
-  }),
+  storage: memoryStorage,
   fileFilter,
   limits: { fileSize: 5 * 1024 * 1024 },
 }).single('profilePicture');

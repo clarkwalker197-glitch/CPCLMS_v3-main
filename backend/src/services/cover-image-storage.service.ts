@@ -13,7 +13,7 @@ export function coverExtensionForMimeType(mimeType: string): string | undefined 
   return COVER_FORMATS[mimeType as keyof typeof COVER_FORMATS];
 }
 
-function hasMatchingImageSignature(buffer: Buffer, mimeType: string): boolean {
+export function hasMatchingImageSignature(buffer: Buffer, mimeType: string): boolean {
   if (mimeType === 'image/jpeg') {
     return buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
   }

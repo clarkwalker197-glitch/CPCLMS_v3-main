@@ -3,6 +3,8 @@
 // ============================================================
 
 import express from 'express';
+import fs from 'fs/promises';
+import path from 'path';
 import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
@@ -11,7 +13,7 @@ import routes from './routes';
 import { apiLimiter } from './middlewares/rateLimiter';
 import { errorHandler } from './middlewares/errorHandler';
 import { archiveRetentionService, notificationService, purgeExpiredActivityLogs } from './services';
-import { UPLOADS_ROOT } from './middlewares/upload';
+import { PROFILES_DIR, UPLOADS_ROOT } from './middlewares/upload';
 
 const app = express();
 const configuredOrigins = (Array.isArray(env.FRONTEND_URL)
@@ -83,6 +85,34 @@ app.use(cookieParser(env.COOKIE_SECRET));
 // helmet()'s default Cross-Origin-Resource-Policy is 'same-origin', which
 // would block the frontend (a different origin/port) from loading these
 // files via <img>/fetch/PDF.js. Explicitly relax it for this route only.
+const missingProfileImage = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"><rect width="96" height="96" rx="48" fill="#27272a"/><circle cx="48" cy="36" r="17" fill="#71717a"/><path d="M17 84c3-17 15-26 31-26s28 9 31 26" fill="#71717a"/></svg>`;
+app.get('/uploads/profiles/:filename', async (req, res, next) => {
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.setHeader('Cache-Control', 'no-store');
+  const filename = req.params.filename;
+  if (path.basename(filename) !== filename) {
+    res.status(400).end();
+    return;
+  }
+
+  const filePath = path.resolve(PROFILES_DIR, filename);
+  try {
+    const stats = await fs.stat(filePath);
+    if (!stats.isFile()) {
+      res.status(200).type('image/svg+xml').send(missingProfileImage);
+      return;
+    }
+    res.sendFile(filePath, (error) => {
+      if (error) next(error);
+    });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      next(error);
+      return;
+    }
+    res.status(200).type('image/svg+xml').send(missingProfileImage);
+  }
+});
 app.use(
   '/uploads',
   (req, res, next) => {

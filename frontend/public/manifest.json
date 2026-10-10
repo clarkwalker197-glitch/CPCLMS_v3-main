@@ -1,6 +1,7 @@
 {
-  "name": "CPCLMS - Cordova Public College Library Management System",
-  "short_name": "CPCLMS",
+  "name": "Cordova Public College Library System",
+  "short_name": "CPC Library",
+  "description": "A modern, library system for Cordova Public College. Manage books, borrow requests, reservations, and more.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0f172a",

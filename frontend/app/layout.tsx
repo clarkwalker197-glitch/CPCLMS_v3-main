@@ -17,10 +17,14 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const appName = "Cordova Public College Library System";
+const appDescription =
+  "A modern, library system for Cordova Public College. Manage books, borrow requests, reservations, and more.";
+
 export const metadata: Metadata = {
-  title: "PWA-based CPC Library System",
-  description:
-    "A modern, smart library management system for Colegio de Porta Coeli. Manage books, borrow requests, reservations, and more.",
+  title: appName,
+  applicationName: appName,
+  description: appDescription,
   keywords: [
     "library",
     "management",
@@ -32,7 +36,7 @@ export const metadata: Metadata = {
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
-    title: "PWA-based CPC Library System",
+    title: "CPC Library",
     statusBarStyle: "default",
   },
   icons: {
@@ -43,11 +47,11 @@ export const metadata: Metadata = {
   other: {
     "apple-mobile-web-app-capable": "yes",
     "apple-mobile-web-app-status-bar-style": "default",
-    "apple-mobile-web-app-title": "PWA-based CPC Library System",
+    "apple-mobile-web-app-title": "CPC Library",
   },
   openGraph: {
-    title: "PWA-based CPC Library System",
-    description: "Smart Library Management System for Colegio de Porta Coeli",
+    title: appName,
+    description: appDescription,
     type: "website",
     locale: "en_PH",
   },
@@ -58,7 +62,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  themeColor: "#059669",
+  themeColor: "#051396",
 };
 
 export default function RootLayout({

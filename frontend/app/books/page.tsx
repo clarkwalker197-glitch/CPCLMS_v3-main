@@ -13,6 +13,7 @@ import { AddBookModal } from "@/components/AddBookModal";
 import { EditBookModal } from "@/components/EditBookModal";
 import MobileBookTypeSelect from "@/components/MobileBookTypeSelect";
 import Sidebar from "@/components/Sidebar";
+import { useConfirmDialog } from "@/components/ui/ConfirmModal";
 import ResponsiveTable from "@/components/ResponsiveTable";
 import { SortHeader, SortSelect, nextSortOrder, type SortOption } from "@/components/SortControls";
 import { categoryDisplayName, DEWEY_MAIN_CATEGORIES, subcategoriesForMain } from "@/lib/categories";
@@ -43,6 +44,7 @@ const isPhysicalBookAvailable = (book: any) => {
 
 export default function BooksPage() {
   const { user } = useAuth();
+  const { confirm } = useConfirmDialog();
   const router = useRouter();
   const [books, setBooks] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
@@ -250,31 +252,39 @@ export default function BooksPage() {
   };
 
   const handleToggleAvailability = async (book: any) => {
+    if (togglingStatusId) return;
     const newStatus = book.status === 'AVAILABLE' ? 'MAINTENANCE' : 'AVAILABLE';
-    const action = newStatus === 'AVAILABLE' ? 'available' : 'not available';
-    const message = newStatus === 'AVAILABLE'
-      ? `Mark "${book.title}" as available? Students will be able to borrow this book.`
-      : `Mark "${book.title}" as not available? Students will no longer be able to borrow this book.`;
-
-    if (!window.confirm(message)) return;
-    if (togglingStatusId) return; // prevent double-click spam
-    setTogglingStatusId(book.id);
-    try {
-      const res = await api.updateBook(book.id, { status: newStatus });
-      if (res.success) {
-        setSuccessMsg(`Book marked as ${action}`);
-        loadData();
-        setTimeout(() => setSuccessMsg(""), 4000);
-      } else if (res.rateLimited) {
-        setError("You're moving too fast. Please wait a moment and try again.");
-      } else {
-        setError(res.error || "Failed to update book");
-      }
-    } catch {
-      setError("Failed to update book");
-    } finally {
-      setTogglingStatusId(null);
-    }
+    const available = newStatus === 'AVAILABLE';
+    await confirm({
+      title: available ? 'Mark book as available?' : 'Mark book as unavailable?',
+      description: available
+        ? `Students will be able to borrow “${book.title}”.`
+        : `Students will no longer be able to borrow “${book.title}”.`,
+      confirmLabel: available ? 'Mark available' : 'Mark unavailable',
+      variant: available ? 'default' : 'warning',
+      onConfirm: async () => {
+        setTogglingStatusId(book.id);
+        try {
+          const res = await api.updateBook(book.id, { status: newStatus });
+          if (!res.success) {
+            const message = res.rateLimited
+              ? "You're moving too fast. Please wait a moment and try again."
+              : res.error || 'Failed to update book';
+            setError(message);
+            throw new Error(message);
+          }
+          setSuccessMsg(`Book marked as ${available ? 'available' : 'not available'}`);
+          void loadData();
+          setTimeout(() => setSuccessMsg(''), 4000);
+        } catch (caught) {
+          const message = caught instanceof Error ? caught.message : 'Failed to update book';
+          setError(message);
+          throw caught;
+        } finally {
+          setTogglingStatusId(null);
+        }
+      },
+    });
   };
 
   const handleEditSuccess = () => {

@@ -110,7 +110,7 @@ export const createEBookSchema = z.object({
     language: z.string().default('English'),
     fileUrl: z.string().url('File URL must be a valid URL'),
     fileSize: z.coerce.number().int().positive().optional(),
-    format: z.enum(['PDF', 'EPUB', 'MOBI']).default('PDF'),
+    format: z.enum(['PDF', 'EPUB', 'MOBI']).optional(),
   }),
 });
 

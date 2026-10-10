@@ -17,13 +17,27 @@ const inputClass =
 const labelClass = "block text-sm font-medium text-zinc-300 mb-1.5";
 
 const ACCEPTED_EBOOK_EXT = [".pdf", ".epub", ".mobi"];
+const ACCEPTED_EBOOK_MIME: Record<string, string[]> = {
+  ".pdf": ["application/pdf"],
+  ".epub": ["application/epub+zip", "application/zip"],
+  ".mobi": ["application/x-mobipocket-ebook"],
+};
 const ACCEPTED_COVER_TYPES = ["image/jpeg", "image/png", "image/webp"];
-const MAX_EBOOK_MB = 150;
+const MAX_EBOOK_MB = 50;
 const MAX_COVER_MB = 5;
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function isValidFileUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
 }
 
 export function AddEBookModal(props: {
@@ -83,6 +97,11 @@ export function AddEBookModal(props: {
       e.target.value = "";
       return;
     }
+    if (file.type && file.type !== "application/octet-stream" && !ACCEPTED_EBOOK_MIME[ext]?.includes(file.type)) {
+      setError("The selected file type does not match its file extension.");
+      e.target.value = "";
+      return;
+    }
     if (file.size > MAX_EBOOK_MB * 1024 * 1024) {
       setError(`E-book file must be under ${MAX_EBOOK_MB}MB.`);
       e.target.value = "";
@@ -90,6 +109,10 @@ export function AddEBookModal(props: {
     }
     setError("");
     setEbookFile(file);
+    setForm((current) => ({
+      ...current,
+      format: ext === ".epub" ? "EPUB" : ext === ".mobi" ? "MOBI" : "PDF",
+    }));
   };
 
   const onPickCoverFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -118,8 +141,8 @@ export function AddEBookModal(props: {
       return;
     }
 
-    if (mode === "link" && !form.fileUrl.trim()) {
-      setError("File URL is required.");
+    if (mode === "link" && !isValidFileUrl(form.fileUrl.trim())) {
+      setError("Enter a valid http or https file URL.");
       return;
     }
     if (mode === "upload" && !ebookFile) {
@@ -141,7 +164,9 @@ export function AddEBookModal(props: {
         fd.append("categoryId", form.categoryId);
         if (form.description.trim()) fd.append("description", form.description.trim());
         fd.append("language", form.language.trim() || "English");
-        fd.append("file", ebookFile as File);
+        fd.append("format", form.format);
+        if (form.coverImage.trim() && !coverFile) fd.append("coverImage", form.coverImage.trim());
+        fd.append("ebookFile", ebookFile as File);
         if (coverFile) fd.append("coverImage", coverFile);
         res = await api.uploadEBook(fd);
       } else {
@@ -185,7 +210,7 @@ export function AddEBookModal(props: {
         </DialogTitle>
         <DialogDescription>
           {mode === "upload"
-            ? "Upload the PDF/EPUB/MOBI file directly — it's stored on the server and served back for reading and downloading."
+            ? "Upload a PDF/EPUB/MOBI file (up to 50 MB) to public cloud storage for reading and downloading."
             : "Paste a direct link to an already-hosted file (e.g. Google Drive, S3, Cloudinary)."}
         </DialogDescription>
       </DialogHeader>
@@ -301,22 +326,20 @@ export function AddEBookModal(props: {
           </div>
         </div>
 
-        {mode === "link" && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className={labelClass}>Format</label>
-              <select className={inputClass} value={form.format} onChange={update("format")}>
-                <option value="PDF">PDF</option>
-                <option value="EPUB">EPUB</option>
-                <option value="MOBI">MOBI</option>
-              </select>
-            </div>
-            <div>
-              <label className={labelClass}>Edition</label>
-              <input className={inputClass} value={form.edition} onChange={update("edition")} />
-            </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className={labelClass}>Format</label>
+            <select className={inputClass} value={form.format} onChange={update("format")}>
+              <option value="PDF">PDF</option>
+              <option value="EPUB">EPUB</option>
+              <option value="MOBI">MOBI</option>
+            </select>
           </div>
-        )}
+          <div>
+            <label className={labelClass}>Edition</label>
+            <input className={inputClass} value={form.edition} onChange={update("edition")} />
+          </div>
+        </div>
 
         {mode === "upload" ? (
           <>
@@ -408,6 +431,7 @@ export function AddEBookModal(props: {
               <label className={labelClass}>File URL *</label>
               <input
                 className={inputClass}
+                type="url"
                 value={form.fileUrl}
                 onChange={update("fileUrl")}
                 placeholder="https://.../book.pdf"

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import api from "@/lib/api";
 import Sidebar from "@/components/Sidebar";
+import { useConfirmDialog } from "@/components/ui/ConfirmModal";
 import { Archive as ArchiveIcon, Users, RotateCcw, Search } from "lucide-react";
 
 const tabs = [
@@ -27,6 +28,7 @@ function getArchiveCountdown(item: any) {
 
 export default function ArchivePage() {
   const { user } = useAuth();
+  const { confirm } = useConfirmDialog();
   const [activeTab, setActiveTab] = useState<TabKey>("users");
   const [archive, setArchive] = useState<{ users: any[] }>({ users: [] });
   const [search, setSearch] = useState("");
@@ -60,16 +62,29 @@ export default function ArchivePage() {
   }, [user, loadArchive]);
 
   const restore = async (type: TabKey, id: string) => {
-    if (!window.confirm("Restore this item to its active list?")) return;
-    setRestoringId(id);
-    setError("");
-    const res = await api.restoreArchiveItem(type, id);
-    if (res.success) {
-      setMessage("Item restored successfully");
-      loadArchive();
-      setTimeout(() => setMessage(""), 3500);
-    } else setError(res.error || "Failed to restore item");
-    setRestoringId(null);
+    await confirm({
+      title: 'Restore archived user?',
+      description: 'This account will return to the active users list.',
+      confirmLabel: 'Restore user',
+      variant: 'default',
+      onConfirm: async () => {
+        setRestoringId(id);
+        setError("");
+        try {
+          const res = await api.restoreArchiveItem(type, id);
+          if (!res.success) {
+            const message = res.error || 'Failed to restore item';
+            setError(message);
+            throw new Error(message);
+          }
+          setMessage("Item restored successfully");
+          void loadArchive();
+          setTimeout(() => setMessage(""), 3500);
+        } finally {
+          setRestoringId(null);
+        }
+      },
+    });
   };
 
   const items = archive.users.filter((item) =>

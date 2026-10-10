@@ -465,12 +465,25 @@ const response = await this.request<any>('/auth/register', {
     return response.blob();
   }
 
-  // Multipart upload (e-book file + optional cover image). Bypasses the
+  // Multipart create (e-book file + optional cover image). Bypasses the
   // JSON request pipeline since FormData needs the browser to set its own
   // Content-Type header (with the multipart boundary) — setting it manually
   // breaks the upload.
   async uploadEBook(formData: FormData): Promise<ApiResponse<any>> {
-    return this.uploadMultipart('/ebooks/upload', formData);
+    return this.uploadMultipart('/ebooks', formData);
+  }
+
+  async updateEBookWithFile(
+    id: string,
+    fields: Record<string, string>,
+    file: File
+  ): Promise<ApiResponse<any>> {
+    const formData = new FormData();
+    Object.entries(fields).forEach(([key, value]) => {
+      if (value !== '') formData.append(key, value);
+    });
+    formData.append('ebookFile', file);
+    return this.uploadMultipart(`/ebooks/${encodeURIComponent(id)}`, formData, 'PUT');
   }
 
   async post<T>(endpoint: string, body?: unknown, headers?: Record<string, string>): Promise<ApiResponse<T>> {

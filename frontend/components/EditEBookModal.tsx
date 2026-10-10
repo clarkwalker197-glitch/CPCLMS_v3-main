@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Dialog, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import api from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/api";
 import MediaImage from "@/components/MediaImage";
 import { categoryCodeForId, categoryDisplayName, categoryForClassification, categoryIdForDewey, DEWEY_MAIN_CATEGORIES, mainCategoryForClassification, mainCategoryForCode, normalizeClassificationNumber, sanitizeClassificationInput, subcategoriesForMain } from "@/lib/categories";
-import { BookOpen, Link2 } from "lucide-react";
+import { BookOpen, FileText, Link2, Upload, X } from "lucide-react";
 
 interface Category {
   id: string;
@@ -36,11 +36,41 @@ interface EBook {
 const inputClass =
   "w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm";
 const labelClass = "block text-sm font-medium text-zinc-300 mb-1.5";
+const ACCEPTED_EBOOK_EXT = [".pdf", ".epub", ".mobi"];
+const ACCEPTED_EBOOK_MIME: Record<string, string[]> = {
+  ".pdf": ["application/pdf"],
+  ".epub": ["application/epub+zip", "application/zip"],
+  ".mobi": ["application/x-mobipocket-ebook"],
+};
+const MAX_EBOOK_MB = 50;
 
 function formatBytes(bytes?: number): string {
   if (!bytes) return '';
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function isValidFileUrl(value: string): boolean {
+  if (value.startsWith("/uploads/ebooks/")) return true;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+function isUploadedEBookUrl(value: string): boolean {
+  return value.startsWith("/uploads/ebooks/")
+    || /^https:\/\/[a-z0-9-]+\.public\.blob\.vercel-storage\.com\/ebooks\/ebook-/i.test(value);
+}
+
+function sourceLabel(value: string): string {
+  if (isUploadedEBookUrl(value)) {
+    const filename = value.split("/").pop()?.split("?")[0];
+    return filename ? `Uploaded file · ${decodeURIComponent(filename)}` : "Uploaded file";
+  }
+  return value.length > 72 ? `${value.slice(0, 69)}…` : value;
 }
 
 export function EditEBookModal(props: {
@@ -70,6 +100,9 @@ export function EditEBookModal(props: {
   const [mainCategoryCode, setMainCategoryCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [fileMode, setFileMode] = useState<"upload" | "link">("link");
+  const [ebookFile, setEbookFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Initialize form when e-book changes
   useEffect(() => {
@@ -92,6 +125,8 @@ export function EditEBookModal(props: {
       const categoryCode = categoryCodeForId(props.ebook.categoryId, props.categories);
       setMainCategoryCode((mainCategoryForCode(categoryCode) || mainCategoryForCode(props.ebook.classificationNumber?.slice(0, 3)))?.code || "");
       setError("");
+      setEbookFile(null);
+      setFileMode("link");
     }
   }, [props.ebook, props.open]);
 
@@ -117,12 +152,41 @@ export function EditEBookModal(props: {
     setForm(emptyForm);
     setMainCategoryCode("");
     setError("");
+    setEbookFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const handleClose = () => {
     if (loading) return;
     reset();
     props.onOpenChange(false);
+  };
+
+  const onPickEbookFile = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const extension = `.${file.name.split(".").pop()?.toLowerCase()}`;
+    if (!ACCEPTED_EBOOK_EXT.includes(extension)) {
+      setError("E-book file must be a PDF, EPUB, or MOBI file.");
+      event.target.value = "";
+      return;
+    }
+    if (file.type && file.type !== "application/octet-stream" && !ACCEPTED_EBOOK_MIME[extension]?.includes(file.type)) {
+      setError("The selected file type does not match its file extension.");
+      event.target.value = "";
+      return;
+    }
+    if (file.size > MAX_EBOOK_MB * 1024 * 1024) {
+      setError(`E-book file must be no larger than ${MAX_EBOOK_MB} MB.`);
+      event.target.value = "";
+      return;
+    }
+    setError("");
+    setEbookFile(file);
+    setForm((current) => ({
+      ...current,
+      format: extension === ".epub" ? "EPUB" : extension === ".mobi" ? "MOBI" : "PDF",
+    }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -135,8 +199,16 @@ export function EditEBookModal(props: {
     }
 
     const classificationNumber = normalizeClassificationNumber(form.classificationNumber);
-    if (!form.title.trim() || !form.author.trim() || !form.fileUrl.trim() || !form.categoryId || !classificationNumber) {
-      setError("Title, author, file URL, category, and a valid Dewey classification number are required.");
+    if (!form.title.trim() || !form.author.trim() || !form.categoryId || !classificationNumber) {
+      setError("Title, author, category, and a valid Dewey classification number are required.");
+      return;
+    }
+    if (fileMode === "link" && !isValidFileUrl(form.fileUrl.trim())) {
+      setError("Enter a valid http or https file URL.");
+      return;
+    }
+    if (!ebookFile && !isValidFileUrl(form.fileUrl.trim())) {
+      setError("Choose an e-book file to upload or enter a valid http or https file URL.");
       return;
     }
 
@@ -154,11 +226,23 @@ export function EditEBookModal(props: {
         description: form.description.trim() || undefined,
         coverImage: form.coverImage.trim() || undefined,
         language: form.language.trim() || "English",
-        fileUrl: form.fileUrl.trim(),
+        ...(form.fileUrl.trim() !== (props.ebook.fileUrl || "").trim()
+          ? { fileUrl: form.fileUrl.trim() }
+          : {}),
         format: form.format,
       };
 
-      const res = await api.updateEBook(props.ebook.id, updateData);
+      const res = fileMode === "upload" && ebookFile
+        ? await api.updateEBookWithFile(
+            props.ebook.id,
+            Object.fromEntries(
+              Object.entries(updateData)
+                .filter(([key, value]) => key !== "fileUrl" && value !== undefined)
+                .map(([key, value]) => [key, String(value)])
+            ),
+            ebookFile
+          )
+        : await api.updateEBook(props.ebook.id, updateData);
 
       if (res.success) {
         props.onSuccess();
@@ -183,7 +267,7 @@ export function EditEBookModal(props: {
           Edit E-Book
         </DialogTitle>
         <DialogDescription>
-          Update the e-book details. Changes are saved immediately.
+          Update the e-book details and keep the current file or replace it with an upload or link.
         </DialogDescription>
       </DialogHeader>
 
@@ -291,31 +375,100 @@ export function EditEBookModal(props: {
         </div>
 
         <div>
-          <label className={labelClass}>File URL *</label>
-          <div className="flex gap-2">
-            <div className="flex-1">
+          <label className={labelClass}>File source *</label>
+          <div className="mb-3 flex gap-1 rounded-xl border border-zinc-800 bg-zinc-950 p-1">
+            <button
+              type="button"
+              onClick={() => { setFileMode("upload"); setError(""); }}
+              aria-pressed={fileMode === "upload"}
+              className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${fileMode === "upload" ? "bg-blue-600 text-white" : "text-zinc-400 hover:text-zinc-200"}`}
+            >
+              <Upload className="h-4 w-4" /> Upload file
+            </button>
+            <button
+              type="button"
+              onClick={() => { setFileMode("link"); setError(""); }}
+              aria-pressed={fileMode === "link"}
+              className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${fileMode === "link" ? "bg-blue-600 text-white" : "text-zinc-400 hover:text-zinc-200"}`}
+            >
+              <Link2 className="h-4 w-4" /> Paste link
+            </button>
+          </div>
+
+          {fileMode === "upload" ? (
+            <div className="space-y-3">
+              {form.fileUrl && (
+                <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 px-3 py-2.5">
+                  <p className="text-xs font-medium text-zinc-400">Current file</p>
+                  <p className="mt-1 truncate text-sm text-zinc-200" title={form.fileUrl}>{sourceLabel(form.fileUrl)}</p>
+                </div>
+              )}
+              {ebookFile ? (
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-blue-500/30 bg-blue-500/5 px-3 py-2.5">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <FileText className="h-4 w-4 shrink-0 text-blue-400" />
+                    <span className="truncate text-sm text-zinc-200">{ebookFile.name}</span>
+                    <span className="shrink-0 text-xs text-zinc-500">{formatBytes(ebookFile.size)}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEbookFile(null);
+                      if (fileInputRef.current) fileInputRef.current.value = "";
+                    }}
+                    className="shrink-0 text-zinc-500 hover:text-red-400"
+                    aria-label="Remove selected e-book file"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-zinc-700 py-5 text-sm text-zinc-400 transition-colors hover:border-blue-500 hover:text-blue-400"
+                >
+                  <Upload className="h-5 w-5" />
+                  {form.fileUrl ? "Choose a replacement e-book file" : "Choose a PDF, EPUB, or MOBI file"}
+                  <span className="text-xs text-zinc-500">Maximum file size: {MAX_EBOOK_MB} MB</span>
+                </button>
+              )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.epub,.mobi,application/pdf,application/epub+zip,application/x-mobipocket-ebook"
+                onChange={onPickEbookFile}
+                className="hidden"
+              />
+              {form.fileUrl && !ebookFile && (
+                <p className="text-xs text-zinc-500">Leave the current file selected to keep it unchanged.</p>
+              )}
+            </div>
+          ) : (
+            <div className="flex gap-2">
               <input
                 className={inputClass}
                 value={form.fileUrl}
                 onChange={update("fileUrl")}
                 placeholder="https://example.com/ebook.pdf"
-                required
+                aria-label="E-book file URL"
               />
+              <button
+                type="button"
+                onClick={() => {
+                  if (form.fileUrl && isValidFileUrl(form.fileUrl)) {
+                    window.open(resolveMediaUrl(form.fileUrl), "_blank", "noopener,noreferrer");
+                  }
+                }}
+                disabled={!form.fileUrl || !isValidFileUrl(form.fileUrl)}
+                className="rounded-xl bg-zinc-800 p-2.5 text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                title="Open file URL"
+                aria-label="Open file URL in a new tab"
+              >
+                <Link2 className="h-4 w-4" />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                if (form.fileUrl) {
-                  window.open(resolveMediaUrl(form.fileUrl), "_blank");
-                }
-              }}
-              disabled={!form.fileUrl}
-              className="p-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              title="Open file URL"
-            >
-              <Link2 className="w-4 h-4" />
-            </button>
-          </div>
+          )}
         </div>
 
         <div>
@@ -358,7 +511,7 @@ export function EditEBookModal(props: {
           disabled={loading}
           className="flex-1 px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
-          {loading ? "Saving..." : "Save Changes"}
+          {loading ? (fileMode === "upload" && ebookFile ? "Uploading file..." : "Saving...") : "Save Changes"}
         </button>
       </div>
     </Dialog>

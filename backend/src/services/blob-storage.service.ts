@@ -14,7 +14,7 @@ export function getBlobAuthenticationOptions(): BlobAuthenticationOptions | null
 
   if (env.RAILWAY_ENVIRONMENT) {
     throw new AppError(
-      'Persistent image storage is not configured for Railway. Set BLOB_READ_WRITE_TOKEN to a valid Vercel Blob read/write token and redeploy.',
+      'Persistent media storage is not configured for Railway. Set BLOB_READ_WRITE_TOKEN to a valid Vercel Blob read/write token and redeploy.',
       503,
     );
   }
@@ -28,7 +28,7 @@ export function getBlobAuthenticationOptions(): BlobAuthenticationOptions | null
 
   if (env.NODE_ENV === 'production') {
     throw new AppError(
-      'Persistent image storage is not configured. Set BLOB_READ_WRITE_TOKEN, or configure Vercel OIDC with BLOB_STORE_ID.',
+      'Persistent media storage is not configured. Set BLOB_READ_WRITE_TOKEN, or configure Vercel OIDC with BLOB_STORE_ID.',
       503,
     );
   }
@@ -36,7 +36,7 @@ export function getBlobAuthenticationOptions(): BlobAuthenticationOptions | null
   return null;
 }
 
-export function logBlobUploadFailure(kind: 'profile' | 'cover', error: unknown): string {
+export function logBlobUploadFailure(kind: 'profile' | 'cover' | 'ebook', error: unknown): string {
   const details = typeof error === 'object' && error !== null
     ? error as { name?: unknown; message?: unknown; statusCode?: unknown; code?: unknown }
     : {};
@@ -51,7 +51,8 @@ export function logBlobUploadFailure(kind: 'profile' | 'cover', error: unknown):
     message,
   );
 
-  console.error(`Vercel Blob ${kind} image upload failed:`, {
+  const label = kind === 'ebook' ? 'e-book file' : `${kind} image`;
+  console.error(`Vercel Blob ${label} upload failed:`, {
     name,
     statusCode,
     code,
@@ -59,21 +60,23 @@ export function logBlobUploadFailure(kind: 'profile' | 'cover', error: unknown):
   });
 
   if (statusCode === 401 || statusCode === 403 || name === 'BlobAccessError' || name === 'BlobClientTokenExpiredError') {
-    return `Vercel Blob rejected the ${kind} image upload credentials. Check that BLOB_READ_WRITE_TOKEN is a valid, unquoted read/write token for the intended Blob store, then redeploy.`;
+    return `Vercel Blob rejected the ${label} upload credentials. Check that BLOB_READ_WRITE_TOKEN is a valid, unquoted read/write token for the intended Blob store, then redeploy.`;
   }
   if (statusCode === 404 || name === 'BlobStoreNotFoundError') {
     return 'The configured Vercel Blob store was not found. Check the token and selected Blob store.';
   }
   if (statusCode === 413 || name === 'BlobFileTooLargeError') {
-    return `The ${kind} image is too large for Vercel Blob. Use an image smaller than 5 MB.`;
+    return kind === 'ebook'
+      ? 'The e-book file is too large for Vercel Blob. Use a file no larger than 50 MB.'
+      : `The ${kind} image is too large for Vercel Blob. Use an image smaller than 5 MB.`;
   }
   if (statusCode === 429 || name === 'BlobServiceRateLimited') {
-    return `Vercel Blob is temporarily rate limiting ${kind} image uploads. Please try again shortly.`;
+    return `Vercel Blob is temporarily rate limiting ${label} uploads. Please try again shortly.`;
   }
   if ((statusCode !== undefined && statusCode >= 500)
     || name === 'BlobServiceNotAvailable'
     || name === 'BlobStoreSuspendedError') {
-    return `Vercel Blob is temporarily unavailable for ${kind} image uploads. Please try again later.`;
+    return `Vercel Blob is temporarily unavailable for ${label} uploads. Please try again later.`;
   }
-  return `Could not store the ${kind} image in Vercel Blob. Check the backend Blob configuration and logs, then try again.`;
+  return `Could not store the ${label} in Vercel Blob. Check the backend Blob configuration and logs, then try again.`;
 }

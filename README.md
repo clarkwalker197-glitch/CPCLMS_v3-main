@@ -21,13 +21,15 @@ cd backend
 npm install
 ```
 
-### Persistent Cover Image Storage
+### Persistent Media Storage
 
 Create a **public Vercel Blob** store. Configure `BLOB_READ_WRITE_TOKEN` in the backend environment for production deployments, including Railway. In Railway, create a Vercel Blob read/write token and add the complete token value directly as the `BLOB_READ_WRITE_TOKEN` service variable; do not include quotes, line breaks, or spaces around the value. Redeploy after changing it. Vercel-hosted backends may instead use Vercel OIDC when `VERCEL_OIDC_TOKEN` and `BLOB_STORE_ID` are available. Never expose Blob credentials through frontend or `NEXT_PUBLIC_*` variables.
 
 Production image uploads do not fall back to local disk: missing Blob credentials return a configuration error, and a failed Blob upload returns an actionable error rather than saving an image to an ephemeral filesystem. Local disk storage is used only for development when no Blob credentials are configured. Local uploads are not suitable for production because they may disappear on restart and are not shared across instances.
 
 Profile pictures and physical-book/e-book covers are held in memory only long enough to validate and send them to Blob. Image upload fields are `profilePicture` and `coverImage`; the size limit is 5 MB. The database stores the returned public HTTPS URL. Pasted external image URLs continue to be stored as supplied. The existing `avatar` and `coverImage` database fields are reused; no schema migration is needed. Replacing an image cleans up its old Blob object only when it is no longer referenced. Archiving retains covers for restore; expired archives clean up unreferenced Blob objects after the database row is deleted.
+
+E-book files can be added or replaced by uploading a PDF, EPUB, or MOBI (maximum 50 MB), or by pasting an existing HTTP(S) link. Uploads use the same public Blob store and `BLOB_READ_WRITE_TOKEN`; the e-book record stores the resulting file URL. Upload data is validated in memory, and the Blob object is removed on a failed save or after an old file is no longer referenced. Local disk storage is used only for development when Blob credentials are absent; production requires Blob credentials. Existing external URLs and legacy `/uploads/ebooks/...` files are preserved unless replaced.
 
 ### Web Push Notifications
 

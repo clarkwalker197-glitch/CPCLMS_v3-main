@@ -39,21 +39,6 @@ const COVER_EXTENSIONS: Record<string, readonly string[]> = {
   'image/webp': ['.webp'],
 };
 const MAX_COVER_SIZE = 5 * 1024 * 1024;
-function safeFilename(originalName: string): string {
-  const ext = path.extname(originalName);
-  const base = path
-    .basename(originalName, ext)
-    .replace(/[^a-zA-Z0-9-_]/g, '-')
-    .slice(0, 60);
-  return `${Date.now()}-${base}${ext.toLowerCase()}`;
-}
-
-const ebookDiskStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, EBOOKS_DIR),
-  filename: (req, file, cb) => {
-    cb(null, safeFilename(file.originalname));
-  },
-});
 const memoryStorage = multer.memoryStorage();
 const boundedCoverMemoryStorage: multer.StorageEngine = {
   _handleFile(_req, file, cb) {
@@ -87,11 +72,11 @@ const boundedCoverMemoryStorage: multer.StorageEngine = {
 };
 const ebookUploadStorage: multer.StorageEngine = {
   _handleFile(req, file, cb) {
-    const storage = file.fieldname === 'coverImage' ? boundedCoverMemoryStorage : ebookDiskStorage;
+    const storage = file.fieldname === 'coverImage' ? boundedCoverMemoryStorage : memoryStorage;
     storage._handleFile(req, file, cb);
   },
   _removeFile(req, file, cb) {
-    const storage = file.fieldname === 'coverImage' ? boundedCoverMemoryStorage : ebookDiskStorage;
+    const storage = file.fieldname === 'coverImage' ? boundedCoverMemoryStorage : memoryStorage;
     storage._removeFile(req, file, cb);
   },
 };
@@ -112,7 +97,7 @@ function fileFilter(
     }
     return cb(null, true);
   }
-  if (file.fieldname === 'file') {
+  if (file.fieldname === 'file' || file.fieldname === 'ebookFile') {
     if (!EBOOK_EXTENSIONS[ext]) {
       return cb(new BadRequestError('E-book file must be a PDF, EPUB, or MOBI file'));
     }
@@ -124,8 +109,9 @@ function fileFilter(
 export const uploadEBookFiles = multer({
   storage: ebookUploadStorage,
   fileFilter,
-  limits: { fileSize: 150 * 1024 * 1024 }, // 150MB per file
+  limits: { fileSize: 50 * 1024 * 1024 },
 }).fields([
+  { name: 'ebookFile', maxCount: 1 },
   { name: 'file', maxCount: 1 },
   { name: 'coverImage', maxCount: 1 },
 ]);
@@ -151,10 +137,5 @@ export const uploadProfilePicture = multer({
   fileFilter,
   limits: { fileSize: 5 * 1024 * 1024 },
 }).single('profilePicture');
-
-export function formatFromExtension(originalName: string): 'PDF' | 'EPUB' | 'MOBI' {
-  const ext = path.extname(originalName).toLowerCase();
-  return EBOOK_EXTENSIONS[ext] || 'PDF';
-}
 
 export { EBOOKS_DIR, PROFILES_DIR, COVERS_DIR, UPLOADS_ROOT };

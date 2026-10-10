@@ -27,7 +27,7 @@ export const errorHandler = (
     const message = uploadError.code === 'LIMIT_FILE_SIZE'
       ? uploadError.field === 'coverImage'
         ? 'Cover image must be 5 MB or smaller'
-        : 'Uploaded file exceeds the size limit'
+        : 'E-book file must be 50 MB or smaller'
       : uploadError.code === 'LIMIT_UNEXPECTED_FILE'
         ? 'Unexpected file field in upload'
         : 'Invalid file upload';
@@ -91,4 +91,3 @@ export const errorHandler = (
     ...(env.NODE_ENV === 'development' && { stack: err.stack }),
   });
 };
-

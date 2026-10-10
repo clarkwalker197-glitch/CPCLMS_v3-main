@@ -1,35 +1,9 @@
-import fs from 'fs';
-import { promises as fsPromises } from 'fs';
-import path from 'path';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../config';
 import { tryDeleteUnreferencedCoverImage } from './cover-image-storage.service';
+import { tryDeleteUnreferencedEBookFile } from './ebook-file-storage.service';
 
 export const ARCHIVE_RETENTION_DAYS = 15;
-
-const backendRootCandidates = [
-  process.cwd(),
-  path.join(process.cwd(), 'backend'),
-  path.resolve(__dirname, '../../'),
-  path.resolve(__dirname, '../../../'),
-];
-const backendRoot = backendRootCandidates.find((root) =>
-  fs.existsSync(path.join(root, 'prisma', 'schema.prisma'))
-) ?? backendRootCandidates[0];
-
-async function tryDeleteLocalEBookFile(fileUrl?: string | null): Promise<void> {
-  const match = fileUrl && /^\/uploads\/ebooks\/([^/\\]+)$/.exec(fileUrl);
-  if (!match || match[1] === '.' || match[1] === '..') return;
-
-  const filePath = path.join(backendRoot, 'uploads', 'ebooks', match[1]);
-  try {
-    await fsPromises.unlink(filePath);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-      console.error(`Could not delete expired e-book file ${filePath}:`, error);
-    }
-  }
-}
 
 export class ArchiveRetentionService {
   async purgeExpiredArchives() {
@@ -120,7 +94,7 @@ export class ArchiveRetentionService {
             results.deleted += 1;
 
             if (record.coverImage) await tryDeleteUnreferencedCoverImage(record.coverImage);
-            if (record.fileUrl) await tryDeleteLocalEBookFile(record.fileUrl);
+            if (record.fileUrl) await tryDeleteUnreferencedEBookFile(record.fileUrl);
           } catch (error) {
             results.failed += 1;
             console.error(`Failed to purge expired ${job.name} archive record ${record.id}:`, error);

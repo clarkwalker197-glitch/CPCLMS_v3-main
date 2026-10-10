@@ -6,6 +6,7 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import Sidebar from "@/components/Sidebar";
 import api from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { useConfirmDialog } from "@/components/ui/ConfirmModal";
 
 type Faq = {
   id: string;
@@ -22,6 +23,7 @@ const emptyForm = { question: "", answer: "", category: "Library" };
 
 export default function FaqPage() {
   const { user } = useAuth();
+  const { confirm } = useConfirmDialog();
   const isLibrarian = user?.role === "LIBRARIAN";
   const [faqs, setFaqs] = useState<Faq[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -81,15 +83,24 @@ export default function FaqPage() {
   };
 
   const reject = async (faq: Faq) => {
-    if (!window.confirm("Reject and remove this submitted question?")) return;
-    setError("");
-    const response = await api.deleteFaq(faq.id);
-    if (response.success) {
-      setMessage("Submitted question rejected.");
-      await load();
-    } else {
-      setError(response.error || "Unable to reject this question.");
-    }
+    await confirm({
+      title: 'Reject submitted question?',
+      description: 'This will remove the submitted question from the review queue.',
+      confirmLabel: 'Reject question',
+      variant: 'danger',
+      dangerous: true,
+      onConfirm: async () => {
+        setError("");
+        const response = await api.deleteFaq(faq.id);
+        if (!response.success) {
+          const message = response.error || 'Unable to reject this question.';
+          setError(message);
+          throw new Error(message);
+        }
+        setMessage("Submitted question rejected.");
+        await load();
+      },
+    });
   };
 
   const edit = (faq: Faq) => {
@@ -116,14 +127,23 @@ export default function FaqPage() {
   };
 
   const removePublishedFaq = async (id: string) => {
-    if (!window.confirm("Delete this published FAQ?")) return;
-    const response = await api.deleteFaq(id);
-    if (response.success) {
-      setMessage("FAQ deleted.");
-      await load();
-    } else {
-      setError(response.error || "Unable to delete this FAQ.");
-    }
+    await confirm({
+      title: 'Delete published FAQ?',
+      description: 'This FAQ will be permanently removed and no longer visible to library users.',
+      confirmLabel: 'Delete FAQ',
+      variant: 'danger',
+      dangerous: true,
+      onConfirm: async () => {
+        const response = await api.deleteFaq(id);
+        if (!response.success) {
+          const message = response.error || 'Unable to delete this FAQ.';
+          setError(message);
+          throw new Error(message);
+        }
+        setMessage("FAQ deleted.");
+        await load();
+      },
+    });
   };
 
   const pendingFaqs = faqs.filter((faq) => !faq.isPublished);

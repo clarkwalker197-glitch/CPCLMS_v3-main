@@ -7,8 +7,8 @@ import { ebookService } from '../services';
 import { asyncHandler } from '../utils/asyncHandler';
 import { sendSuccess } from '../utils/helpers';
 import { BadRequestError } from '../utils/errors';
-import { formatFromExtension } from '../middlewares/upload';
 import { storeCoverImage, tryDeleteNewCoverImage } from '../services/cover-image-storage.service';
+import { storeEBookFile, tryDeleteNewEBookFile, tryDeleteUnreferencedEBookFile } from '../services/ebook-file-storage.service';
 
 /**
  * GET /api/ebooks
@@ -27,54 +27,36 @@ export const getEBook = asyncHandler(async (req: Request, res: Response) => {
 });
 
 /**
- * POST /api/ebooks
+ * POST /api/ebooks and the legacy POST /api/ebooks/upload route
  */
 export const createEBook = asyncHandler(async (req: Request, res: Response) => {
-  const ebook = await ebookService.createEBook(req.body);
-  sendSuccess(res, ebook, 'E-Book created successfully', 201);
-});
-
-/**
- * POST /api/ebooks/upload
- * Accepts multipart/form-data: file (required), coverImage (optional),
- * plus the same text fields as POST /api/ebooks (isbn, title, author, ...).
- */
-export const uploadEBook = asyncHandler(async (req: Request, res: Response) => {
-  const files = req.files as { file?: Express.Multer.File[]; coverImage?: Express.Multer.File[] } | undefined;
-  const uploadedFile = files?.file?.[0];
+  const files = req.files as { ebookFile?: Express.Multer.File[]; file?: Express.Multer.File[]; coverImage?: Express.Multer.File[] } | undefined;
+  const uploadedFile = files?.ebookFile?.[0] || files?.file?.[0];
   const uploadedCover = files?.coverImage?.[0];
-
-  if (!uploadedFile) {
-    throw new BadRequestError('An e-book file is required');
-  }
-
-  const { isbn, title, author, publisher, publishYear, edition, categoryId, description, language, coverImage: coverImageUrl } = req.body;
-
-  if (!isbn || !title || !author || !categoryId) {
-    throw new BadRequestError('ISBN, title, author, and category are required');
-  }
-
-  const fileUrl = `/uploads/ebooks/${uploadedFile.filename}`;
-  const uploadedCoverUrl = uploadedCover ? await storeCoverImage(uploadedCover) : undefined;
+  const storedFile = uploadedFile ? await storeEBookFile(uploadedFile) : null;
+  let uploadedCoverUrl: string | undefined;
   try {
+    uploadedCoverUrl = uploadedCover ? await storeCoverImage(uploadedCover) : undefined;
+    const fileUrl = storedFile?.fileUrl || req.body.fileUrl;
+    if (!fileUrl) {
+      throw new BadRequestError('Choose an e-book file to upload or provide a valid file URL');
+    }
+
     const ebook = await ebookService.createEBook({
-      isbn,
-      title,
-      author,
-      publisher: publisher || undefined,
-      publishYear: publishYear ? Number(publishYear) : undefined,
-      edition: edition || undefined,
-      categoryId: categoryId || undefined,
-      description: description || undefined,
-      coverImage: uploadedCoverUrl || coverImageUrl || undefined,
-      language: language || 'English',
+      ...req.body,
       fileUrl,
-      fileSize: uploadedFile.size,
-      format: formatFromExtension(uploadedFile.originalname),
+      ...(storedFile
+        ? {
+            fileSize: storedFile.fileSize,
+            format: req.body.format || storedFile.format,
+          }
+        : {}),
+      ...(uploadedCoverUrl ? { coverImage: uploadedCoverUrl } : {}),
     });
 
-    sendSuccess(res, ebook, 'E-Book uploaded successfully', 201);
+    sendSuccess(res, ebook, storedFile ? 'E-Book uploaded successfully' : 'E-Book created successfully', 201);
   } catch (error) {
+    if (storedFile) await tryDeleteNewEBookFile(storedFile.fileUrl);
     if (uploadedCoverUrl) await tryDeleteNewCoverImage(uploadedCoverUrl);
     throw error;
   }
@@ -84,8 +66,30 @@ export const uploadEBook = asyncHandler(async (req: Request, res: Response) => {
  * PUT /api/ebooks/:id
  */
 export const updateEBook = asyncHandler(async (req: Request, res: Response) => {
-  const ebook = await ebookService.updateEBook(req.params.id, req.body);
-  sendSuccess(res, ebook, 'E-Book updated successfully');
+  const files = req.files as { ebookFile?: Express.Multer.File[]; file?: Express.Multer.File[] } | undefined;
+  const uploadedFile = files?.ebookFile?.[0] || files?.file?.[0];
+  const existingEBook = uploadedFile ? await ebookService.getEBookById(req.params.id) : null;
+  const storedFile = uploadedFile ? await storeEBookFile(uploadedFile) : null;
+
+  try {
+    const ebook = await ebookService.updateEBook(req.params.id, {
+      ...req.body,
+      ...(storedFile
+        ? {
+            fileUrl: storedFile.fileUrl,
+            fileSize: storedFile.fileSize,
+            format: req.body.format || storedFile.format,
+          }
+        : {}),
+    });
+    if (storedFile && existingEBook?.fileUrl !== storedFile.fileUrl) {
+      await tryDeleteUnreferencedEBookFile(existingEBook?.fileUrl);
+    }
+    sendSuccess(res, ebook, 'E-Book updated successfully');
+  } catch (error) {
+    if (storedFile) await tryDeleteNewEBookFile(storedFile.fileUrl);
+    throw error;
+  }
 });
 
 /**
@@ -95,4 +99,3 @@ export const deleteEBook = asyncHandler(async (req: Request, res: Response) => {
   await ebookService.deleteEBook(req.params.id);
   sendSuccess(res, null, 'E-Book deleted successfully');
 });
-

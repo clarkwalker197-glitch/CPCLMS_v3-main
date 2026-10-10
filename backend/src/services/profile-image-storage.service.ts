@@ -9,6 +9,16 @@ import { AppError, BadRequestError } from '../utils/errors';
 
 const PROFILE_BLOB_URL = /^https:\/\/[a-z0-9-]+\.public\.blob\.vercel-storage\.com\/profiles\/profile-[0-9a-f-]{36}\.(?:jpg|png|webp)$/i;
 const LEGACY_PROFILE_FILENAME = /^\d+-[a-zA-Z0-9-]*\.(?:jpe?g|png|webp)$/i;
+const PROFILE_LOCAL_URL = /^\/uploads\/profiles\/[A-Za-z0-9._-]+\.(?:jpe?g|png|webp)$/i;
+
+async function storeLocalProfileImage(file: Pick<Express.Multer.File, 'buffer' | 'mimetype'>): Promise<string> {
+  const extension = coverExtensionForMimeType(file.mimetype)!;
+  const filename = `profile-${randomUUID()}.${extension}`;
+  const filePath = path.join(PROFILES_DIR, filename);
+
+  await fs.writeFile(filePath, file.buffer);
+  return `/uploads/profiles/${filename}`;
+}
 
 export async function storeProfileImage(
   file: Pick<Express.Multer.File, 'buffer' | 'mimetype'>
@@ -20,33 +30,61 @@ export async function storeProfileImage(
 
   const hasReadWriteToken = Boolean(process.env.BLOB_READ_WRITE_TOKEN?.trim());
   const hasVercelOidc = Boolean(process.env.VERCEL_OIDC_TOKEN && process.env.BLOB_STORE_ID);
-  if (!hasReadWriteToken && !hasVercelOidc) {
-    throw new AppError(
-      'Profile image storage is not configured. Please contact an administrator.',
-      503
-    );
+  if (hasReadWriteToken || hasVercelOidc) {
+    try {
+      const content = Uint8Array.from(file.buffer).buffer as ArrayBuffer;
+      const blob = await put(`profiles/profile-${randomUUID()}.${extension}`, content, {
+        access: 'public',
+        contentType: file.mimetype,
+        cacheControlMaxAge: 60 * 60 * 24 * 30,
+      });
+      return blob.url;
+    } catch (error) {
+      console.error('Vercel Blob profile image upload failed:', error);
+      throw new AppError('Could not store the profile picture. Please try again.', 503);
+    }
   }
 
+  return storeLocalProfileImage(file);
+}
+
+function getLocalAssetPath(value: string, prefix: string): string | null {
+  let pathname: string;
   try {
-    const content = Uint8Array.from(file.buffer).buffer as ArrayBuffer;
-    const blob = await put(`profiles/profile-${randomUUID()}.${extension}`, content, {
-      access: 'public',
-      contentType: file.mimetype,
-      cacheControlMaxAge: 60 * 60 * 24 * 30,
-    });
-    return blob.url;
-  } catch (error) {
-    console.error('Vercel Blob profile image upload failed:', error);
-    throw new AppError('Could not store the profile picture. Please try again.', 503);
+    pathname = value.startsWith('/') ? value : new URL(value).pathname;
+  } catch {
+    return null;
   }
+
+  if (!pathname.startsWith(prefix)) return null;
+  const filename = decodeURIComponent(pathname.slice(prefix.length));
+  if (path.basename(filename) !== filename) return null;
+  return path.resolve(PROFILES_DIR, path.basename(filename));
 }
 
 export async function tryDeleteNewProfileImage(value?: string | null): Promise<void> {
-  if (!value || !PROFILE_BLOB_URL.test(value)) return;
+  if (!value) return;
+
+  if (PROFILE_BLOB_URL.test(value)) {
+    try {
+      await del(value);
+    } catch (error) {
+      console.error('Could not delete a newly uploaded profile image from Vercel Blob:', error);
+    }
+    return;
+  }
+
+  if (!PROFILE_LOCAL_URL.test(value)) return;
+
+  const filePath = value.startsWith('/') ? path.resolve(PROFILES_DIR, path.basename(value)) : null;
+  if (!filePath) return;
+
   try {
-    await del(value);
+    await fs.unlink(filePath).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== 'ENOENT') throw error;
+    });
   } catch (error) {
-    console.error('Could not delete a newly uploaded profile image from Vercel Blob:', error);
+    console.error('Could not delete a newly uploaded local profile image:', error);
   }
 }
 
@@ -60,15 +98,13 @@ export async function tryDeleteUnreferencedProfileImage(value?: string | null): 
       return;
     }
 
+    const prefix = '/uploads/profiles/';
     let pathname: string;
     try {
-      pathname = value.startsWith('/')
-        ? value
-        : new URL(value).pathname;
+      pathname = value.startsWith('/') ? value : new URL(value).pathname;
     } catch {
       return;
     }
-    const prefix = '/uploads/profiles/';
     if (!pathname.startsWith(prefix)) return;
     const filename = decodeURIComponent(pathname.slice(prefix.length));
     if (path.basename(filename) !== filename || !LEGACY_PROFILE_FILENAME.test(filename)) return;

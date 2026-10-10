@@ -22,8 +22,9 @@ const backendRoot = candidateRoots.find((root) =>
 const UPLOADS_ROOT = path.join(backendRoot, 'uploads');
 const EBOOKS_DIR = path.join(UPLOADS_ROOT, 'ebooks');
 const PROFILES_DIR = path.join(UPLOADS_ROOT, 'profiles');
+const COVERS_DIR = path.join(UPLOADS_ROOT, 'covers');
 
-for (const dir of [EBOOKS_DIR, PROFILES_DIR]) {
+for (const dir of [EBOOKS_DIR, PROFILES_DIR, COVERS_DIR]) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
@@ -156,4 +157,4 @@ export function formatFromExtension(originalName: string): 'PDF' | 'EPUB' | 'MOB
   return EBOOK_EXTENSIONS[ext] || 'PDF';
 }
 
-export { EBOOKS_DIR, PROFILES_DIR, UPLOADS_ROOT };
+export { EBOOKS_DIR, PROFILES_DIR, COVERS_DIR, UPLOADS_ROOT };

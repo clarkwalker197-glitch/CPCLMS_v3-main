@@ -5,6 +5,7 @@ import { del, put } from '@vercel/blob';
 import { prisma } from '../config';
 import { COVERS_DIR } from '../middlewares/upload';
 import { AppError, BadRequestError } from '../utils/errors';
+import { getBlobAuthenticationOptions, logBlobUploadFailure } from './blob-storage.service';
 
 const COVER_FORMATS = {
   'image/jpeg': 'jpg',
@@ -44,20 +45,19 @@ export async function storeCoverImage(file: Pick<Express.Multer.File, 'buffer' |
     throw new BadRequestError('Cover image must be a valid JPG, PNG, or WEBP image');
   }
 
-  const hasReadWriteToken = Boolean(process.env.BLOB_READ_WRITE_TOKEN?.trim());
-  const hasVercelOidc = Boolean(process.env.VERCEL_OIDC_TOKEN && process.env.BLOB_STORE_ID);
-  if (hasReadWriteToken || hasVercelOidc) {
+  const blobAuthentication = getBlobAuthenticationOptions();
+  if (blobAuthentication) {
     try {
       const content = Uint8Array.from(file.buffer).buffer as ArrayBuffer;
       const blob = await put(`covers/cover-${randomUUID()}.${format}`, content, {
+        ...blobAuthentication,
         access: 'public',
         contentType: file.mimetype,
         cacheControlMaxAge: 60 * 60 * 24 * 30,
       });
       return blob.url;
     } catch (error) {
-      console.error('Vercel Blob cover upload failed:', error);
-      throw new AppError('Could not store the cover image. Please try again.', 503);
+      throw new AppError(logBlobUploadFailure('cover', error), 503);
     }
   }
 

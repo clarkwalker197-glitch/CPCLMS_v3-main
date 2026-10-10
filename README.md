@@ -23,9 +23,11 @@ npm install
 
 ### Persistent Cover Image Storage
 
-Create a **public Vercel Blob** store. For a local backend or a backend hosted outside Vercel, set `BLOB_READ_WRITE_TOKEN` in `backend/.env` and in the backend host's environment settings. If the backend runs on Vercel and the Blob store is connected to that Vercel project, the SDK uses Vercel OIDC automatically; no token should be added to frontend variables. Never expose Blob credentials through `NEXT_PUBLIC_*` variables.
+Create a **public Vercel Blob** store. Configure `BLOB_READ_WRITE_TOKEN` in the backend environment for production deployments, including Railway. In Railway, create a Vercel Blob read/write token and add the complete token value directly as the `BLOB_READ_WRITE_TOKEN` service variable; do not include quotes, line breaks, or spaces around the value. Redeploy after changing it. Vercel-hosted backends may instead use Vercel OIDC when `VERCEL_OIDC_TOKEN` and `BLOB_STORE_ID` are available. Never expose Blob credentials through frontend or `NEXT_PUBLIC_*` variables.
 
-Physical-book and e-book cover uploads are held in memory only long enough to validate and send them to Blob. The database stores the returned public HTTPS URL. Pasted external image URLs continue to be stored as supplied. The existing `coverImage` database field is reused; no schema migration is needed. Replacing a cover cleans up an old Blob object only when no book or e-book still references it. Archiving retains covers for restore; expired archives clean up unreferenced Blob objects after the database row is deleted.
+Production image uploads do not fall back to local disk: missing Blob credentials return a configuration error, and a failed Blob upload returns an actionable error rather than saving an image to an ephemeral filesystem. Local disk storage is used only for development when no Blob credentials are configured. Local uploads are not suitable for production because they may disappear on restart and are not shared across instances.
+
+Profile pictures and physical-book/e-book covers are held in memory only long enough to validate and send them to Blob. Image upload fields are `profilePicture` and `coverImage`; the size limit is 5 MB. The database stores the returned public HTTPS URL. Pasted external image URLs continue to be stored as supplied. The existing `avatar` and `coverImage` database fields are reused; no schema migration is needed. Replacing an image cleans up its old Blob object only when it is no longer referenced. Archiving retains covers for restore; expired archives clean up unreferenced Blob objects after the database row is deleted.
 
 ### Web Push Notifications
 

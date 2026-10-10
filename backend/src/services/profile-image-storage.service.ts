@@ -3,10 +3,10 @@ import fs from 'fs/promises';
 import path from 'path';
 import { del, put } from '@vercel/blob';
 import { prisma } from '../config';
-import { env } from '../config/env';
 import { PROFILES_DIR } from '../middlewares/upload';
 import { coverExtensionForMimeType, hasMatchingImageSignature } from './cover-image-storage.service';
 import { AppError, BadRequestError } from '../utils/errors';
+import { getBlobAuthenticationOptions, logBlobUploadFailure } from './blob-storage.service';
 
 const PROFILE_BLOB_URL = /^https:\/\/[a-z0-9-]+\.public\.blob\.vercel-storage\.com\/profiles\/profile-[0-9a-f-]{36}\.(?:jpg|png|webp)$/i;
 const LEGACY_PROFILE_FILENAME = /^\d+-[a-zA-Z0-9-]*\.(?:jpe?g|png|webp)$/i;
@@ -29,20 +29,19 @@ export async function storeProfileImage(
     throw new BadRequestError('Profile picture must be a valid JPG, PNG, or WEBP image');
   }
 
-  const hasReadWriteToken = Boolean(env.BLOB_READ_WRITE_TOKEN?.trim());
-  const hasVercelOidc = Boolean(env.VERCEL_OIDC_TOKEN?.trim() && env.BLOB_STORE_ID?.trim());
-  if (hasReadWriteToken || hasVercelOidc) {
+  const blobAuthentication = getBlobAuthenticationOptions();
+  if (blobAuthentication) {
     try {
       const content = Uint8Array.from(file.buffer).buffer as ArrayBuffer;
       const blob = await put(`profiles/profile-${randomUUID()}.${extension}`, content, {
+        ...blobAuthentication,
         access: 'public',
         contentType: file.mimetype,
         cacheControlMaxAge: 60 * 60 * 24 * 30,
       });
       return blob.url;
     } catch (error) {
-      console.error('Vercel Blob profile image upload failed:', error);
-      throw new AppError('Could not store the profile picture. Please try again.', 503);
+      throw new AppError(logBlobUploadFailure('profile', error), 503);
     }
   }
 

@@ -39,6 +39,11 @@ const frontendOriginSchema = z.preprocess((value) => {
   z.array(z.string().url()),
 ]).default('http://localhost:3000'));
 
+const optionalTrimmedString = z.preprocess(
+  (value) => (typeof value === 'string' ? value.trim() || undefined : value),
+  z.string().optional(),
+);
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().default(4000),
@@ -73,9 +78,14 @@ const envSchema = z.object({
       return z.string().email().safeParse(displayNameAddress?.[1] ?? value).success;
     }, 'Invalid email')
   ),
-  BLOB_READ_WRITE_TOKEN: z.string().optional(),
-  BLOB_STORE_ID: z.string().optional(),
-  VERCEL_OIDC_TOKEN: z.string().optional(),
+  BLOB_READ_WRITE_TOKEN: optionalTrimmedString.refine(
+    (value) => value === undefined || (!value.startsWith('"') && !value.startsWith("'") && !value.endsWith('"') && !value.endsWith("'")),
+    'BLOB_READ_WRITE_TOKEN must not include surrounding quotes',
+  ),
+  BLOB_STORE_ID: optionalTrimmedString,
+  VERCEL_OIDC_TOKEN: optionalTrimmedString,
+  VERCEL: optionalTrimmedString,
+  RAILWAY_ENVIRONMENT: optionalTrimmedString,
 });
 
 const parsed = envSchema.safeParse(process.env);

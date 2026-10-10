@@ -356,7 +356,7 @@ export default function EBooksPage() {
 
           {/* Loading */}
           {loading && (
-            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {Array.from({ length: 6 }).map((_, i) => (
                 <div key={i} className="h-72 rounded-2xl bg-zinc-900 animate-pulse" />
               ))}
@@ -410,12 +410,12 @@ export default function EBooksPage() {
                         </span>
                       )}
                     </div>
-                    <div className="mt-2 flex items-stretch gap-2">
+                    <div className="mt-2 flex flex-col items-stretch gap-2 min-[400px]:flex-row">
                       {isLibrarian ? (
                         <>
                           <button
                             onClick={() => handleEdit(ebook)}
-                            className="flex-1 min-w-0 whitespace-nowrap inline-flex items-center justify-center gap-1 rounded-lg bg-zinc-800 px-2 py-2 text-[10px] font-medium text-zinc-200 transition-colors hover:bg-zinc-700 sm:text-xs"
+                            className="flex min-h-9 min-w-0 flex-1 whitespace-nowrap items-center justify-center gap-1 rounded-lg bg-zinc-800 px-2 py-2 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-700"
                           >
                             <Pencil className="h-4 w-4 shrink-0" />
                             <span>Edit</span>
@@ -424,7 +424,7 @@ export default function EBooksPage() {
                             onClick={() => handleToggleAvailability(ebook)}
                             disabled={togglingStatusId !== null}
                             aria-label={ebook.status === 'AVAILABLE' ? 'Mark not available' : 'Mark available'}
-                            className={`flex-1 min-w-0 whitespace-nowrap inline-flex items-center justify-center gap-1 rounded-lg px-2 py-2 text-[10px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 sm:text-xs ${
+                            className={`flex min-h-9 min-w-0 flex-1 whitespace-nowrap items-center justify-center gap-1 rounded-lg px-2 py-2 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                               ebook.status === 'AVAILABLE'
                                 ? 'bg-orange-500/10 text-orange-400 hover:bg-orange-500/20'
                                 : 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'

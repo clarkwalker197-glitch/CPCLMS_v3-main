@@ -69,9 +69,9 @@ export default function LoginPage() {
     <GoogleOAuthProvider clientId={googleClientId || 'not-configured'}>
       <div className="min-h-screen bg-zinc-950 flex flex-col">
         <div className="flex-1 flex items-center justify-center p-4 sm:p-8">
-          <div className="w-full max-w-6xl grid md:grid-cols-2 gap-6">
+          <div className="w-full max-w-6xl grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
             {/* ── Left Card: Dark branding ─────────────────────────── */}
-            <div className="auth-brand-panel relative overflow-hidden rounded-3xl bg-gradient-to-b from-[#0f172a] via-blue-950 to-blue-900 text-white p-10 sm:p-12 flex flex-col justify-between shadow-[0_20px_60px_-15px_rgba(37,99,235,0.5)] ring-1 ring-white/10 min-h-[560px]">
+            <div className="auth-brand-panel relative hidden overflow-hidden rounded-3xl bg-gradient-to-b from-[#0f172a] via-blue-950 to-blue-900 p-10 text-white shadow-[0_20px_60px_-15px_rgba(37,99,235,0.5)] ring-1 ring-white/10 md:flex md:min-h-[560px] md:flex-col md:justify-between md:p-12">
               {/* Decorative glow */}
               <div className="absolute -top-32 -right-32 w-96 h-96 bg-blue-500/30 rounded-full blur-3xl" />
               <div className="absolute -bottom-40 -left-20 w-80 h-80 bg-sky-400/20 rounded-full blur-3xl" />
@@ -127,17 +127,17 @@ export default function LoginPage() {
             </div>
 
             {/* ── Right Card: Login Form ──────────────────────────── */}
-            <div className="rounded-3xl bg-zinc-900 border border-zinc-800 p-10 sm:p-12 flex flex-col justify-center shadow-2xl shadow-black/40 min-h-[560px]">
+            <div className="rounded-3xl bg-zinc-900 border border-zinc-800 p-5 sm:p-8 md:p-12 flex flex-col justify-center shadow-2xl shadow-black/40 md:min-h-[560px]">
               <div className="w-full max-w-md mx-auto">
                 {/* Logo */}
-                <div className="flex flex-col items-center mb-8">
+                <div className="flex flex-col items-center mb-5 sm:mb-8">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/CPClogo.png" alt="Cordova Public College Logo" className="w-20 h-20 object-contain mb-4" />
-                  <h2 className="text-3xl font-bold text-white">Welcome Back</h2>
+                  <img src="/CPClogo.png" alt="Cordova Public College Logo" className="w-16 h-16 sm:w-20 sm:h-20 object-contain mb-2 sm:mb-4" />
+                  <h2 className="text-2xl sm:text-3xl font-bold text-white">Welcome Back</h2>
                   <p className="text-zinc-400 mt-2">Sign in to the Library System to continue.</p>
                 </div>
 
-                <form onSubmit={handleSubmit} className="space-y-5">
+                <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
                   {error && (
                     <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-sm text-red-400">
                       {error}
@@ -174,7 +174,7 @@ export default function LoginPage() {
                         value={identifier}
                         onChange={(e) => setIdentifier(e.target.value.replace(/[^0-9]/g, ''))}
                         className="w-full pl-10 pr-3 py-3 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                        placeholder="Enter your ID Number (e.g., 2025-0123)"
+                        placeholder="e.g. 2025-0123"
                       />
                     </div>
                   </div>
@@ -197,7 +197,7 @@ export default function LoginPage() {
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         className="w-full pl-10 pr-14 py-3 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                        placeholder="Enter your password"
+                        placeholder="Password"
                       />
                       <button
                         type="button"

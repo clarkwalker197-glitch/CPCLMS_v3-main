@@ -75,7 +75,7 @@ export default function ReservationsPage() {
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex">
       <Sidebar />
       <div className="flex-1 min-w-0">
-        <div className="max-w-6xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
+        <div className="max-w-6xl mx-auto px-4 py-8 pb-[calc(7rem+min(env(safe-area-inset-bottom),2rem))] sm:px-6 lg:px-8 lg:pb-8">
           <div className="mb-6 flex items-center justify-between gap-3">
             <div>
               <h1 className="text-2xl font-bold text-white">Reservations</h1>

@@ -337,7 +337,8 @@ export function EditBookModal(props: {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-4 max-h-[65vh] overflow-y-auto pr-1">
+      <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pr-1">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className={labelClass}>Title *</label>
@@ -546,10 +547,11 @@ export function EditBookModal(props: {
           />
         </div>
 
-      </form>
+      </div>
 
-      <div className="flex gap-2 mt-6">
+      <div className="mt-4 flex shrink-0 gap-2 border-t border-zinc-800 pt-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         <button
+          type="button"
           onClick={handleClose}
           disabled={loading}
           className="flex-1 px-4 py-2.5 rounded-lg border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-600 font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -557,13 +559,14 @@ export function EditBookModal(props: {
           Cancel
         </button>
         <button
-          onClick={handleSubmit}
+          type="submit"
           disabled={loading}
           className="flex-1 px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {loading ? "Saving..." : "Save Changes"}
         </button>
       </div>
+      </form>
     </Dialog>
   );
 }

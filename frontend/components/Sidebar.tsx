@@ -36,7 +36,7 @@ const navItems = [
     ],
   },
   { href: "/members", label: "Members", icon: Users },
-  { href: "/requests", label: "Borrow Requests", icon: ClipboardList },
+  { href: "/requests", label: "Requests", icon: ClipboardList },
   { href: "/reservations", label: "Reservations", icon: BookOpenText },
   { href: "/faq", label: "FAQ", icon: HelpCircle },
   { href: "/suggestions", label: "Suggestions", icon: MessageSquare },
@@ -182,9 +182,9 @@ export default function Sidebar() {
           const Icon = item.icon;
           const isActive = pathname === item.href || pathname.startsWith(item.href + "/") || (item.label === "Books" && pathname.startsWith("/ebooks"));
           return (
-            <Link key={item.label} href={item.href} className={`flex min-w-0 flex-1 flex-col items-center justify-start gap-1 rounded-xl px-0.5 py-2 text-[10px] font-medium leading-3 transition-colors ${isActive ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}>
+            <Link key={item.href} href={item.href} aria-label={item.label === "Requests" ? "Borrow Requests" : item.label} title={item.label === "Requests" ? "Borrow Requests" : item.label} className={`flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl px-0.5 py-1 text-[10px] font-medium leading-3 transition-colors ${isActive ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}>
               <Icon className="h-5 w-5 shrink-0" />
-              <span className="flex min-h-6 w-full items-start justify-center whitespace-normal text-center">{item.label}</span>
+              <span className="w-full whitespace-nowrap text-center">{item.label}</span>
             </Link>
           );
         })}
@@ -193,10 +193,10 @@ export default function Sidebar() {
           onClick={() => setMoreOpen(true)}
           aria-expanded={moreOpen}
           aria-controls="mobile-more-menu"
-          className={`relative flex min-w-0 flex-1 flex-col items-center justify-start gap-1 rounded-xl px-0.5 py-2 text-[10px] font-medium leading-3 transition-colors ${moreOpen || ["/analytics", "/members", "/archive", "/activities", "/policies", "/profile", "/faq", "/suggestions", "/acquisition-requests"].some((href) => pathname === href || pathname.startsWith(href + "/")) ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}
+          className={`relative flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl px-0.5 py-1 text-[10px] font-medium leading-3 transition-colors ${moreOpen || ["/analytics", "/members", "/archive", "/activities", "/policies", "/profile", "/faq", "/suggestions", "/acquisition-requests"].some((href) => pathname === href || pathname.startsWith(href + "/")) ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}
         >
           <MoreHorizontal className="h-5 w-5 shrink-0" />
-          <span className="flex min-h-6 w-full items-start justify-center whitespace-normal text-center">More</span>
+          <span className="w-full whitespace-nowrap text-center">More</span>
           {!moreOpen && ["/analytics", "/members", "/archive", "/activities", "/policies", "/profile", "/faq", "/suggestions", "/acquisition-requests"].some((href) => pathname === href || pathname.startsWith(href + "/")) && (
             <span className="absolute right-2 top-1 h-1.5 w-1.5 rounded-full bg-white" aria-hidden="true" />
           )}

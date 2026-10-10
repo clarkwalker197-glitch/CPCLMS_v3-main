@@ -26,8 +26,7 @@ export default function LoginPage() {
   const [searchParams] = useState(() => new URLSearchParams(typeof window !== 'undefined' ? window.location.search : ''));
   const returnTo = searchParams.get('returnTo');
   const resetMessage = searchParams.get('reset') === 'success' ? 'Password reset successfully. You can now sign in.' : '';
-  const inactivityMessage = searchParams.get('reason') === 'inactivity' ? 'You have been logged out due to inactivity.' : '';
-  const sessionExpiredMessage = searchParams.get('reason') === 'session-expired'
+  const sessionExpiredMessage = ['session-expired', 'inactivity'].includes(searchParams.get('reason') || '')
     ? 'Your session expired. Please sign in again.'
     : '';
 
@@ -147,11 +146,6 @@ export default function LoginPage() {
                   {resetMessage && (
                     <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg text-sm text-emerald-400">
                       {resetMessage}
-                    </div>
-                  )}
-                  {inactivityMessage && (
-                    <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-sm text-amber-300">
-                      {inactivityMessage}
                     </div>
                   )}
                   {sessionExpiredMessage && (

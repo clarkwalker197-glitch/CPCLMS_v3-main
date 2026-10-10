@@ -8,7 +8,7 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { sendSuccess } from '../utils/helpers';
 import { AuthenticatedRequest } from '../types';
 import { DEPARTMENTS } from '../constants/departments';
-import { env } from '../config/env';
+import { env, REFRESH_TOKEN_TTL_MS } from '../config/env';
 import { UnauthorizedError } from '../utils/errors';
 import {
   storeProfileImage,
@@ -58,7 +58,7 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
   const { identifier, password } = req.body;
   const ipAddress = req.ip;
   const result = await authService.login(identifier, password, ipAddress, req.get('user-agent'));
-  setRefreshCookie(res, result.refreshToken, new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
+  setRefreshCookie(res, result.refreshToken, new Date(Date.now() + REFRESH_TOKEN_TTL_MS));
   sendSuccess(res, result, 'Login successful');
 });
 
@@ -74,7 +74,7 @@ export const verifyPasswordReset = asyncHandler(async (req: Request, res: Respon
 
 export const googleLogin = asyncHandler(async (req: Request, res: Response) => {
   const result = await authService.googleLogin(req.body.credential, req.ip, req.get('user-agent'));
-  setRefreshCookie(res, result.refreshToken, new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
+  setRefreshCookie(res, result.refreshToken, new Date(Date.now() + REFRESH_TOKEN_TTL_MS));
   sendSuccess(res, result, 'Google login successful');
 });
 
@@ -89,7 +89,7 @@ export const resetPassword = asyncHandler(async (req: Request, res: Response) =>
 export const register = asyncHandler(async (req: Request, res: Response) => {
   const ipAddress = req.ip;
   const result = await authService.register(req.body, ipAddress, req.get('user-agent'));
-  setRefreshCookie(res, result.refreshToken, new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
+  setRefreshCookie(res, result.refreshToken, new Date(Date.now() + REFRESH_TOKEN_TTL_MS));
   sendSuccess(res, result, 'Registration successful', 201);
 });
 
@@ -109,7 +109,7 @@ export const refreshToken = asyncHandler(async (req: Request, res: Response) => 
   const token = getRefreshTokenFromRequest(req);
   try {
     const result = await authService.refreshAccessToken(token);
-    setRefreshCookie(res, result.refreshToken, new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
+    setRefreshCookie(res, result.refreshToken, new Date(Date.now() + REFRESH_TOKEN_TTL_MS));
     sendSuccess(res, result, 'Token refreshed successfully');
   } catch (error) {
     if (error instanceof UnauthorizedError) clearRefreshCookie(res);

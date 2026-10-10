@@ -46,11 +46,8 @@ const getStoredLastActivity = (): number => {
 
 const setStoredLastActivity = (timestamp = Date.now()) => {
   if (typeof window === 'undefined') return;
-  lastActivityRefValue = timestamp;
   localStorage.setItem(LAST_ACTIVITY_STORAGE_KEY, String(timestamp));
 };
-
-let lastActivityRefValue = Date.now();
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -105,9 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      const authFailure = typeof res.error === 'string' && /401|unauthorized|forbidden|token/i.test(res.error);
-      if (authFailure) {
-        api.clearTokens();
+      if (!checkAuth()) {
         void clearOfflineData();
         localStorage.removeItem(LAST_ACTIVITY_STORAGE_KEY);
         lastActivityRef.current = Date.now();
@@ -132,9 +127,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const init = async () => {
       if (checkAuth()) {
         const storedUser = getUser();
+        const lastActivityAt = getStoredLastActivity();
+        if (storedUser && Date.now() - lastActivityAt >= IDLE_TIMEOUT_MS && navigator.onLine) {
+          handleAuthExpired();
+          setLoading(false);
+          return;
+        }
         if (storedUser) {
           setUser(storedUser);
-          lastActivityRef.current = getStoredLastActivity();
+          lastActivityRef.current = lastActivityAt;
         }
         await refreshUser();
       } else {
@@ -145,7 +146,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     init();
-  }, [refreshUser]);
+  }, [handleAuthExpired, refreshUser]);
 
   const login = async (identifier: string, password: string) => {
   try {
@@ -241,7 +242,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         scheduleIdleTimers();
         return;
       }
-      handleAuthExpired();
+      if (Date.now() - getStoredLastActivity() >= IDLE_TIMEOUT_MS) {
+        handleAuthExpired();
+      } else {
+        scheduleIdleTimers();
+      }
     }, logoutDelay);
   }, [clearIdleTimers, handleAuthExpired, isIdleWindowActive, user]);
 
@@ -278,6 +283,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       scheduleIdleTimers();
     };
 
+    const handleStorageActivity = (event: StorageEvent) => {
+      if (event.key === 'accessToken' && event.newValue === null) {
+        clearIdleTimers();
+        setShowIdleWarning(false);
+        setUser(null);
+        return;
+      }
+
+      if (event.key !== LAST_ACTIVITY_STORAGE_KEY || !event.newValue) return;
+      const updatedAt = Number(event.newValue);
+      if (!Number.isFinite(updatedAt) || updatedAt <= lastActivityRef.current) return;
+
+      lastActivityRef.current = updatedAt;
+      setShowIdleWarning(false);
+      scheduleIdleTimers();
+    };
+
+    const handleOffline = () => {
+      clearIdleTimers();
+      setShowIdleWarning(false);
+    };
+
     const activityEvents: Array<keyof WindowEventMap> = [
       'mousemove',
       'keydown',
@@ -291,10 +318,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       window.addEventListener(eventName, handleActivity, { passive: true });
     });
     window.addEventListener('online', scheduleIdleTimers);
-    window.addEventListener('offline', () => {
-      clearIdleTimers();
-      setShowIdleWarning(false);
-    });
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('storage', handleStorageActivity);
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     scheduleIdleTimers();
@@ -305,10 +330,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         window.removeEventListener(eventName, handleActivity);
       });
       window.removeEventListener('online', scheduleIdleTimers);
-      window.removeEventListener('offline', () => {
-        clearIdleTimers();
-        setShowIdleWarning(false);
-      });
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('storage', handleStorageActivity);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [clearIdleTimers, isIdleWindowActive, scheduleIdleTimers, user]);

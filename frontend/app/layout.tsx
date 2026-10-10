@@ -29,7 +29,6 @@ export const metadata: Metadata = {
     "catalog",
   ],
   manifest: "/manifest.json",
-  themeColor: "#041dc2",
   appleWebApp: {
     capable: true,
     title: "PWA-based CPC Library System",

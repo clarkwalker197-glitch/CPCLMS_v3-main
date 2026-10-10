@@ -9,7 +9,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../config';
-import { env } from '../config/env';
+import { env, REFRESH_TOKEN_TTL_MS } from '../config/env';
 import { getSortParams } from '../utils/sorting';
 import { JwtPayload } from '../types';
 import {
@@ -749,7 +749,7 @@ async register(input: RegisterInput, ipAddress?: string, userAgent?: string) {
     });
 
     const rawToken = crypto.randomBytes(48).toString('hex');
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+    const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
 
     const record = await prisma.refreshToken.create({
       data: {

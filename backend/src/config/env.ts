@@ -7,6 +7,8 @@ import path from 'path';
 import { z } from 'zod';
 import dotenv from 'dotenv';
 
+export const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
 export function resolveDotenvPath(): string | undefined {
   const candidates = [
     path.resolve(process.cwd(), '.env'),
@@ -91,4 +93,3 @@ if (!process.env.COOKIE_SECRET) {
 }
 
 export { env };
-

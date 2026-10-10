@@ -86,7 +86,7 @@ export interface AuthTokens {
 
 class ApiClient {
   private baseUrl: string;
-  private refreshNetworkFailure = false;
+  private refreshAuthFailure = false;
   private refreshInFlight: Promise<boolean> | null = null;
 
   // In-flight request deduplication map (keyed by method + endpoint + body)
@@ -138,7 +138,7 @@ class ApiClient {
 
   private async refreshAfterUnauthorized(): Promise<boolean> {
     const refreshed = await this.refreshToken();
-    if (!refreshed && !this.refreshNetworkFailure) {
+    if (!refreshed && this.refreshAuthFailure) {
       this.redirectToLoginForExpiredSession();
     }
     return refreshed;
@@ -237,12 +237,13 @@ class ApiClient {
         data = { success: false, error: 'Unexpected server response' } as ApiResponse<T>;
       }
 
-      if (response.status === 401 && headers['Authorization'] && ![
+      if (response.status === 401 && ![
         '/auth/login',
         '/auth/register',
         '/auth/google',
+        '/auth/refresh',
       ].includes(endpoint)) {
-        const requestToken = headers['Authorization'].slice('Bearer '.length);
+        const requestToken = headers['Authorization']?.slice('Bearer '.length) ?? null;
         let currentToken = this.getToken();
         let shouldRetry = currentToken !== null && currentToken !== requestToken;
 
@@ -264,9 +265,6 @@ class ApiClient {
             retryData = await retryResponse.json();
           } catch {
             retryData = { success: false, error: 'Unexpected server response' } as ApiResponse<T>;
-          }
-          if (retryResponse.status === 401) {
-            this.redirectToLoginForExpiredSession();
           }
           return retryResponse.ok
             ? retryData
@@ -317,7 +315,7 @@ class ApiClient {
   async refreshToken(): Promise<boolean> {
     if (this.refreshInFlight) return this.refreshInFlight;
 
-    this.refreshNetworkFailure = false;
+    this.refreshAuthFailure = false;
     const refreshPromise = this.performTokenRefresh();
     this.refreshInFlight = refreshPromise;
     try {
@@ -336,6 +334,10 @@ class ApiClient {
       });
 
       reportNetworkStatus(true);
+      if (response.status === 401) {
+        this.refreshAuthFailure = true;
+        return false;
+      }
       if (!response.ok) return false;
       const data = await response.json();
       if (data.success && data.data?.accessToken) {
@@ -344,7 +346,6 @@ class ApiClient {
       }
       return false;
     } catch {
-      this.refreshNetworkFailure = true;
       reportNetworkStatus(false);
       return false;
     }
@@ -416,7 +417,7 @@ const response = await this.request<any>('/auth/register', {
     });
     let requestToken = this.getToken();
     let response = await fetchDownload(requestToken);
-    if (response.status === 401 && requestToken) {
+    if (response.status === 401) {
       const currentToken = this.getToken();
       if (currentToken && currentToken !== requestToken) {
         requestToken = currentToken;
@@ -427,8 +428,7 @@ const response = await this.request<any>('/auth/register', {
       }
     }
     if (response.status === 401) {
-      this.redirectToLoginForExpiredSession();
-      throw new Error('Your session has expired. Please sign in again.');
+      throw new Error(response.statusText || 'Request unauthorized. Please try again.');
     }
     if (!response.ok) {
       let message = response.statusText || 'Download failed';
@@ -639,10 +639,9 @@ async put<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
       const currentToken = this.getToken();
       const tokenWasUpdated = Boolean(currentToken && attemptToken !== currentToken);
       const refreshed = tokenWasUpdated
-        || (Boolean(currentToken) && await this.refreshAfterUnauthorized());
+        || await this.refreshAfterUnauthorized();
       if (refreshed) {
         ({ status, data } = await attempt());
-        if (status === 401) this.redirectToLoginForExpiredSession();
       }
     }
 
@@ -921,7 +920,7 @@ async payFine(id: string, amount: number): Promise<ApiResponse<any>> {
     let requestToken = this.getToken();
     let response = await request(requestToken);
 
-    if (response.status === 401 && requestToken) {
+    if (response.status === 401) {
       const currentToken = this.getToken();
       if (currentToken && currentToken !== requestToken) {
         requestToken = currentToken;
@@ -933,8 +932,7 @@ async payFine(id: string, amount: number): Promise<ApiResponse<any>> {
     }
 
     if (response.status === 401) {
-      this.redirectToLoginForExpiredSession();
-      throw new Error('Your session has expired. Please sign in again.');
+      throw new Error(response.statusText || 'Request unauthorized. Please try again.');
     }
 
     if (!response.ok) {

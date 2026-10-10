@@ -6,7 +6,7 @@ import api from './api';
 import { clearOfflineData } from './offline-db';
 import { ModalLayer } from '@/components/ModalLayer';
 
-const IDLE_TIMEOUT_MS = 7 * 24 * 60 * 60 * 1000;
+const IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 const IDLE_WARNING_MS = IDLE_TIMEOUT_MS - 60 * 1000;
 const ACTIVITY_THROTTLE_MS = 1000;
 
@@ -14,7 +14,7 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   isAuthenticated: boolean;
-  login: (identifier: string, password: string) => Promise<{
+  login: (identifier: string, password: string, rememberMe?: boolean) => Promise<{
     success: boolean;
     error?: string;
     user?: User;
@@ -148,9 +148,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     init();
   }, [handleAuthExpired, refreshUser]);
 
-  const login = async (identifier: string, password: string) => {
+  const login = async (identifier: string, password: string, rememberMe = true) => {
   try {
-    const res = await api.login(identifier, password);
+    const res = await api.login(identifier, password, rememberMe);
       if (res.success && res.data) {
         const nextUser = res.data.user;
         await clearOfflineData();

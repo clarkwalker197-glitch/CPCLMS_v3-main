@@ -25,6 +25,7 @@ export const loginSchema = z.object({
       .trim()
       .transform((val) => val.toLowerCase()),
     password: z.string().min(1, 'Password is required'),
+    rememberMe: z.boolean().optional(),
   }),
 });
 
@@ -156,6 +157,7 @@ export const updateProfileSchema = z.object({
 export const refreshTokenSchema = z.object({
   body: z.object({
     refreshToken: z.string().min(1, 'Refresh token is required').optional(),
+    rememberMe: z.boolean().optional(),
   }),
 });
 

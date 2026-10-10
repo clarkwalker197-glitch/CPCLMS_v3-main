@@ -12,7 +12,12 @@ import { env } from './config/env';
 import routes from './routes';
 import { apiLimiter } from './middlewares/rateLimiter';
 import { errorHandler } from './middlewares/errorHandler';
-import { archiveRetentionService, notificationService, purgeExpiredActivityLogs } from './services';
+import {
+  archiveRetentionService,
+  notificationService,
+  purgeExpiredActivityLogs,
+  transactionService,
+} from './services';
 import { PROFILES_DIR, UPLOADS_ROOT } from './middlewares/upload';
 
 const app = express();
@@ -226,6 +231,7 @@ startServer(env.PORT);
 const ARCHIVE_RETENTION_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const ACTIVITY_LOG_RETENTION_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const DUE_REMINDER_INTERVAL_MS = 60 * 60 * 1000;
+const OVERDUE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
 
 void archiveRetentionService.purgeExpiredArchives().catch((error) => {
   console.error('Archive retention check failed at startup:', error);
@@ -233,6 +239,10 @@ void archiveRetentionService.purgeExpiredArchives().catch((error) => {
 
 void notificationService.sendDueDateReminders().catch((error) => {
   console.error('Due-date reminder check failed at startup:', error);
+});
+
+void transactionService.checkOverdueTransactions().catch((error) => {
+  console.error('Overdue transaction check failed at startup:', error);
 });
 
 void purgeExpiredActivityLogs().catch((error) => {
@@ -256,5 +266,11 @@ setInterval(() => {
     console.error('Scheduled due-date reminder check failed:', error);
   });
 }, DUE_REMINDER_INTERVAL_MS);
+
+setInterval(() => {
+  void transactionService.checkOverdueTransactions().catch((error) => {
+    console.error('Scheduled overdue transaction check failed:', error);
+  });
+}, OVERDUE_CHECK_INTERVAL_MS);
 
 export default app;

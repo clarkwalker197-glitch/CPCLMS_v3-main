@@ -43,7 +43,7 @@ export default function LoginPage() {
     setSubmitting(true);
 
     try {
-      const result = await login(identifier.trim(), password);
+      const result = await login(identifier.trim(), password, rememberMe);
       if (result.success) {
         const target = getPostLoginPath(result.user?.role, returnTo);
         router.push(target);

@@ -27,14 +27,14 @@ const getRefreshTokenFromRequest = (req: Request): string | undefined => {
   return signedCookieToken || cookieToken || bodyToken;
 };
 
-const setRefreshCookie = (res: Response, token: string, expiresAt: Date): void => {
+const setRefreshCookie = (res: Response, token: string, expiresAt?: Date): void => {
   res.cookie('refreshToken', token, {
     httpOnly: true,
     secure: env.NODE_ENV === 'production',
     sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
     path: '/',
     signed: true,
-    expires: expiresAt,
+    ...(expiresAt ? { expires: expiresAt } : {}),
   });
 };
 
@@ -55,10 +55,13 @@ export const getDepartments = asyncHandler(async (_req: Request, res: Response) 
  * POST /api/auth/login
  */
 export const login = asyncHandler(async (req: Request, res: Response) => {
-  const { identifier, password } = req.body;
+  const { identifier, password, rememberMe } = req.body;
   const ipAddress = req.ip;
   const result = await authService.login(identifier, password, ipAddress, req.get('user-agent'));
-  setRefreshCookie(res, result.refreshToken, new Date(Date.now() + REFRESH_TOKEN_TTL_MS));
+  const refreshCookieExpiresAt = rememberMe === false
+    ? undefined
+    : new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
+  setRefreshCookie(res, result.refreshToken, refreshCookieExpiresAt);
   sendSuccess(res, result, 'Login successful');
 });
 
@@ -109,7 +112,10 @@ export const refreshToken = asyncHandler(async (req: Request, res: Response) => 
   const token = getRefreshTokenFromRequest(req);
   try {
     const result = await authService.refreshAccessToken(token);
-    setRefreshCookie(res, result.refreshToken, new Date(Date.now() + REFRESH_TOKEN_TTL_MS));
+    const refreshCookieExpiresAt = req.body.rememberMe === false
+      ? undefined
+      : new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
+    setRefreshCookie(res, result.refreshToken, refreshCookieExpiresAt);
     sendSuccess(res, result, 'Token refreshed successfully');
   } catch (error) {
     if (error instanceof UnauthorizedError) clearRefreshCookie(res);

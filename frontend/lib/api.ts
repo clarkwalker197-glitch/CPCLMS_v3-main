@@ -106,11 +106,23 @@ class ApiClient {
 
   private getToken(): string | null {
     if (typeof window === 'undefined') return null;
-    return localStorage.getItem('accessToken');
+    return sessionStorage.getItem('accessToken') || localStorage.getItem('accessToken');
   }
 
-  private setTokens(accessToken: string, refreshToken?: string): void {
-    localStorage.setItem('accessToken', accessToken);
+  private shouldRememberSession(): boolean {
+    if (typeof window === 'undefined') return true;
+    return localStorage.getItem('rememberMe') !== 'false'
+      && sessionStorage.getItem('rememberMe') !== 'false';
+  }
+
+  private setTokens(accessToken: string, refreshToken?: string, rememberMe = this.shouldRememberSession()): void {
+    localStorage.removeItem('accessToken');
+    sessionStorage.removeItem('accessToken');
+    localStorage.removeItem('rememberMe');
+    sessionStorage.removeItem('rememberMe');
+    const storage = rememberMe ? localStorage : sessionStorage;
+    storage.setItem('accessToken', accessToken);
+    storage.setItem('rememberMe', String(rememberMe));
     if (refreshToken) {
       // Keep compatibility with older backend responses, but do not persist the
       // refresh token in browser storage because it is now exposed as a secure,
@@ -121,8 +133,12 @@ class ApiClient {
 
   clearTokens(): void {
     localStorage.removeItem('accessToken');
+    sessionStorage.removeItem('accessToken');
+    localStorage.removeItem('rememberMe');
+    sessionStorage.removeItem('rememberMe');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
+    sessionStorage.removeItem('user');
     if (typeof document !== 'undefined') {
       document.cookie = 'refreshToken=; Max-Age=0; path=/; SameSite=Lax; Secure';
     }
@@ -330,6 +346,7 @@ class ApiClient {
       const response = await fetch(`${this.baseUrl}/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rememberMe: this.shouldRememberSession() }),
         credentials: 'include',
       });
 
@@ -353,7 +370,8 @@ class ApiClient {
 
   async login(
     identifier: string,
-    password: string
+    password: string,
+    rememberMe = true,
   ): Promise<ApiResponse<{ user: any; accessToken: string; refreshToken: string }>> {
   const response = await this.request<{ user: any; accessToken: string; refreshToken: string }>(
     '/auth/login',
@@ -362,13 +380,17 @@ class ApiClient {
       body: JSON.stringify({
         identifier,
         password,
+        rememberMe,
       }),
     }
   );
 
     if (response.success && response.data) {
-      this.setTokens(response.data.accessToken, response.data.refreshToken);
-      localStorage.setItem('user', JSON.stringify(response.data.user));
+      this.setTokens(response.data.accessToken, response.data.refreshToken, rememberMe);
+      const storage = rememberMe ? localStorage : sessionStorage;
+      localStorage.removeItem('user');
+      sessionStorage.removeItem('user');
+      storage.setItem('user', JSON.stringify(response.data.user));
     }
 
     return response;
@@ -513,7 +535,7 @@ async put<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
   async googleLogin(credential: string): Promise<ApiResponse<any>> {
     const response = await this.post<{ accessToken: string; refreshToken: string; user: any }>('/auth/google', { credential });
     if (response.success && response.data) {
-      this.setTokens(response.data.accessToken, response.data.refreshToken);
+      this.setTokens(response.data.accessToken, response.data.refreshToken, true);
       localStorage.setItem('user', JSON.stringify(response.data.user));
     }
     return response;
@@ -772,6 +794,24 @@ async payFine(id: string, amount: number): Promise<ApiResponse<any>> {
 
   async markAllNotificationsRead(): Promise<ApiResponse<any>> {
     return this.put('/notifications/mark-all-read');
+  }
+
+  async getPushPublicKey(): Promise<ApiResponse<{ enabled: boolean; publicKey?: string }>> {
+    return this.get('/notifications/push/public-key');
+  }
+
+  async subscribeToPush(subscription: {
+    endpoint: string;
+    keys: { p256dh: string; auth: string };
+  }): Promise<ApiResponse<null>> {
+    return this.post('/notifications/push/subscribe', subscription);
+  }
+
+  async unsubscribeFromPush(endpoint: string): Promise<ApiResponse<null>> {
+    return this.request<null>('/notifications/push/subscribe', {
+      method: 'DELETE',
+      body: JSON.stringify({ endpoint }),
+    });
   }
 
 // Analytics

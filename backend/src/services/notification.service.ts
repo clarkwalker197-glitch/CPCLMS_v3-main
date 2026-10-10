@@ -9,6 +9,7 @@ import { NotificationType } from '@prisma/client';
 import { getPaginationParams, buildPaginationMeta } from '../utils/pagination';
 import { NotFoundError } from '../utils/errors';
 import { sendEmail as sendEmailMessage } from '../utils/email';
+import { sendPushToMany, sendPushToUser } from './push.service';
 
 export interface EmailPayload {
   to: string;
@@ -45,6 +46,10 @@ export class NotificationService {
       })),
     });
 
+    await sendPushToMany(
+      librarians.map((librarian) => librarian.id),
+      { title, body: message, url: link, tag: `${type}-${Date.now()}` },
+    );
     return result.count;
   }
 
@@ -56,7 +61,8 @@ export class NotificationService {
     type: NotificationType,
     title: string,
     message?: string,
-    link?: string
+    link?: string,
+    pushOptions?: { tag?: string },
   ) {
     const recipient = await prisma.user.findUnique({
       where: { id: userId },
@@ -68,6 +74,12 @@ export class NotificationService {
       data: { userId, type, title, message, link },
     });
 
+    await sendPushToUser(userId, {
+      title,
+      body: message,
+      url: link,
+      tag: pushOptions?.tag || `notification-${notification.id}`,
+    });
     return notification;
   }
 
@@ -90,6 +102,10 @@ export class NotificationService {
     const result = await prisma.notification.createMany({
       data: recipients.map(({ id }) => ({ userId: id, type, title, message, link })),
     });
+    await sendPushToMany(
+      recipients.map(({ id }) => id),
+      { title, body: message, url: link, tag: `${type}-${Date.now()}` },
+    );
     return result.count;
   }
 
@@ -196,6 +212,7 @@ export class NotificationService {
   async sendDueDateReminders(): Promise<{ sent: number }> {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(0, 0, 0, 0);
     const dayAfter = new Date(tomorrow);
     dayAfter.setDate(dayAfter.getDate() + 1);
 
@@ -210,20 +227,37 @@ export class NotificationService {
       },
     });
 
+    let sent = 0;
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
     for (const txn of dueTomorrow) {
       if (!txn.user || !txn.book) continue;
+      const transactionLink = `/requests?transactionId=${encodeURIComponent(txn.id)}`;
+      const alreadyRemindedToday = await prisma.notification.findFirst({
+        where: {
+          userId: txn.user.id,
+          type: 'DUE_REMINDER',
+          link: transactionLink,
+          createdAt: { gte: todayStart },
+        },
+        select: { id: true },
+      });
+      if (alreadyRemindedToday) continue;
+
       const message = `Reminder: "${txn.book.title}" (${txn.book.accessionNo}) is due tomorrow (${txn.dueDate.toLocaleDateString()}). Please return or renew.`;
 
-      await this.createNotification(
+      const notification = await this.createNotification(
         txn.user.id,
         'DUE_REMINDER',
         'Book Due Tomorrow',
         message,
-        `/transactions/${txn.id}`
+        transactionLink,
+        { tag: `due-${txn.id}` },
       );
+      if (notification) sent++;
     }
 
-    return { sent: dueTomorrow.filter((txn) => txn.user && txn.book).length };
+    return { sent };
   }
 }
 

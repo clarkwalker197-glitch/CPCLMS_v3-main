@@ -26,6 +26,8 @@ import { recordActivity } from './activity-log.service';
 import { OAuth2Client } from 'google-auth-library';
 import { isDepartmentCode } from '../constants/departments';
 
+const ACCESS_TOKEN_TTL_SECONDS = 2 * 60 * 60;
+
 export class AuthService {
   async googleLogin(credential: string, ipAddress?: string, userAgent?: string) {
     if (!env.GOOGLE_CLIENT_ID) throw new BadRequestError('Google authentication is not configured.');
@@ -58,7 +60,7 @@ export class AuthService {
     const accessToken = this.generateAccessToken(user.id, user.libraryId, user.role);
     const refreshToken = await this.generateRefreshToken(user.id);
     await this.logActivity(user.id, 'LOGIN_GOOGLE', 'User', user.id, ipAddress, userAgent ? { userAgent } : undefined);
-    return { accessToken, refreshToken: refreshToken.token, expiresIn: 15 * 60, user: this.sanitizeUser(user) };
+    return { accessToken, refreshToken: refreshToken.token, expiresIn: ACCESS_TOKEN_TTL_SECONDS, user: this.sanitizeUser(user) };
   }
 
   async requestPasswordReset(identifier: string) {
@@ -190,7 +192,7 @@ export class AuthService {
     return {
       accessToken,
       refreshToken: refreshToken.token,
-      expiresIn: 15 * 60, // seconds (matches JWT_EXPIRES_IN = 15m)
+      expiresIn: ACCESS_TOKEN_TTL_SECONDS,
       user: this.sanitizeUser(user),
     };
   }
@@ -250,7 +252,7 @@ async register(input: RegisterInput, ipAddress?: string, userAgent?: string) {
     return {
       accessToken,
       refreshToken: refreshToken.token,
-      expiresIn: 15 * 60,
+      expiresIn: ACCESS_TOKEN_TTL_SECONDS,
       user: this.sanitizeUser(user),
     };
   }
@@ -378,7 +380,7 @@ async register(input: RegisterInput, ipAddress?: string, userAgent?: string) {
     return {
       accessToken,
       refreshToken: newRefreshToken.token,
-      expiresIn: 15 * 60,
+      expiresIn: ACCESS_TOKEN_TTL_SECONDS,
     };
   }
 
@@ -451,6 +453,9 @@ async register(input: RegisterInput, ipAddress?: string, userAgent?: string) {
       where: { id: userId },
       data: { notificationsEnabled },
     });
+    if (!notificationsEnabled) {
+      await prisma.pushSubscription.deleteMany({ where: { userId } });
+    }
     return this.sanitizeUser(user);
   }
 

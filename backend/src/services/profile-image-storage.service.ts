@@ -3,6 +3,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { del, put } from '@vercel/blob';
 import { prisma } from '../config';
+import { env } from '../config/env';
 import { PROFILES_DIR } from '../middlewares/upload';
 import { coverExtensionForMimeType, hasMatchingImageSignature } from './cover-image-storage.service';
 import { AppError, BadRequestError } from '../utils/errors';
@@ -28,8 +29,8 @@ export async function storeProfileImage(
     throw new BadRequestError('Profile picture must be a valid JPG, PNG, or WEBP image');
   }
 
-  const hasReadWriteToken = Boolean(process.env.BLOB_READ_WRITE_TOKEN?.trim());
-  const hasVercelOidc = Boolean(process.env.VERCEL_OIDC_TOKEN && process.env.BLOB_STORE_ID);
+  const hasReadWriteToken = Boolean(env.BLOB_READ_WRITE_TOKEN?.trim());
+  const hasVercelOidc = Boolean(env.VERCEL_OIDC_TOKEN?.trim() && env.BLOB_STORE_ID?.trim());
   if (hasReadWriteToken || hasVercelOidc) {
     try {
       const content = Uint8Array.from(file.buffer).buffer as ArrayBuffer;

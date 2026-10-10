@@ -8,6 +8,7 @@ import api from "@/lib/api";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Sidebar from "@/components/Sidebar";
 import EditProfileModal from "@/components/EditProfileModal";
+import PushNotificationSettings from "@/components/PushNotificationSettings";
 import { ModalLayer } from "@/components/ModalLayer";
 import {
   Pencil,
@@ -252,6 +253,8 @@ export default function ProfilePage() {
                     </div>
                     <Toggle checked={notifications} onChange={updateNotifications} disabled={notificationSaving} />
                   </div>
+
+                  <PushNotificationSettings notificationsEnabled={notifications} />
 
                   {/* Theme Preference */}
                   <div className="flex items-center gap-3 py-3.5">

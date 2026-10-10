@@ -19,6 +19,7 @@ import { getSortParams } from '../utils/sorting';
 import { generateQRFromText } from '../utils/qrcode';
 import { policyService } from './policy.service';
 import { notificationService } from './notification.service';
+import { sendPushToUser } from './push.service';
 import { recordActivity } from './activity-log.service';
 import crypto from 'crypto';
 
@@ -618,7 +619,7 @@ export class TransactionService {
           type: 'REQUEST_APPROVED',
           title: 'Borrow Transaction Approved',
           message: `Your request for ${requests.length} book(s) is approved. Due date: ${dueDate.toLocaleDateString()}.`,
-          link: '/transactions',
+          link: '/requests',
         },
       });
       await tx.activityLog.create({
@@ -640,6 +641,13 @@ export class TransactionService {
       });
       return createdTransactions;
     }, { timeout: 20000, maxWait: 20000 });
+
+    await sendPushToUser(userId, {
+      title: 'Borrow Transaction Approved',
+      body: `Your request for ${requests.length} book(s) is approved. Due date: ${dueDate.toLocaleDateString()}.`,
+      url: '/requests',
+      tag: `request-approved-${transactionId}`,
+    });
 
     for (const request of requests) {
       const reservation = await prisma.reservation.findFirst({
@@ -722,6 +730,14 @@ export class TransactionService {
           },
         }),
       ]);
+      if (request.userId) {
+        await sendPushToUser(request.userId, {
+          title: 'Borrow Transaction Rejected',
+          body: `Your request for ${bookTitles} was rejected. Reason: ${reason}`,
+          url: '/requests',
+          tag: `request-rejected-${request.transactionId}`,
+        });
+      }
       return;
     }
 
@@ -755,6 +771,14 @@ export class TransactionService {
         },
       }),
     ]);
+    if (request.userId) {
+      await sendPushToUser(request.userId, {
+        title: 'Borrow Request Rejected',
+        body: `Your request to borrow "${request.book.title}" was rejected. Reason: ${reason}`,
+        url: '/requests',
+        tag: `request-rejected-${request.id}`,
+      });
+    }
   }
 
   /**
@@ -1027,15 +1051,24 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
     );
 
     if (fineAmount > 0) {
+      const fineMessage = `Your overdue fine of ₱${fineAmount.toFixed(2)} for "${transaction.book.title}" was automatically marked as paid when the book was returned.`;
       await prisma.notification.create({
         data: {
           userId: transaction.userId,
           type: 'OVERDUE_FINE',
           title: 'Overdue Fine Paid',
-          message: `Your overdue fine of ₱${fineAmount.toFixed(2)} for "${transaction.book.title}" was automatically marked as paid when the book was returned.`,
-          link: `/transactions/${transaction.id}`,
+          message: fineMessage,
+          link: `/requests?transactionId=${encodeURIComponent(transaction.id)}`,
         },
       });
+      if (transaction.userId) {
+        await sendPushToUser(transaction.userId, {
+          title: 'Overdue Fine Paid',
+          body: fineMessage,
+          url: `/requests?transactionId=${encodeURIComponent(transaction.id)}`,
+          tag: `fine-paid-${transaction.id}`,
+        });
+      }
     }
 
     const nextReservation = await prisma.reservation.findFirst({
@@ -1804,14 +1837,21 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
       const diffDays = Math.floor((todayStart.getTime() - dueStart.getTime()) / (1000 * 60 * 60 * 24));
       const fine = Math.max(0, diffDays) * FINE_PER_BOOK_PER_DAY;
 
+      const overdueMessage = `"${txn.book.title}" is ${diffDays} day(s) overdue. Fine: ₱${fine.toFixed(2)}. Please return immediately.`;
       await prisma.notification.create({
         data: {
           userId: txn.userId,
           type: 'OVERDUE_FINE',
           title: 'Book Overdue',
-          message: `"${txn.book.title}" is ${diffDays} day(s) overdue. Fine: ₱${fine.toFixed(2)}. Please return immediately.`,
-          link: `/transactions/${txn.id}`,
+          message: overdueMessage,
+          link: `/requests?transactionId=${encodeURIComponent(txn.id)}`,
         },
+      });
+      await sendPushToUser(txn.userId, {
+        title: 'Book Overdue',
+        body: overdueMessage,
+        url: `/requests?transactionId=${encodeURIComponent(txn.id)}`,
+        tag: `overdue-${txn.id}`,
       });
     }
 

@@ -44,9 +44,12 @@ const envSchema = z.object({
   PORT: z.coerce.number().default(4000),
   DATABASE_URL: z.string().url(),
   JWT_SECRET: z.string().min(16, 'JWT_SECRET must be at least 16 characters'),
-  JWT_EXPIRES_IN: z.string().default('15m'),
+  JWT_EXPIRES_IN: z.string().default('2h'),
   JWT_REFRESH_SECRET: z.string().min(16, 'JWT_REFRESH_SECRET must be at least 16 characters'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
+  VAPID_PUBLIC_KEY: z.string().optional(),
+  VAPID_PRIVATE_KEY: z.string().optional(),
+  VAPID_SUBJECT: z.string().default('mailto:cpc-library.online'),
   FRONTEND_URL: frontendOriginSchema,
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(15 * 60 * 1000),
   RATE_LIMIT_MAX: z.coerce.number().default(100),
@@ -72,6 +75,7 @@ const envSchema = z.object({
   ),
   BLOB_READ_WRITE_TOKEN: z.string().optional(),
   BLOB_STORE_ID: z.string().optional(),
+  VERCEL_OIDC_TOKEN: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -82,6 +86,11 @@ if (!parsed.success) {
 }
 
 const env = parsed.data;
+
+if (Boolean(env.VAPID_PUBLIC_KEY) !== Boolean(env.VAPID_PRIVATE_KEY)) {
+  console.error('❌ VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY must be configured together.');
+  process.exit(1);
+}
 
 if (env.NODE_ENV === 'production' && !process.env.COOKIE_SECRET) {
   console.error('❌ COOKIE_SECRET must be set in production.');

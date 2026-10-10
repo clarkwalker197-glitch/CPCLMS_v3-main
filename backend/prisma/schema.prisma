@@ -104,6 +104,7 @@ model User {
   borrowTransactions      BorrowTransaction[]
   reservations            Reservation[]
   notifications           Notification[]
+  pushSubscriptions       PushSubscription[]
   activityLogs            ActivityLog[]
   processedBorrowRequests BorrowRequest[]      @relation("ProcessedBy")
   refreshTokens           RefreshToken[]
@@ -348,6 +349,21 @@ model Notification {
   @@index([isRead])
   @@index([createdAt])
   @@map("notifications")
+}
+
+/// Browser subscriptions used for Web Push notifications
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique @db.VarChar(2048)
+  p256dh    String   @db.VarChar(255)
+  auth      String   @db.VarChar(255)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@map("push_subscriptions")
 }
 
 /// Stored refresh tokens for JWT authentication

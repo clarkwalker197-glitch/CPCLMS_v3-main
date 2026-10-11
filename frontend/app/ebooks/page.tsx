@@ -11,6 +11,7 @@ import { SortHeader, SortSelect, nextSortOrder, type SortOption } from '@/compon
 import { AddEBookModal } from '@/components/AddEBookModal';
 import { EditEBookModal } from '@/components/EditEBookModal';
 import MobileBookTypeSelect from '@/components/MobileBookTypeSelect';
+import MobileSearchInput from '@/components/MobileSearchInput';
 import { DEWEY_MAIN_CATEGORIES, subcategoriesForMain } from '@/lib/categories';
 import { offlineDb } from '@/lib/offline-db';
 import { searchCachedBooks } from '@/lib/offline-api';
@@ -60,8 +61,17 @@ export default function EBooksPage() {
   const [selectedEBook, setSelectedEBook] = useState<any | null>(null);
   const [togglingStatusId, setTogglingStatusId] = useState<string | null>(null);
   const [showingCached, setShowingCached] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(false);
 
   const isLibrarian = user?.role === 'LIBRARIAN';
+
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 769px)");
+    const updateLayout = () => setIsDesktop(media.matches);
+    updateLayout();
+    media.addEventListener("change", updateLayout);
+    return () => media.removeEventListener("change", updateLayout);
+  }, []);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -254,18 +264,27 @@ export default function EBooksPage() {
           </div>
 
           {/* Toolbar */}
-          <div className="mb-6 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3 sm:p-4">
+          <div className="mobile-search-toolbar mb-6 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3 sm:p-4">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-              <div className="relative w-full sm:flex-1">
+              <div className="hidden relative w-full sm:flex-1 md:block">
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
                   <Search className="h-5 w-5 text-zinc-500" />
                 </div>
                 <input
                   type="text"
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={(event) => setSearch(event.target.value)}
                   placeholder="Search by title, author, or Dewey number..."
                   className="min-h-[44px] w-full rounded-xl border border-zinc-700 bg-zinc-950 pl-10 pr-3 text-sm text-white placeholder:text-zinc-500 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div className="w-full md:hidden">
+                <MobileSearchInput
+                  value={search}
+                  onChange={setSearch}
+                  placeholder="Search by title, author, or Dewey number..."
+                  storageKey="cpc-recent-ebook-searches"
+                  quickFilters={["Fiction", "History", "Science"]}
                 />
               </div>
 
@@ -292,6 +311,8 @@ export default function EBooksPage() {
               </div>
             </div>
 
+            <details className="mobile-filter-details" open={isDesktop}>
+            <summary>Filters and sort</summary>
             <div className="mt-2 grid grid-cols-2 gap-2 sm:mt-3 sm:flex sm:flex-wrap sm:items-center sm:gap-3">
               <SortSelect options={sortOptions} sort={sort} order={sortOrder} onChange={changeSort} />
               <select
@@ -352,6 +373,7 @@ export default function EBooksPage() {
                 </span>
               </div>
             </div>
+            </details>
           </div>
 
           {/* Loading */}
@@ -455,7 +477,7 @@ export default function EBooksPage() {
           {/* LIST VIEW */}
           {!loading && view === 'list' && ebooks.length > 0 && (
             <>
-            <div className="hidden sm:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
+            <div className="hidden md:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -560,7 +582,7 @@ export default function EBooksPage() {
 
           {/* Pagination */}
           {!loading && ebooks.length > 0 && (
-            <div className="flex items-center justify-between mt-6">
+            <div className="hidden items-center justify-between mt-6 md:flex">
               <p className="text-sm text-zinc-500">
                 Showing{' '}
                 <span className="text-zinc-300">
@@ -601,6 +623,11 @@ export default function EBooksPage() {
                 </button>
               </div>
             </div>
+          )}
+          {!loading && ebooks.length > 0 && currentPage < totalPages && (
+            <button type="button" onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))} className="mt-4 min-h-11 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 text-sm font-semibold text-zinc-200 md:hidden">
+              Load more e-books
+            </button>
           )}
         </div>
       </div>

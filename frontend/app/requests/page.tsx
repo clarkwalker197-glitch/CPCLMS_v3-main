@@ -119,9 +119,33 @@ export default function RequestsPage() {
   const [rejectLoading, setRejectLoading] = useState(false);
   const [rejectError, setRejectError] = useState("");
 
+  useEffect(() => {
+    const openScanner = () => {
+      setTransactionLookupError("");
+      setScannedBorrowId("");
+      setTransactionScannerOpen(true);
+    };
+    window.addEventListener("cpc:open-qr", openScanner);
+    if (new URLSearchParams(window.location.search).get("mobileScan") === "1") {
+      openScanner();
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+    return () => window.removeEventListener("cpc:open-qr", openScanner);
+  }, []);
+
   const [approvalReceipt, setApprovalReceipt] = useState<any | null>(null);
   const [transactionLookupId, setTransactionLookupId] = useState("");
   const [transactionScannerOpen, setTransactionScannerOpen] = useState(false);
+  const [isMobileLayout, setIsMobileLayout] = useState(false);
+  const [scannedBorrowId, setScannedBorrowId] = useState("");
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 768px)");
+    const updateLayout = () => setIsMobileLayout(media.matches);
+    updateLayout();
+    media.addEventListener("change", updateLayout);
+    return () => media.removeEventListener("change", updateLayout);
+  }, []);
   const [transactionLookupError, setTransactionLookupError] = useState("");
   const [verificationLoading, setVerificationLoading] = useState(false);
 
@@ -458,8 +482,10 @@ export default function RequestsPage() {
         return;
       }
       setTransactionScannerOpen(false);
+      setScannedBorrowId("");
       setTransactionLookupId("");
       setSuccessMsg(`Borrow ID ${formatBorrowId(borrowId)} verified. Your request is approved.`);
+      if (window.matchMedia("(max-width: 768px)").matches && "vibrate" in navigator) navigator.vibrate(35);
       await Promise.all([loadRequests(), loadTransactions()]);
       setTimeout(() => setSuccessMsg(""), 5000);
     } catch {
@@ -475,7 +501,17 @@ export default function RequestsPage() {
   };
 
   const handleTransactionScan = async (value: string) => {
-    await verifyBorrowId(value);
+    const borrowId = normalizeBorrowId(value);
+    if (!borrowId) {
+      setTransactionLookupError("Enter or scan a valid Borrow ID, such as BRW-1234-5678.");
+      return;
+    }
+    setTransactionScannerOpen(false);
+    if (!isMobileLayout) {
+      await verifyBorrowId(borrowId);
+      return;
+    }
+    setScannedBorrowId(borrowId);
   };
 
   const handleReject = async () => {
@@ -586,7 +622,7 @@ export default function RequestsPage() {
                         )}
                         {!txnLoading && txns.length > 0 && (
                           <>
-                          <div className="hidden sm:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
+                          <div className="hidden md:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
                             <div className="overflow-x-auto">
                               <table className="w-full text-sm">
                                 <thead><tr className="bg-zinc-900 text-left text-xs uppercase tracking-wide text-zinc-500">
@@ -601,7 +637,7 @@ export default function RequestsPage() {
                               </table>
                             </div>
                           </div>
-                          <div className="space-y-0 sm:hidden">
+                          <div className="space-y-0 md:hidden">
                             {txns.map((txn: any) => (
                               <div key={txn.id} className="mb-4 last:mb-0">
                                 <BorrowHistoryCard transaction={txn} formatDate={formatDate} statusBadge={txnStatusBadge} statusLabel={txnStatusLabel} />
@@ -708,7 +744,7 @@ export default function RequestsPage() {
 
             {!reqLoading && records.length > 0 && (
               <>
-              <div className="hidden sm:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
+              <div className="hidden md:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
@@ -900,7 +936,7 @@ export default function RequestsPage() {
 
               {!activeTxnLoading && activeTxns.length > 0 && (
                 <>
-                <div className="hidden sm:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
+                <div className="hidden md:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
@@ -956,7 +992,7 @@ export default function RequestsPage() {
                     </table>
                   </div>
                 </div>
-                <div className="space-y-4 sm:hidden">
+                <div className="space-y-4 md:hidden">
                   {activeTxns.map((txn: any) => (
                     <article key={txn.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-lg shadow-black/10">
                       <div className="border-b border-zinc-800/80 pb-3">
@@ -1141,6 +1177,24 @@ export default function RequestsPage() {
           externalError={transactionLookupError}
           loading={verificationLoading}
         />
+      )}
+
+      {isMobileLayout && scannedBorrowId && (
+        <ModalLayer>
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 backdrop-blur-sm sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby="confirm-borrow-scan-title">
+            <div className="w-full rounded-t-3xl border border-zinc-800 bg-zinc-900 p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:max-w-md sm:rounded-2xl sm:p-6">
+              <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-zinc-700 sm:hidden" />
+              <h2 id="confirm-borrow-scan-title" className="text-lg font-semibold text-white">Confirm scanned Borrow ID</h2>
+              <p className="mt-2 text-sm text-zinc-400">Check the code before confirming your borrow.</p>
+              <p className="mt-4 rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-center font-mono text-lg font-semibold text-zinc-100">{formatBorrowId(scannedBorrowId)}</p>
+              {transactionLookupError && <p role="alert" className="mt-3 text-sm text-red-300">{transactionLookupError}</p>}
+              <div className="mt-5 grid grid-cols-2 gap-3">
+                <button type="button" onClick={() => { setScannedBorrowId(""); setTransactionScannerOpen(true); }} disabled={verificationLoading} className="min-h-11 rounded-xl border border-zinc-700 px-4 py-2.5 text-sm font-medium text-zinc-200 hover:bg-zinc-800 disabled:opacity-50">Scan again</button>
+                <button type="button" onClick={() => void verifyBorrowId(scannedBorrowId)} disabled={verificationLoading} className="min-h-11 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">{verificationLoading ? "Verifying…" : "Confirm"}</button>
+              </div>
+            </div>
+          </div>
+        </ModalLayer>
       )}
 
       {selectedNote !== null && (

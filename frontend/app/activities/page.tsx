@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import api from "@/lib/api";
 import Sidebar from "@/components/Sidebar";
 import ResponsiveTable from "@/components/ResponsiveTable";
+import MobileSearchInput from "@/components/MobileSearchInput";
+import { useDebounce } from "@/lib/useDebounce";
 import { useAuth } from "@/lib/auth-context";
 import {
   Search,
@@ -62,6 +64,17 @@ export default function ActivitiesPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
   const [isExporting, setIsExporting] = useState(false);
+  const debouncedSearch = useDebounce(search, 300);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 768px)");
+    const updateLayout = () => setIsMobile(media.matches);
+    updateLayout();
+    media.addEventListener("change", updateLayout);
+    return () => media.removeEventListener("change", updateLayout);
+  }, []);
+  const effectiveSearch = isMobile ? debouncedSearch : search;
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -71,7 +84,7 @@ export default function ActivitiesPage() {
         page: String(currentPage),
         limit: String(PAGE_SIZE),
       };
-      if (search) params.search = search;
+      if (effectiveSearch) params.search = effectiveSearch;
       if (actionFilter) params.action = actionFilter;
       if (dateFilter !== "all") {
         const from = new Date();
@@ -100,7 +113,7 @@ export default function ActivitiesPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, actionFilter, dateFilter, currentPage]);
+  }, [effectiveSearch, actionFilter, dateFilter, currentPage]);
 
   useEffect(() => {
     loadData();
@@ -316,18 +329,26 @@ export default function ActivitiesPage() {
           </div>
 
           {/* Controls */}
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 mb-6">
+          <div className="mobile-search-toolbar rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 mb-6">
             <div className="flex flex-col lg:flex-row gap-3">
-              <div className="flex-1 relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Search className="w-5 h-5 text-zinc-500" />
+              <div className="hidden flex-1 relative md:block">
+                <div className="absolute inset-y-0 left-0 flex items-center pl-3">
+                  <Search className="h-5 w-5 text-zinc-500" />
                 </div>
                 <input
                   type="text"
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={(event) => setSearch(event.target.value)}
                   placeholder="Search activities..."
-                  className="w-full pl-10 pr-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                  className="w-full rounded-xl border border-zinc-700 bg-zinc-950 py-2.5 pl-10 pr-3 text-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div className="flex-1 md:hidden">
+                <MobileSearchInput
+                  value={search}
+                  onChange={setSearch}
+                  placeholder="Search activities..."
+                  storageKey="cpc-recent-activity-searches"
                 />
               </div>
               <select
@@ -360,7 +381,7 @@ export default function ActivitiesPage() {
 
           {/* Loading */}
           {loading && (
-            <div className="hidden sm:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
+            <div className="hidden md:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
               {Array.from({ length: 10 }).map((_, i) => (
                 <div key={i} className="h-16 bg-zinc-900 animate-pulse border-b border-zinc-800/40" />
               ))}

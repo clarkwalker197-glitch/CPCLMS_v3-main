@@ -101,15 +101,17 @@ export default function DashboardPage() {
       value: ov.totalBooks ?? "—",
       icon: Library,
       accent: "bg-blue-500/15 text-blue-400",
+      href: "/books",
     },
     {
       title: "Total Members",
       value: ov.totalUsers ?? "—",
       icon: Users,
       accent: "bg-violet-500/15 text-violet-400",
+      href: "/members",
     },
-    { title: "Books Borrowed", value: ov.activeBorrows ?? "—", icon: BookMarked, accent: "bg-emerald-500/15 text-emerald-400" },
-    { title: "Overdue Books", value: ov.overdueBooks ?? "—", icon: AlertTriangle, accent: "bg-red-500/15 text-red-400" },
+    { title: "Books Borrowed", value: ov.activeBorrows ?? "—", icon: BookMarked, accent: "bg-emerald-500/15 text-emerald-400", href: "/requests" },
+    { title: "Overdue Books", value: ov.overdueBooks ?? "—", icon: AlertTriangle, accent: "bg-red-500/15 text-red-400", href: "/requests" },
   ];
 
   const formatDate = (d?: string) =>
@@ -146,7 +148,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Stats */}
-            <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="mobile-stats-grid mb-8 grid grid-cols-2 gap-4 sm:grid-cols-2 xl:grid-cols-4">
               {loading
                 ? Array.from({ length: 4 }).map((_, i) => (
                   <div key={i} className="h-32 rounded-2xl bg-zinc-900 animate-pulse" />
@@ -156,7 +158,7 @@ export default function DashboardPage() {
                 ))}
             </div>
 
-            <div className="mb-8 flex items-center justify-between rounded-2xl border border-blue-500/20 bg-blue-500/10 p-5">
+            <div className="mobile-dashboard-promo mb-8 flex items-center justify-between rounded-2xl border border-blue-500/20 bg-blue-500/10 p-5">
               <div>
                 <h2 className="font-semibold text-white">Detailed library analytics</h2>
                 <p className="mt-1 text-sm text-zinc-400">Explore trends, fines, requests, inventory, and borrowing comparisons.</p>
@@ -172,7 +174,7 @@ export default function DashboardPage() {
                   View all
                 </Link>
               </div>
-              <div className="hidden sm:block overflow-x-auto">
+              <div className="hidden md:block overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-zinc-900 text-left text-xs uppercase tracking-wide text-zinc-500">

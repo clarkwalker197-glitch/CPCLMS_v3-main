@@ -350,7 +350,7 @@ const [usersRes, statsRes] = await Promise.all([
 
           {/* Loading */}
           {loading && (
-            <div className="hidden sm:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
+            <div className="hidden md:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
               {Array.from({ length: 8 }).map((_, i) => (
                 <div key={i} className="h-16 bg-zinc-900 animate-pulse border-b border-zinc-800/40" />
               ))}
@@ -604,7 +604,7 @@ const [usersRes, statsRes] = await Promise.all([
             <div className="mb-3 flex justify-end">
               <SortSelect options={sortOptions} sort={sort} order={sortOrder} onChange={changeSort} />
             </div>
-            <div className="hidden sm:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
+            <div className="hidden md:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>

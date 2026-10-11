@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import { GoogleLogin, GoogleOAuthProvider } from '@react-oauth/google';
+import { Eye, EyeOff } from 'lucide-react';
 
 function getPostLoginPath(role?: string, returnTo?: string | null) {
   if (returnTo?.startsWith('/') && !returnTo.startsWith('//') && !returnTo.includes('\\')) {
@@ -132,12 +133,12 @@ export default function LoginPage() {
                 {/* Logo */}
                 <div className="flex flex-col items-center mb-5 sm:mb-8">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/CPClogo.png" alt="Cordova Public College Logo" className="w-16 h-16 sm:w-20 sm:h-20 object-contain mb-2 sm:mb-4" />
+                  <img src="/CPClogo.png" alt="Cordova Public College Logo" className="w-16 h-16 sm:w-20 sm:h-20 max-[380px]:w-14 max-[380px]:h-14 object-contain mb-2 sm:mb-4" />
                   <h2 className="text-2xl sm:text-3xl font-bold text-white">Welcome Back</h2>
                   <p className="text-zinc-400 mt-2">Sign in to the Library System to continue.</p>
                 </div>
 
-                <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
+                <form onSubmit={handleSubmit} className="auth-form space-y-4 sm:space-y-5">
                   {error && (
                     <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-sm text-red-400">
                       {error}
@@ -202,10 +203,13 @@ export default function LoginPage() {
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute inset-y-0 right-0 pr-4 flex items-center text-sm font-medium text-zinc-400 hover:text-zinc-200 transition"
+                        className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-zinc-400 transition hover:text-zinc-200 md:w-auto md:pr-4 md:text-sm md:font-medium"
                         aria-label={showPassword ? 'Hide password' : 'Show password'}
                       >
-                        {showPassword ? 'Hide' : 'Show'}
+                        <span className="hidden md:inline">{showPassword ? 'Hide' : 'Show'}</span>
+                        <span className="md:hidden">
+                          {showPassword ? <EyeOff className="h-5 w-5" aria-hidden="true" /> : <Eye className="h-5 w-5" aria-hidden="true" />}
+                        </span>
                       </button>
                     </div>
                   </div>
@@ -243,27 +247,29 @@ export default function LoginPage() {
                     <span className="absolute left-1/2 -top-2.5 -translate-x-1/2 bg-zinc-900 px-3 text-xs text-zinc-500">OR</span>
                   </div>
 
-                  <GoogleLogin
-                    onSuccess={async ({ credential }) => {
-                      if (!credential) return setError('Google did not return a valid credential');
-                      setError('');
-                      const result = await googleLogin(credential);
-                      if (result.success) router.push(getPostLoginPath(result.user?.role, returnTo));
-                      else setError(result.error || 'Google login failed');
-                    }}
-                    onError={() => setError('Google login failed. Please try again.')}
-                    theme="filled_black"
-                    size="large"
-                    width="100%"
-                    text="signin_with"
-                  />
+                  <div className="google-login-button">
+                    <GoogleLogin
+                      onSuccess={async ({ credential }) => {
+                        if (!credential) return setError('Google did not return a valid credential');
+                        setError('');
+                        const result = await googleLogin(credential);
+                        if (result.success) router.push(getPostLoginPath(result.user?.role, returnTo));
+                        else setError(result.error || 'Google login failed');
+                      }}
+                      onError={() => setError('Google login failed. Please try again.')}
+                      theme="filled_black"
+                      size="large"
+                      width="100%"
+                      text="signin_with"
+                    />
+                  </div>
                 </form>
 
                 {/* Register link */}
                 <div className="mt-5">
                   <Link
                     href="/register"
-                    className="w-full py-3 bg-blue-600/10 text-blue-400 font-medium rounded-xl hover:bg-blue-600/20 transition-colors border border-blue-600/30 flex items-center justify-center gap-2"
+                    className="auth-register-link w-full py-3 bg-blue-600/10 text-blue-400 font-medium rounded-xl hover:bg-blue-600/20 transition-colors border border-blue-600/30 flex items-center justify-center gap-2"
                   >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />

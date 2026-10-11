@@ -111,9 +111,9 @@ export default function StudentDashboardPage() {
   const isFaculty = role === "FACULTY";
 
 const statsCards = [
-    { title: "Currently Borrowed", value: stats?.myBorrowed ?? "-", icon: BookMarked, accent: "bg-blue-500/15 text-blue-400" },
-    { title: "Pending Requests", value: stats?.myPendingRequests ?? "-", icon: Clock, accent: "bg-amber-500/15 text-amber-400" },
-    { title: "Overdue Fines", value: `₱${stats?.myFines ?? 0}`, icon: Coins, accent: "bg-red-500/15 text-red-400" },
+    { title: "Currently Borrowed", value: stats?.myBorrowed ?? "-", icon: BookMarked, accent: "bg-blue-500/15 text-blue-400", href: "/requests" },
+    { title: "Pending Requests", value: stats?.myPendingRequests ?? "-", icon: Clock, accent: "bg-amber-500/15 text-amber-400", href: "/requests" },
+    { title: "Overdue Fines", value: `₱${stats?.myFines ?? 0}`, icon: Coins, accent: "bg-red-500/15 text-red-400", href: "/requests" },
   ];
 
 const formatDate = (d?: string) =>
@@ -157,7 +157,7 @@ const formatDate = (d?: string) =>
             </div>
 
             {/* Stats */}
-            <div className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-3">
+            <div className="mobile-stats-grid mb-6 grid grid-cols-2 gap-4 md:grid-cols-3">
               {loading
                 ? Array.from({ length: 3 }).map((_, i) => (
                     <div key={i} className="h-32 rounded-2xl bg-zinc-900 animate-pulse" />
@@ -180,7 +180,7 @@ const formatDate = (d?: string) =>
                     View all
                   </Link>
                 </div>
-                <div className="hidden sm:block overflow-x-auto">
+                <div className="hidden md:block overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="bg-zinc-900 text-left text-xs uppercase tracking-wide text-zinc-500">

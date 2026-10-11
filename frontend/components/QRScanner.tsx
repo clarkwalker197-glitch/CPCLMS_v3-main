@@ -4,6 +4,7 @@ import { ModalLayer } from "@/components/ModalLayer";
 import { useState, useEffect, useRef, useCallback, useId } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 import { formatBorrowId, normalizeBorrowId } from "@/lib/borrow-id";
+import { Flashlight } from "lucide-react";
 
 interface QRScannerProps {
   onScan: (data: string) => Promise<void> | void;
@@ -33,6 +34,7 @@ export function QRScanner({
   const [cameras, setCameras] = useState<{ id: string; label: string }[]>([]);
   const [selectedCamera, setSelectedCamera] = useState<string>("");
   const [lastResult, setLastResult] = useState<string>("");
+  const [flashlightOn, setFlashlightOn] = useState(false);
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const fallbackIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -154,6 +156,7 @@ export function QRScanner({
             return;
           }
           setLastResult(formatBorrowId(borrowId));
+          if (window.matchMedia("(max-width: 768px)").matches && "vibrate" in navigator) navigator.vibrate(25);
           stopScanner();
           onScan(borrowId);
         },
@@ -241,6 +244,7 @@ export function QRScanner({
                 return;
               }
               setLastResult(formatBorrowId(borrowId));
+              if (window.matchMedia("(max-width: 768px)").matches && "vibrate" in navigator) navigator.vibrate(25);
               setScannerEnabled(false);
               setScanning(false);
               onScan(borrowId);
@@ -293,6 +297,23 @@ export function QRScanner({
     setScannerEnabled(true);
   };
 
+  const toggleFlashlight = async () => {
+    const video = document.querySelector<HTMLVideoElement>(`#${scannerElementId} video`);
+    const track = video?.srcObject instanceof MediaStream ? video.srcObject.getVideoTracks()[0] : null;
+    if (!track) {
+      setError("Flashlight control is unavailable for this camera.");
+      return;
+    }
+    try {
+      const constraints = { advanced: [{ torch: !flashlightOn }] };
+      await track.applyConstraints(constraints as MediaTrackConstraints);
+      setFlashlightOn((enabled) => !enabled);
+      setError("");
+    } catch {
+      setError("This device does not support flashlight control in the browser.");
+    }
+  };
+
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const borrowId = normalizeBorrowId(manualInput);
@@ -312,9 +333,9 @@ export function QRScanner({
 
   return (
     <ModalLayer>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="mobile-qr-overlay fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="fixed inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative z-50 w-full max-w-md rounded-xl bg-white shadow-lg p-6">
+      <div className="mobile-qr-panel relative z-50 w-full max-w-md rounded-xl bg-white shadow-lg p-6">
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-zinc-800">{title}</h3>
@@ -346,7 +367,7 @@ export function QRScanner({
         )}
 
         {/* Scanner viewport */}
-        <div className="bg-zinc-900 rounded-lg overflow-hidden mb-4 relative" style={{ minHeight: "250px" }}>
+        <div className="mobile-qr-viewport bg-zinc-900 rounded-lg overflow-hidden mb-4 relative" style={{ minHeight: "250px" }}>
           {/* HTML5 QR Code scanner mounts here */}
           <div id={scannerElementId} className="w-full min-h-[250px]" />
 
@@ -359,11 +380,18 @@ export function QRScanner({
           {/* Scan overlay */}
           {scanning && (
             <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-              <div className="w-48 h-48 border-2 border-blue-400 rounded-lg opacity-60" />
+              <div className="mobile-qr-frame w-48 h-48 border-2 border-blue-400 rounded-lg opacity-60" />
               <div className="absolute bottom-3 left-0 right-0 text-center">
                 <span className="text-xs text-white/70 bg-black/40 px-2 py-1 rounded-full">
                   Point at QR code
                 </span>
+              </div>
+
+              <div className="mobile-qr-controls mb-3 flex items-center justify-between gap-2">
+                <span className="text-xs text-zinc-500">{scanning ? "Camera ready" : "Camera paused"}</span>
+                <button type="button" onClick={() => void toggleFlashlight()} aria-pressed={flashlightOn} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-zinc-700 px-3 text-sm text-zinc-300 hover:bg-zinc-800">
+                  <Flashlight className="h-4 w-4" /> {flashlightOn ? "Flash on" : "Flash"}
+                </button>
               </div>
             </div>
           )}
@@ -452,4 +480,3 @@ declare global {
     };
   }
 }
-

@@ -12,6 +12,7 @@ import { BookBorrowModal } from "@/components/BookBorrowModal";
 import { AddBookModal } from "@/components/AddBookModal";
 import { EditBookModal } from "@/components/EditBookModal";
 import MobileBookTypeSelect from "@/components/MobileBookTypeSelect";
+import MobileSearchInput from "@/components/MobileSearchInput";
 import Sidebar from "@/components/Sidebar";
 import { useConfirmDialog } from "@/components/ui/ConfirmModal";
 import ResponsiveTable from "@/components/ResponsiveTable";
@@ -67,12 +68,21 @@ export default function BooksPage() {
   const [togglingStatusId, setTogglingStatusId] = useState<string | null>(null);
   const [showingCachedCatalog, setShowingCachedCatalog] = useState(false);
   const [catalogUpdatedAt, setCatalogUpdatedAt] = useState<number | null>(null);
+  const [isDesktop, setIsDesktop] = useState(false);
 
   const isLibrarian = user?.role === "LIBRARIAN";
 
   // Debounced search/filter values (300ms) to avoid per-keystroke API spam
   const debouncedSearch = useDebounce(search, 300);
   const requestSequence = useRef(0);
+
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 769px)");
+    const updateLayout = () => setIsDesktop(media.matches);
+    updateLayout();
+    media.addEventListener("change", updateLayout);
+    return () => media.removeEventListener("change", updateLayout);
+  }, []);
 
   const loadData = useCallback(async () => {
     const requestId = ++requestSequence.current;
@@ -380,18 +390,27 @@ export default function BooksPage() {
           </div>
 
           {/* Toolbar */}
-          <div className="mb-6 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3 sm:p-4">
+          <div className="mobile-search-toolbar mb-6 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3 sm:p-4">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-              <div className="relative w-full sm:flex-1">
+              <div className="hidden relative w-full sm:flex-1 md:block">
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
                   <Search className="h-5 w-5 text-zinc-500" />
                 </div>
                 <input
                   type="text"
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={(event) => setSearch(event.target.value)}
                   placeholder="Search by title, author, or Dewey number..."
                   className="min-h-[44px] w-full rounded-xl border border-zinc-700 bg-zinc-950 pl-10 pr-3 text-sm text-white placeholder:text-zinc-500 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div className="w-full md:hidden">
+                <MobileSearchInput
+                  value={search}
+                  onChange={setSearch}
+                  placeholder="Search by title, author, or Dewey number..."
+                  storageKey="cpc-recent-book-searches"
+                  quickFilters={["Fiction", "History", "Science"]}
                 />
               </div>
 
@@ -418,6 +437,8 @@ export default function BooksPage() {
               </div>
             </div>
 
+            <details className="mobile-filter-details" open={isDesktop}>
+              <summary>Filters and sort</summary>
             <div className="mt-2 grid grid-cols-2 gap-2 sm:mt-3 sm:flex sm:flex-wrap sm:items-center sm:gap-3">
               <SortSelect options={sortOptions} sort={sort} order={sortOrder} onChange={changeSort} />
               <select
@@ -478,6 +499,7 @@ export default function BooksPage() {
                 </span>
               </div>
             </div>
+            </details>
           </div>
 
           {/* Loading */}
@@ -599,7 +621,7 @@ export default function BooksPage() {
           {/* LIST VIEW */}
           {!loading && view === "list" && visibleBooks.length > 0 && (
             <>
-              <div className="hidden sm:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
+              <div className="hidden md:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-zinc-900 text-left text-xs uppercase tracking-wide text-zinc-500">
@@ -716,7 +738,7 @@ export default function BooksPage() {
 
           {/* Pagination */}
           {!loading && visibleBooks.length > 0 && (
-            <div className="flex items-center justify-between mt-6">
+            <div className="hidden items-center justify-between mt-6 md:flex">
               <p className="text-sm text-zinc-500">
                 Showing{" "}
                 <span className="text-zinc-300">
@@ -756,6 +778,11 @@ export default function BooksPage() {
                 </button>
               </div>
             </div>
+          )}
+          {!loading && visibleBooks.length > 0 && currentPage < totalPages && (
+            <button type="button" onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))} className="mt-4 min-h-11 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 text-sm font-semibold text-zinc-200 md:hidden">
+              Load more books
+            </button>
           )}
 
           {/* Borrow Cart Bar */}

@@ -529,8 +529,11 @@ async put<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
     return this.put('/auth/change-password', { currentPassword, newPassword });
   }
 
-  async updateNotificationPreferences(notificationsEnabled: boolean): Promise<ApiResponse<any>> {
-    return this.put('/auth/notification-preferences', { notificationsEnabled });
+  async updateNotificationPreferences(preferences: {
+    notificationsEnabled?: boolean;
+    systemNotificationsEnabled?: boolean;
+  }): Promise<ApiResponse<any>> {
+    return this.put('/auth/notification-preferences', preferences);
   }
 
   async forgotPassword(identifier: string): Promise<ApiResponse<any>> {

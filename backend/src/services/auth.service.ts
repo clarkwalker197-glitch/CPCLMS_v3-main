@@ -448,14 +448,14 @@ async register(input: RegisterInput, ipAddress?: string, userAgent?: string) {
     });
   }
 
-  async updateNotificationPreferences(userId: string, notificationsEnabled: boolean) {
+  async updateNotificationPreferences(
+    userId: string,
+    preferences: { notificationsEnabled?: boolean; systemNotificationsEnabled?: boolean },
+  ) {
     const user = await prisma.user.update({
       where: { id: userId },
-      data: { notificationsEnabled },
+      data: preferences,
     });
-    if (!notificationsEnabled) {
-      await prisma.pushSubscription.deleteMany({ where: { userId } });
-    }
     return this.sanitizeUser(user);
   }
 

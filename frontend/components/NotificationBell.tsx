@@ -54,11 +54,15 @@ export default function NotificationBell() {
     if (!user) return;
     try {
       const cached = await offlineDb.notifications.where("userId").equals(user.id).sortBy("createdAt");
-      const recentCached = cached.slice(-20).reverse();
-      if (recentCached.length) {
-        setNotifications(recentCached as unknown as NotificationItem[]);
-        setUnreadCount(cached.filter((notification) => !notification.isRead).length);
-      }
+      const visibleCached = cached.filter((notification) => {
+        const isSystemNotification = notification.isSystem === true || notification.type === "FAQ_PUBLISHED";
+        return isSystemNotification
+          ? user.systemNotificationsEnabled !== false
+          : user.notificationsEnabled !== false;
+      });
+      const recentCached = visibleCached.slice(-20).reverse();
+      setNotifications(recentCached as unknown as NotificationItem[]);
+      setUnreadCount(visibleCached.filter((notification) => !notification.isRead).length);
       if (!navigator.onLine) {
         setShowingCached(true);
         return;

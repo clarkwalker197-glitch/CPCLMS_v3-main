@@ -15,6 +15,7 @@ export interface User {
   avatar: string | null;
   isActive: boolean;
   notificationsEnabled: boolean;
+  systemNotificationsEnabled: boolean;
   createdAt: string;
 }
 

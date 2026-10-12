@@ -6,6 +6,7 @@ import { prisma } from '../config';
 import { AppError, ConflictError, NotFoundError } from '../utils/errors';
 import { recordActivity } from './activity-log.service';
 import { Prisma } from '@prisma/client';
+import { notificationService } from './notification.service';
 
 export class PolicyService {
   /**
@@ -37,41 +38,43 @@ export class PolicyService {
     if (expectedUpdatedAt !== null && Number.isNaN(Date.parse(expectedUpdatedAt))) {
       throw new ConflictError('The policy version is invalid. Reload the latest policy before saving.');
     }
-    try {
-      return await prisma.$transaction(async (tx) => {
-        let policy;
-        if (expectedUpdatedAt === null) {
-          policy = await tx.policy.create({ data: { key, value, description } });
-        } else {
-          const expectedVersion = new Date(expectedUpdatedAt);
-          const result = await tx.policy.updateMany({
-            where: { key, updatedAt: expectedVersion },
-            data: {
-              value,
-              description,
-              updatedAt: new Date(Math.max(Date.now(), expectedVersion.getTime() + 1)),
-            },
-          });
-          if (result.count !== 1) {
-            throw new ConflictError('This policy was changed by another administrator. Reload the latest policy before saving.');
-          }
-          policy = await tx.policy.findUnique({ where: { key } });
-          if (!policy) {
-            throw new ConflictError('This policy was removed by another administrator. Reload the latest policies before saving.');
-          }
+    const savePolicy = () => prisma.$transaction(async (tx) => {
+      let policy;
+      if (expectedUpdatedAt === null) {
+        policy = await tx.policy.create({ data: { key, value, description } });
+      } else {
+        const expectedVersion = new Date(expectedUpdatedAt);
+        const result = await tx.policy.updateMany({
+          where: { key, updatedAt: expectedVersion },
+          data: {
+            value,
+            description,
+            updatedAt: new Date(Math.max(Date.now(), expectedVersion.getTime() + 1)),
+          },
+        });
+        if (result.count !== 1) {
+          throw new ConflictError('This policy was changed by another administrator. Reload the latest policy before saving.');
         }
+        policy = await tx.policy.findUnique({ where: { key } });
+        if (!policy) {
+          throw new ConflictError('This policy was removed by another administrator. Reload the latest policies before saving.');
+        }
+      }
 
-        await recordActivity({
-          userId: actor.userId,
-          action: 'UPDATE_POLICY',
-          description: `Updated policy "${key}"`,
-          entity: 'Policy',
-          entityId: key,
-          ipAddress: actor.ipAddress,
-          details: { key },
-        }, tx);
-        return policy;
-      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      await recordActivity({
+        userId: actor.userId,
+        action: 'UPDATE_POLICY',
+        description: `Updated policy "${key}"`,
+        entity: 'Policy',
+        entityId: key,
+        ipAddress: actor.ipAddress,
+        details: { key },
+      }, tx);
+      return policy;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    let policy: Awaited<ReturnType<typeof savePolicy>>;
+    try {
+      policy = await savePolicy();
     } catch (error) {
       if (error instanceof ConflictError) throw error;
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
@@ -84,6 +87,13 @@ export class PolicyService {
       console.error('Policy update failed:', error);
       throw new AppError('Unable to save this policy right now. Please try again.', 503);
     }
+    await notificationService.notifySystemUsers(
+      'SYSTEM',
+      'Library Policy Updated',
+      `The library policy "${policy.description || policy.key}" has been updated.`,
+      '/policies',
+    );
+    return policy;
   }
 
   /**

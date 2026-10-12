@@ -195,7 +195,7 @@ export const changePassword = asyncHandler(async (req: AuthenticatedRequest, res
 export const updateNotificationPreferences = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const user = await authService.updateNotificationPreferences(
     req.user!.userId,
-    req.body.notificationsEnabled
+    req.body
   );
   sendSuccess(res, user, 'Notification preferences updated successfully');
 });

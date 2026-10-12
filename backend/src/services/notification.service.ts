@@ -5,7 +5,7 @@
 // ============================================================
 
 import { prisma } from '../config';
-import { NotificationType } from '@prisma/client';
+import { NotificationType, Prisma } from '@prisma/client';
 import { getPaginationParams, buildPaginationMeta } from '../utils/pagination';
 import { NotFoundError } from '../utils/errors';
 import { sendEmail as sendEmailMessage } from '../utils/email';
@@ -62,16 +62,17 @@ export class NotificationService {
     title: string,
     message?: string,
     link?: string,
-    pushOptions?: { tag?: string },
+    pushOptions?: { tag?: string; system?: boolean },
   ) {
+    const preference = pushOptions?.system ? 'systemNotificationsEnabled' : 'notificationsEnabled';
     const recipient = await prisma.user.findUnique({
       where: { id: userId },
-      select: { notificationsEnabled: true },
+      select: { notificationsEnabled: true, systemNotificationsEnabled: true },
     });
-    if (!recipient?.notificationsEnabled) return null;
+    if (!recipient?.[preference]) return null;
 
     const notification = await prisma.notification.create({
-      data: { userId, type, title, message, link },
+      data: { userId, type, title, message, link, isSystem: preference === 'systemNotificationsEnabled' },
     });
 
     await sendPushToUser(userId, {
@@ -79,7 +80,7 @@ export class NotificationService {
       body: message,
       url: link,
       tag: pushOptions?.tag || `notification-${notification.id}`,
-    });
+    }, preference);
     return notification;
   }
 
@@ -93,18 +94,42 @@ export class NotificationService {
       where: {
         role: { in: ['STUDENT', 'FACULTY'] },
         isActive: true,
-        notificationsEnabled: true,
+        systemNotificationsEnabled: true,
       },
       select: { id: true },
     });
     if (recipients.length === 0) return 0;
 
     const result = await prisma.notification.createMany({
-      data: recipients.map(({ id }) => ({ userId: id, type, title, message, link })),
+      data: recipients.map(({ id }) => ({ userId: id, type, title, message, link, isSystem: true })),
     });
     await sendPushToMany(
       recipients.map(({ id }) => id),
       { title, body: message, url: link, tag: `${type}-${Date.now()}` },
+      'systemNotificationsEnabled',
+    );
+    return result.count;
+  }
+
+  async notifySystemUsers(
+    type: NotificationType,
+    title: string,
+    message?: string,
+    link?: string,
+  ): Promise<number> {
+    const recipients = await prisma.user.findMany({
+      where: { isActive: true, systemNotificationsEnabled: true },
+      select: { id: true },
+    });
+    if (recipients.length === 0) return 0;
+
+    const result = await prisma.notification.createMany({
+      data: recipients.map(({ id }) => ({ userId: id, type, title, message, link, isSystem: true })),
+    });
+    await sendPushToMany(
+      recipients.map(({ id }) => id),
+      { title, body: message, url: link, tag: `${type}-${Date.now()}` },
+      'systemNotificationsEnabled',
     );
     return result.count;
   }
@@ -115,7 +140,21 @@ export class NotificationService {
   async getUserNotifications(userId: string, query: Record<string, unknown>) {
     const { page, limit, skip, take } = getPaginationParams(query);
 
-    const where: any = { userId };
+    const preferenceState = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { notificationsEnabled: true, systemNotificationsEnabled: true },
+    });
+    const hiddenTypes: Prisma.NotificationWhereInput[] = [];
+    if (!preferenceState?.notificationsEnabled) {
+      hiddenTypes.push({ isSystem: true });
+    }
+    if (!preferenceState?.systemNotificationsEnabled) {
+      hiddenTypes.push({ isSystem: false });
+    }
+    const where: Prisma.NotificationWhereInput = {
+      userId,
+      ...(hiddenTypes.length ? { AND: hiddenTypes } : {}),
+    };
     if (query.unreadOnly === 'true' || query.unreadOnly === true) {
       where.isRead = false;
     }
@@ -128,8 +167,8 @@ export class NotificationService {
         skip,
         take,
       }),
-      prisma.notification.count({ where: { userId } }),
-      prisma.notification.count({ where: { userId, isRead: false } }),
+      prisma.notification.count({ where }),
+      prisma.notification.count({ where: { ...where, isRead: false } }),
     ]);
 
     return {
@@ -187,8 +226,23 @@ export class NotificationService {
    * Get unread count for a user
    */
   async getUnreadCount(userId: string): Promise<number> {
+    const preferenceState = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { notificationsEnabled: true, systemNotificationsEnabled: true },
+    });
+    const hiddenTypes: Prisma.NotificationWhereInput[] = [];
+    if (!preferenceState?.notificationsEnabled) {
+      hiddenTypes.push({ isSystem: true });
+    }
+    if (!preferenceState?.systemNotificationsEnabled) {
+      hiddenTypes.push({ isSystem: false });
+    }
     return prisma.notification.count({
-      where: { userId, isRead: false },
+      where: {
+        userId,
+        isRead: false,
+        ...(hiddenTypes.length ? { AND: hiddenTypes } : {}),
+      },
     });
   }
 
@@ -210,16 +264,18 @@ export class NotificationService {
    * Example cron job function
    */
   async sendDueDateReminders(): Promise<{ sent: number }> {
-    const tomorrow = new Date();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(0, 0, 0, 0);
-    const dayAfter = new Date(tomorrow);
-    dayAfter.setDate(dayAfter.getDate() + 1);
+    const threeDaysOut = new Date(tomorrow);
+    threeDaysOut.setDate(threeDaysOut.getDate() + 2);
 
-    const dueTomorrow = await prisma.borrowTransaction.findMany({
+    const dueSoon = await prisma.borrowTransaction.findMany({
       where: {
         status: 'ACTIVE',
-        dueDate: { gte: tomorrow, lt: dayAfter },
+        dueDate: { gte: tomorrow, lt: threeDaysOut },
+        user: { isActive: true, notificationsEnabled: true },
       },
       include: {
         user: { select: { id: true, email: true, firstName: true } },
@@ -228,9 +284,8 @@ export class NotificationService {
     });
 
     let sent = 0;
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    for (const txn of dueTomorrow) {
+    const todayStart = today;
+    for (const txn of dueSoon) {
       if (!txn.user || !txn.book) continue;
       const transactionLink = `/requests?transactionId=${encodeURIComponent(txn.id)}`;
       const alreadyRemindedToday = await prisma.notification.findFirst({
@@ -244,12 +299,14 @@ export class NotificationService {
       });
       if (alreadyRemindedToday) continue;
 
-      const message = `Reminder: "${txn.book.title}" (${txn.book.accessionNo}) is due tomorrow (${txn.dueDate.toLocaleDateString()}). Please return or renew.`;
+      const daysUntilDue = Math.max(1, Math.ceil((txn.dueDate.getTime() - today.getTime()) / (24 * 60 * 60 * 1000)));
+      const dueDescription = daysUntilDue === 1 ? 'tomorrow' : `in ${daysUntilDue} days`;
+      const message = `Reminder: "${txn.book.title}" (${txn.book.accessionNo}) is due ${dueDescription} (${txn.dueDate.toLocaleDateString()}). Please return or renew.`;
 
       const notification = await this.createNotification(
         txn.user.id,
         'DUE_REMINDER',
-        'Book Due Tomorrow',
+        daysUntilDue === 1 ? 'Book Due Tomorrow' : 'Book Due Soon',
         message,
         transactionLink,
         { tag: `due-${txn.id}` },

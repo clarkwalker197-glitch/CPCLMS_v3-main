@@ -92,6 +92,7 @@ model User {
   phone                String?   @db.VarChar(30)
   avatar               String?   @db.VarChar(500)
   notificationsEnabled Boolean   @default(true) @map("notifications_enabled")
+  systemNotificationsEnabled Boolean @default(true) @map("system_notifications_enabled")
   isActive             Boolean   @default(true) @map("is_active")
   archivedAt           DateTime? @map("archived_at")
   maxBorrowDays        Int?      @map("max_borrow_days") /// Per-user override (overrides policy)
@@ -342,6 +343,7 @@ model Notification {
   title     String           @db.VarChar(255)
   message   String?          @db.VarChar(1000)
   isRead    Boolean          @default(false) @map("is_read")
+  isSystem  Boolean          @default(false) @map("is_system")
   link      String?          @db.VarChar(500) /// Optional deep link (e.g., /transactions/xxx)
   createdAt DateTime         @default(now()) @map("created_at")
 

@@ -45,7 +45,7 @@ Set the generated values in the backend environment only:
 ```env
 VAPID_PUBLIC_KEY=your_generated_public_key
 VAPID_PRIVATE_KEY=your_generated_private_key
-VAPID_SUBJECT=mailto:admin@example.com
+VAPID_SUBJECT=https://cpc-library.online
 ```
 
 Keep `VAPID_PRIVATE_KEY` secret; do not add it to the frontend or a `NEXT_PUBLIC_*`

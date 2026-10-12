@@ -14,7 +14,7 @@ export default function HeaderUserActions({ showProfile = true }: { showProfile?
   if (!user) return null;
 
   return (
-    <div className="authenticated-header-actions fixed right-3 top-2 z-50 flex items-center gap-2 sm:right-6 lg:right-8">
+    <div className="authenticated-header-actions absolute right-3 top-6 z-50 flex items-center gap-2 sm:right-6 lg:right-8">
       <NotificationBell />
       {shouldShowProfile && (
         <Link

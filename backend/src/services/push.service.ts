@@ -18,13 +18,15 @@ export interface PushSubscriptionInput {
   };
 }
 
+export type PushPreference = 'notificationsEnabled' | 'systemNotificationsEnabled';
+
 const vapidPublicKey = env.VAPID_PUBLIC_KEY;
 const vapidPrivateKey = env.VAPID_PRIVATE_KEY;
 const isConfigured = Boolean(vapidPublicKey && vapidPrivateKey);
 
 if (vapidPublicKey && vapidPrivateKey) {
   webpush.setVapidDetails(
-    'https://cpc-library.online',
+    env.VAPID_SUBJECT,
     vapidPublicKey,
     vapidPrivateKey,
   );
@@ -44,10 +46,10 @@ export async function savePushSubscription(
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { isActive: true, notificationsEnabled: true },
+    select: { isActive: true },
   });
-  if (!user?.isActive || !user.notificationsEnabled) {
-    throw new ForbiddenError('Enable account notifications before subscribing to system notifications.');
+  if (!user?.isActive) {
+    throw new ForbiddenError('An active account is required to subscribe to notifications.');
   }
 
   const endpoint = new URL(subscription.endpoint);
@@ -78,13 +80,15 @@ export async function removePushSubscription(userId: string, endpoint: string): 
 export async function sendPushToUser(
   userId: string,
   payload: PushPayload,
+  preference: PushPreference = 'notificationsEnabled',
 ): Promise<void> {
-  await sendPushToMany([userId], payload);
+  await sendPushToMany([userId], payload, preference);
 }
 
 export async function sendPushToMany(
   userIds: string[],
   payload: PushPayload,
+  preference: PushPreference = 'notificationsEnabled',
 ): Promise<void> {
   if (!isConfigured || userIds.length === 0) return;
 
@@ -93,7 +97,9 @@ export async function sendPushToMany(
       where: {
         id: { in: [...new Set(userIds)] },
         isActive: true,
-        notificationsEnabled: true,
+        ...(preference === 'systemNotificationsEnabled'
+          ? { systemNotificationsEnabled: true }
+          : { notificationsEnabled: true }),
       },
       select: {
         pushSubscriptions: {

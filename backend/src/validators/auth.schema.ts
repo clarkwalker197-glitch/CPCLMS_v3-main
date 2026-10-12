@@ -138,8 +138,12 @@ export const changePasswordSchema = z.object({
 
 export const updateNotificationPreferencesSchema = z.object({
   body: z.object({
-    notificationsEnabled: z.boolean(),
-  }),
+    notificationsEnabled: z.boolean().optional(),
+    systemNotificationsEnabled: z.boolean().optional(),
+  }).refine(
+    (preferences) => Object.keys(preferences).length > 0,
+    'At least one notification preference must be provided',
+  ),
 });
 
 export const updateProfileSchema = z.object({

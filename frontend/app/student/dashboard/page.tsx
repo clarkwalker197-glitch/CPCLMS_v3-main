@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Sidebar from "@/components/Sidebar";
+import HeaderUserActions from "@/components/HeaderUserActions";
 import ResponsiveTable from "@/components/ResponsiveTable";
 import { StatCard } from "@/components/StatCard";
 import BorrowHistoryCard from "@/components/BorrowHistoryCard";
@@ -141,6 +142,7 @@ const formatDate = (d?: string) =>
                   <p className="mt-2 text-xs text-amber-300">Showing last synchronized dashboard data.</p>
                 )}
               </div>
+              <HeaderUserActions />
             </div>
 
             {/* Stats */}

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Check, ChevronDown, Pencil, Send, Trash2, X } from "lucide-react";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Sidebar from "@/components/Sidebar";
+import HeaderUserActions from "@/components/HeaderUserActions";
 import api from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useConfirmDialog } from "@/components/ui/ConfirmModal";
@@ -160,7 +161,10 @@ export default function FaqPage() {
                 <h1 className="text-2xl font-bold text-white">{isLibrarian ? "FAQ Manager" : "Frequently Asked Questions"}</h1>
                 <p className="mt-1 text-sm text-zinc-400">Find answers about borrowing, fines, accounts, and library services.</p>
               </div>
-              {!isLibrarian && <button type="button" onClick={() => setShowQuestionForm((current) => !current)} className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700"><Send className="h-4 w-4" />Ask a Question</button>}
+              <div className="flex shrink-0 items-center gap-3">
+                {!isLibrarian && <button type="button" onClick={() => setShowQuestionForm((current) => !current)} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700"><Send className="h-4 w-4" />Ask a Question</button>}
+                <HeaderUserActions />
+              </div>
             </div>
 
             {message && <div className="mb-5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-300">{message}</div>}

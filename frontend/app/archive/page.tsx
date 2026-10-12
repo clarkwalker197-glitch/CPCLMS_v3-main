@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import api from "@/lib/api";
 import Sidebar from "@/components/Sidebar";
+import HeaderUserActions from "@/components/HeaderUserActions";
 import { useConfirmDialog } from "@/components/ui/ConfirmModal";
 import { Archive as ArchiveIcon, Users, RotateCcw, Search } from "lucide-react";
 
@@ -101,7 +102,10 @@ export default function ArchivePage() {
       <main className="flex-1 min-w-0">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-[calc(7rem+min(env(safe-area-inset-bottom),2rem))] lg:pb-8">
           <div className="mb-6">
-            <div className="flex items-center gap-3"><ArchiveIcon className="w-7 h-7 text-blue-400" /><h1 className="text-2xl font-bold text-white">Archive</h1></div>
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3"><ArchiveIcon className="w-7 h-7 text-blue-400" /><h1 className="text-2xl font-bold text-white">Archive</h1></div>
+              <HeaderUserActions />
+            </div>
             <p className="text-sm text-zinc-400 mt-1">Restore user accounts removed from the active list.</p>
           </div>
           {message && <div className="p-4 mb-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-sm text-emerald-400">{message}</div>}

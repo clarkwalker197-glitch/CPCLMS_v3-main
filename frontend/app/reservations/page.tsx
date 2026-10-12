@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type TouchEvent } from "react";
 import { useAuth } from "@/lib/auth-context";
 import api from "@/lib/api";
 import Sidebar from "@/components/Sidebar";
+import HeaderUserActions from "@/components/HeaderUserActions";
 import { ModalLayer } from "@/components/ModalLayer";
 import { offlineDb } from "@/lib/offline-db";
 
@@ -128,6 +129,7 @@ export default function ReservationsPage() {
                 </p>
               )}
             </div>
+            <HeaderUserActions />
           </div>
 
           {error && (

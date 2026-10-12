@@ -6,6 +6,7 @@ import api from "@/lib/api";
 import { sanitizeNameInput } from "@/lib/name-validation";
 import { useDebounce } from "@/lib/useDebounce";
 import Sidebar from "@/components/Sidebar";
+import HeaderUserActions from "@/components/HeaderUserActions";
 import ResponsiveTable from "@/components/ResponsiveTable";
 import UserAvatar from "@/components/UserAvatar";
 import { SortHeader, SortSelect, nextSortOrder, type SortOption } from "@/components/SortControls";
@@ -307,18 +308,21 @@ const [usersRes, statsRes] = await Promise.all([
                 Manage library members ({total} total)
               </p>
             </div>
-            {isLibrarian && (
-              <button
-                onClick={() => {
-                  resetAddMemberForm();
-                  setShowAddMemberModal(true);
-                }}
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl shadow-lg shadow-blue-600/30 transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                Add Member
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              {isLibrarian && (
+                <button
+                  onClick={() => {
+                    resetAddMemberForm();
+                    setShowAddMemberModal(true);
+                  }}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl shadow-lg shadow-blue-600/30 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add Member
+                </button>
+              )}
+              <HeaderUserActions />
+            </div>
           </div>
 
           {/* Toolbar */}

@@ -3,6 +3,7 @@
   import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
 import Sidebar from "@/components/Sidebar";
+import HeaderUserActions from "@/components/HeaderUserActions";
 import api from "@/lib/api";
 import {
   MapPin,
@@ -307,15 +308,18 @@ export default function PoliciesPage() {
               <h1 className="text-3xl lg:text-4xl font-bold text-white mb-2">{libraryInfo.title}</h1>
               <p className="text-zinc-400 text-sm">Learn more about our library and services</p>
             </div>
-            {isLibrarian && !isEditing && (
-              <button
-                onClick={handleEditStart}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
-              >
-                <Edit2 className="w-4 h-4" />
-                Edit
-              </button>
-            )}
+            <div className="flex shrink-0 items-center gap-3">
+              {isLibrarian && !isEditing && (
+                <button
+                  onClick={handleEditStart}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
+                >
+                  <Edit2 className="w-4 h-4" />
+                  Edit
+                </button>
+              )}
+              <HeaderUserActions />
+            </div>
           </div>
 
           {!isEditing ? (

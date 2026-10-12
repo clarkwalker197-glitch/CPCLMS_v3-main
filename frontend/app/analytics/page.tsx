@@ -18,6 +18,7 @@ import {
 } from "recharts";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Sidebar from "@/components/Sidebar";
+import HeaderUserActions from "@/components/HeaderUserActions";
 import { StatCard } from "@/components/StatCard";
 import { useAuth } from "@/lib/auth-context";
 import api from "@/lib/api";
@@ -187,6 +188,7 @@ export default function AnalyticsPage() {
                   <Download className="h-4 w-4" aria-hidden="true" />
                   {isDownloading ? "Preparing report..." : "Download Monthly Report"}
                 </button>
+                <HeaderUserActions />
               </div>
             </header>
 

@@ -5,7 +5,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { ModalLayer } from "@/components/ModalLayer";
-import HeaderUserActions from "@/components/HeaderUserActions";
 import api from "@/lib/api";
 import {
   LayoutDashboard,
@@ -335,8 +334,6 @@ export default function Sidebar() {
           )}
         </button>
       </nav>
-
-      {user && <HeaderUserActions />}
 
       {moreOpen && (
         <ModalLayer>

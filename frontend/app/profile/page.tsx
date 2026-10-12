@@ -7,6 +7,7 @@ import { useTheme } from "next-themes";
 import api from "@/lib/api";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Sidebar from "@/components/Sidebar";
+import HeaderUserActions from "@/components/HeaderUserActions";
 import EditProfileModal from "@/components/EditProfileModal";
 import PushNotificationSettings from "@/components/PushNotificationSettings";
 import { ModalLayer } from "@/components/ModalLayer";
@@ -117,11 +118,14 @@ export default function ProfilePage() {
         <div className="flex-1 min-w-0">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-[calc(7rem+min(env(safe-area-inset-bottom),2rem))] lg:pb-8">
             {/* Page Header */}
-            <div className="mb-6">
-              <h1 className="text-2xl font-bold text-white">My Profile</h1>
-              <p className="text-sm text-zinc-400 mt-1">
-                View and manage your account information
-              </p>
+            <div className="mb-6 flex items-center justify-between gap-4">
+              <div>
+                <h1 className="text-2xl font-bold text-white">My Profile</h1>
+                <p className="text-sm text-zinc-400 mt-1">
+                  View and manage your account information
+                </p>
+              </div>
+              <HeaderUserActions />
             </div>
 
             {/* Profile Header Card */}

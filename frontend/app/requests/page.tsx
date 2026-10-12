@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { useDebounce } from "@/lib/useDebounce";
 import Sidebar from "@/components/Sidebar";
+import HeaderUserActions from "@/components/HeaderUserActions";
 import ResponsiveTable from "@/components/ResponsiveTable";
 import UserAvatar from "@/components/UserAvatar";
 import { SortHeader, SortSelect, nextSortOrder, type SortOption } from "@/components/SortControls";
@@ -620,6 +621,7 @@ export default function RequestsPage() {
                               </p>
                             )}
                           </div>
+                          <HeaderUserActions />
                         </div>
 
                         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 mb-4">

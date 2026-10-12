@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import api from "@/lib/api";
 import Sidebar from "@/components/Sidebar";
+import HeaderUserActions from "@/components/HeaderUserActions";
 import ResponsiveTable from "@/components/ResponsiveTable";
 import MobileSearchInput from "@/components/MobileSearchInput";
 import { useDebounce } from "@/lib/useDebounce";
@@ -325,6 +326,7 @@ export default function ActivitiesPage() {
                   Clear Filters
                 </button>
               )}
+              <HeaderUserActions />
             </div>
           </div>
 

@@ -14,6 +14,7 @@ import { EditBookModal } from "@/components/EditBookModal";
 import MobileBookTypeSelect from "@/components/MobileBookTypeSelect";
 import MobileSearchInput from "@/components/MobileSearchInput";
 import Sidebar from "@/components/Sidebar";
+import HeaderUserActions from "@/components/HeaderUserActions";
 import { useConfirmDialog } from "@/components/ui/ConfirmModal";
 import ResponsiveTable from "@/components/ResponsiveTable";
 import { SortHeader, SortSelect, nextSortOrder, type SortOption } from "@/components/SortControls";
@@ -373,7 +374,7 @@ export default function BooksPage() {
           )}
 
           {/* Header */}
-          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className={`flex items-start justify-between gap-4 ${isLibrarian ? "mb-3" : "mb-6"}`}>
             <div>
               <h1 className="text-2xl font-bold text-white">Books Collection</h1>
               <p className="mt-1 text-sm text-zinc-400">Manage your library&apos;s book collection</p>
@@ -384,16 +385,19 @@ export default function BooksPage() {
                 </p>
               )}
             </div>
-            {isLibrarian && (
+            <HeaderUserActions />
+          </div>
+          {isLibrarian && (
+            <div className="mb-6 flex justify-end">
               <button
                 onClick={() => setShowAddModal(true)}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-600/30 transition-colors hover:bg-blue-700 sm:w-auto sm:justify-start"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-600/30 transition-colors hover:bg-blue-700"
               >
                 <Plus className="h-4 w-4" />
                 Add Book
               </button>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* Toolbar */}
           <div className="mobile-search-toolbar mb-6 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3 sm:p-4">

@@ -165,7 +165,7 @@ export default function NotificationBell() {
       <button
         onClick={handleOpen}
         aria-label="Notifications"
-        className={`relative w-10 h-10 rounded-xl border border-zinc-800 bg-zinc-900 flex items-center justify-center text-zinc-400 hover:text-white hover:border-zinc-700 transition-colors ${
+        className={`relative h-11 w-11 rounded-xl border border-zinc-800 bg-zinc-900 flex items-center justify-center text-zinc-400 hover:text-white hover:border-zinc-700 transition-colors ${
           open ? "text-white border-zinc-700" : ""
         }`}
       >

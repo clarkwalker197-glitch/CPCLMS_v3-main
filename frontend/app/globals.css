@@ -60,6 +60,11 @@
   animation: mobile-more-sheet-in 180ms ease-out;
 }
 
+.min-h-screen:has(> aside.has-global-header) > main,
+.min-h-screen:has(> aside.has-global-header) > div:not(.authenticated-header-actions) {
+  padding-top: 4rem;
+}
+
 /* ============================================================
    Base Styles
    ------------------------------------------------------------

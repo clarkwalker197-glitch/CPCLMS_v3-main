@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { ModalLayer } from "@/components/ModalLayer";
+import HeaderUserActions from "@/components/HeaderUserActions";
 import api from "@/lib/api";
 import {
   LayoutDashboard,
@@ -267,7 +268,7 @@ export default function Sidebar() {
 
   return (
     <>
-      <aside className={`hidden lg:flex ${isCollapsed ? "w-20" : "w-64"} shrink-0 flex-col border-r border-zinc-800 bg-zinc-900/60 sticky top-0 h-screen overflow-hidden transition-[width] duration-300 ease-in-out`}>
+      <aside className={`hidden lg:flex ${user ? "has-global-header" : ""} ${isCollapsed ? "w-20" : "w-64"} shrink-0 flex-col border-r border-zinc-800 bg-zinc-900/60 sticky top-0 h-screen overflow-hidden transition-[width] duration-300 ease-in-out`}>
       <button
         type="button"
         onClick={() => setIsCollapsed((collapsed) => !collapsed)}
@@ -334,6 +335,8 @@ export default function Sidebar() {
           )}
         </button>
       </nav>
+
+      {user && <HeaderUserActions />}
 
       {moreOpen && (
         <ModalLayer>

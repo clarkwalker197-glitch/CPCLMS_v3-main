@@ -284,7 +284,6 @@ export default function EBooksPage() {
                   onChange={setSearch}
                   placeholder="Search by title, author, or Dewey number..."
                   storageKey="cpc-recent-ebook-searches"
-                  quickFilters={["Fiction", "History", "Science"]}
                 />
               </div>
 

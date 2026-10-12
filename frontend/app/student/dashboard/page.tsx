@@ -3,8 +3,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import NotificationBell from "@/components/NotificationBell";
-import UserAvatar from "@/components/UserAvatar";
 import Sidebar from "@/components/Sidebar";
 import ResponsiveTable from "@/components/ResponsiveTable";
 import { StatCard } from "@/components/StatCard";
@@ -142,17 +140,6 @@ const formatDate = (d?: string) =>
                 {showingCached && (
                   <p className="mt-2 text-xs text-amber-300">Showing last synchronized dashboard data.</p>
                 )}
-              </div>
-              <div className="flex items-center gap-2">
-                <NotificationBell />
-
-                <Link
-                  href="/profile"
-                  aria-label="Open profile"
-                  className="ml-1 flex h-10 w-10 items-center justify-center rounded-xl shadow-lg shadow-blue-600/30 transition-colors hover:bg-blue-700"
-                >
-                    <UserAvatar firstName={user?.firstName} lastName={user?.lastName} avatar={user?.avatar} className="h-10 w-10" />
-                </Link>
               </div>
             </div>
 

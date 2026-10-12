@@ -44,6 +44,27 @@ const optionalTrimmedString = z.preprocess(
   z.string().optional(),
 );
 
+const vapidSubjectSchema = z
+  .string()
+  .trim()
+  .default('https://cpc-library.online')
+  .transform((subject) => (
+    subject.startsWith('https://') || subject.startsWith('mailto:')
+      ? subject
+      : `https://${subject}`
+  ))
+  .refine((subject) => {
+    if (subject.startsWith('mailto:')) {
+      return z.string().email().safeParse(subject.slice('mailto:'.length)).success;
+    }
+
+    try {
+      return new URL(subject).protocol === 'https:';
+    } catch {
+      return false;
+    }
+  }, 'VAPID_SUBJECT must be an HTTPS URL or a mailto: email address');
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().default(4000),
@@ -54,7 +75,7 @@ const envSchema = z.object({
   JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
   VAPID_PUBLIC_KEY: z.string().optional(),
   VAPID_PRIVATE_KEY: z.string().optional(),
-  VAPID_SUBJECT: z.string().default('mailto:cpc-library.online'),
+  VAPID_SUBJECT: vapidSubjectSchema,
   FRONTEND_URL: frontendOriginSchema,
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(15 * 60 * 1000),
   RATE_LIMIT_MAX: z.coerce.number().default(100),

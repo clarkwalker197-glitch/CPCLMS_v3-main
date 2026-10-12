@@ -24,7 +24,7 @@ const isConfigured = Boolean(vapidPublicKey && vapidPrivateKey);
 
 if (vapidPublicKey && vapidPrivateKey) {
   webpush.setVapidDetails(
-    env.VAPID_SUBJECT,
+    'https://cpc-library.online',
     vapidPublicKey,
     vapidPrivateKey,
   );

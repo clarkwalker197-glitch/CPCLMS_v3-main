@@ -34,11 +34,13 @@ const txnStatusBadge: Record<string, string> = {
   ACTIVE: "bg-blue-500/15 text-blue-400 ring-blue-500/30",
   RETURNED: "bg-emerald-500/15 text-emerald-400 ring-emerald-500/30",
   OVERDUE: "bg-red-500/15 text-red-400 ring-red-500/30",
+  PENDING: "bg-amber-500/15 text-amber-400 ring-amber-500/30",
 };
 const txnStatusLabel: Record<string, string> = {
   ACTIVE: "Borrowed",
   RETURNED: "Returned",
   OVERDUE: "Overdue",
+  PENDING: "Pending",
 };
 
 // ── Request status styling ──
@@ -172,7 +174,7 @@ export default function RequestsPage() {
             : String(leftValue).localeCompare(String(rightValue), undefined, { numeric: true });
           return txnSortOrder === "desc" ? -comparison : comparison;
         });
-      setTxns(filtered.slice((txnPage - 1) * PAGE_SIZE, txnPage * PAGE_SIZE));
+      setTxns(filtered);
       setTxnTotal(filtered.length);
       setShowingCachedTransactions(cachedTransactions.length > 0);
       return cachedTransactions.length > 0;
@@ -188,11 +190,9 @@ export default function RequestsPage() {
       }
 
       const params: Record<string, string> = {
-        page: String(txnPage),
-        limit: String(PAGE_SIZE),
+        page: "1",
+        limit: "100",
       };
-      if (debouncedTxnSearch) params.search = debouncedTxnSearch;
-      if (debouncedTxnStatus) params.status = debouncedTxnStatus;
       params.sort = txnSort;
       params.order = txnSortOrder;
 
@@ -268,7 +268,7 @@ export default function RequestsPage() {
     try {
       const cachedRecords = user
         ? (await offlineDb.borrowRequests.where("userId").equals(user.id).toArray())
-          .filter((request: any) => !request._pending && !String(request.id).startsWith("local-borrow-"))
+          .filter((request: any) => !request._pending && !String(request.id).startsWith("local-borrow-") && (isLibrarian || request.status === "PENDING"))
         : [];
       if (cachedRecords.length) {
         setRecords(cachedRecords);
@@ -280,11 +280,12 @@ export default function RequestsPage() {
       }
 
       const params: Record<string, string> = {
-        page: String(reqPage),
-        limit: String(REQUEST_PAGE_SIZE),
+        page: isLibrarian ? String(reqPage) : "1",
+        limit: isLibrarian ? String(REQUEST_PAGE_SIZE) : "100",
       };
-      if (debouncedReqSearch) params.search = debouncedReqSearch;
-      if (debouncedReqStatus) params.status = debouncedReqStatus;
+      if (isLibrarian && debouncedReqSearch) params.search = debouncedReqSearch;
+      if (isLibrarian && debouncedReqStatus) params.status = debouncedReqStatus;
+      if (!isLibrarian) params.status = "PENDING";
       params.sort = reqSort;
       params.order = reqSortOrder;
 
@@ -311,7 +312,7 @@ export default function RequestsPage() {
     } finally {
       setReqLoading(false);
     }
-  }, [debouncedReqSearch, debouncedReqStatus, reqPage, reqSort, reqSortOrder, user]);
+  }, [debouncedReqSearch, debouncedReqStatus, isLibrarian, reqPage, reqSort, reqSortOrder, user]);
 
   useEffect(() => {
     loadRequests();
@@ -545,6 +546,41 @@ export default function RequestsPage() {
     d ? new Date(d).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" }) : "—";
 
   const reqTotalPages = Math.max(1, Math.ceil(reqTotal / REQUEST_PAGE_SIZE));
+  const pendingBorrowItems = !isLibrarian
+    ? records.flatMap((request: any) => (request.books || []).map((book: any) => ({
+      id: `pending-${request.id}-${book.requestId || book.id}`,
+      requestId: request.id,
+      requestDate: request.requestDate,
+      borrowDate: request.requestDate,
+      book,
+      user: request.user,
+      status: "PENDING",
+      fineAmount: 0,
+      finePaid: false,
+      _pendingRequest: true,
+    })))
+    : [];
+  const myBooks = [...txns, ...pendingBorrowItems]
+    .filter((transaction: any) => {
+      const searchTerm = txnSearch.trim().toLocaleLowerCase();
+      const matchesSearch = !searchTerm || [
+        transaction.book?.title,
+        transaction.book?.author,
+        transaction.book?.accessionNo,
+      ].some((value) => String(value || "").toLocaleLowerCase().includes(searchTerm));
+      const matchesStatus = !txnStatusFilter || transaction.status === txnStatusFilter;
+      return matchesSearch && matchesStatus;
+    })
+    .sort((left: any, right: any) => {
+      const leftValue = left[txnSort] ?? "";
+      const rightValue = right[txnSort] ?? "";
+      const comparison = txnSort === "fineAmount"
+        ? Number(leftValue) - Number(rightValue)
+        : String(leftValue).localeCompare(String(rightValue), undefined, { numeric: true });
+      return txnSortOrder === "desc" ? -comparison : comparison;
+    });
+  const myBooksTotalPages = Math.max(1, Math.ceil(myBooks.length / PAGE_SIZE));
+  const displayedMyBooks = myBooks.slice((txnPage - 1) * PAGE_SIZE, txnPage * PAGE_SIZE);
 
   const getReqPageNumbers = () => {
     const pages: number[] = [];
@@ -604,6 +640,7 @@ export default function RequestsPage() {
                               className="px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition appearance-none"
                             >
                               <option value="" className="bg-zinc-900 text-white">All Status</option>
+                              <option value="PENDING" className="bg-zinc-900 text-white">Pending</option>
                               <option value="ACTIVE" className="bg-zinc-900 text-white">Borrowed</option>
                               <option value="OVERDUE" className="bg-zinc-900 text-white">Overdue</option>
                               <option value="RETURNED" className="bg-zinc-900 text-white">Returned</option>
@@ -613,14 +650,14 @@ export default function RequestsPage() {
                         </div>
 
                         {txnLoading && <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-16 bg-zinc-900 animate-pulse border-b border-zinc-800/40" />)}</div>}
-                        {!txnLoading && txns.length === 0 && (
+                        {!txnLoading && displayedMyBooks.length === 0 && (
                           <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 flex flex-col items-center justify-center py-16 text-center">
                             <BookOpen className="w-12 h-12 text-zinc-600 mb-4" />
                             <p className="text-zinc-300 font-medium">No borrowed books found</p>
                             <p className="text-sm text-zinc-500 mt-1">{txnSearch || txnStatusFilter ? "Try adjusting your search or filters" : "Borrowed books will appear here"}</p>
                           </div>
                         )}
-                        {!txnLoading && txns.length > 0 && (
+                        {!txnLoading && displayedMyBooks.length > 0 && (
                           <>
                           <div className="hidden md:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
                             <div className="overflow-x-auto">
@@ -628,7 +665,7 @@ export default function RequestsPage() {
                                 <thead><tr className="bg-zinc-900 text-left text-xs uppercase tracking-wide text-zinc-500">
                                   <th className="px-6 py-3 font-medium">Book</th><th className="px-6 py-3 font-medium hidden sm:table-cell">Accession</th><th className="px-6 py-3 font-medium hidden sm:table-cell"><SortHeader field="borrowDate" sort={txnSort} order={txnSortOrder} onSort={(field) => changeTxnSort(field, nextSortOrder(txnSort, txnSortOrder, field))}>Borrow Date</SortHeader></th><th className="px-6 py-3 font-medium hidden md:table-cell"><SortHeader field="dueDate" sort={txnSort} order={txnSortOrder} onSort={(field) => changeTxnSort(field, nextSortOrder(txnSort, txnSortOrder, field))}>Due Date</SortHeader></th><th className="px-6 py-3 font-medium hidden md:table-cell">Return Date</th><th className="px-6 py-3 font-medium"><SortHeader field="status" sort={txnSort} order={txnSortOrder} onSort={(field) => changeTxnSort(field, nextSortOrder(txnSort, txnSortOrder, field))}>Status</SortHeader></th><th className="px-6 py-3 font-medium"><SortHeader field="fineAmount" sort={txnSort} order={txnSortOrder} onSort={(field) => changeTxnSort(field, nextSortOrder(txnSort, txnSortOrder, field))}>Fine</SortHeader></th>
                                 </tr></thead>
-                                <tbody>{txns.map((txn: any) => <tr key={txn.id} className="border-t border-zinc-800/60 hover:bg-zinc-800/40 transition-colors">
+                                <tbody>{displayedMyBooks.map((txn: any) => <tr key={txn.id} className="border-t border-zinc-800/60 hover:bg-zinc-800/40 transition-colors">
                                   <td className="px-6 py-4"><p className="text-zinc-100 font-medium">{txn.book?.title || "Unknown"}</p><p className="text-xs text-zinc-500">{txn.book?.author || ""}</p></td>
                                   <td className="px-6 py-4 text-zinc-400 hidden sm:table-cell">{txn.book?.accessionNo || "—"}</td><td className="px-6 py-4 text-zinc-400 hidden sm:table-cell">{formatDate(txn.borrowDate)}</td><td className="px-6 py-4 text-zinc-400 hidden md:table-cell">{formatDate(txn.dueDate)}</td><td className="px-6 py-4 text-zinc-400 hidden md:table-cell">{formatDate(txn.returnDate)}</td>
                                   <td className="px-6 py-4"><span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${txnStatusBadge[txn.status] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>{txnStatusLabel[txn.status] || txn.status}</span></td>
@@ -638,16 +675,36 @@ export default function RequestsPage() {
                             </div>
                           </div>
                           <div className="space-y-0 md:hidden">
-                            {txns.map((txn: any) => (
+                            {displayedMyBooks.map((txn: any) => (
                               <div key={txn.id} className="mb-4 last:mb-0">
-                                <BorrowHistoryCard transaction={txn} formatDate={formatDate} statusBadge={txnStatusBadge} statusLabel={txnStatusLabel} />
+                                <BorrowHistoryCard
+                                  transaction={txn}
+                                  formatDate={formatDate}
+                                  statusBadge={txnStatusBadge}
+                                  statusLabel={txnStatusLabel}
+                                  contextLabel="Borrower"
+                                  contextValue={[user?.firstName, user?.lastName].filter(Boolean).join(" ")}
+                                  onPayFine={!txn._pendingRequest ? async (amount) => {
+                                    const response = await api.payFine(txn.id, amount);
+                                    if (!response.success) throw new Error(response.error || "Unable to record fine payment.");
+                                    setSuccessMsg("Fine paid successfully.");
+                                    await loadTransactions();
+                                  } : undefined}
+                                />
                               </div>
                             ))}
                           </div>
                           </>
                         )}
-                        {!txnLoading && txns.length > 0 && (
-                          <div className="flex items-center justify-between mt-4"><p className="text-sm text-zinc-500">Showing <span className="text-zinc-300">{(txnPage - 1) * PAGE_SIZE + 1}–{Math.min(txnPage * PAGE_SIZE, txnTotal)}</span> of <span className="text-zinc-300">{txnTotal}</span> records</p><div className="flex items-center gap-1"><button onClick={() => setTxnPage((p) => Math.max(1, p - 1))} disabled={txnPage === 1} className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 disabled:opacity-40" aria-label="Previous page"><ChevronLeft className="w-4 h-4" /></button><button onClick={() => setTxnPage((p) => Math.min(Math.max(1, Math.ceil(txnTotal / PAGE_SIZE)), p + 1))} disabled={txnPage >= Math.max(1, Math.ceil(txnTotal / PAGE_SIZE))} className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 disabled:opacity-40" aria-label="Next page"><ChevronRight className="w-4 h-4" /></button></div></div>
+                        {!txnLoading && myBooks.length > 0 && (
+                          <div className="mt-4 flex items-center justify-between gap-3">
+                            <p className="text-sm text-zinc-500">Showing <span className="text-zinc-300">{(txnPage - 1) * PAGE_SIZE + 1}–{Math.min(txnPage * PAGE_SIZE, myBooks.length)}</span> of <span className="text-zinc-300">{myBooks.length}</span> records</p>
+                            <div className="flex items-center gap-1">
+                              <button onClick={() => setTxnPage((page) => Math.max(1, page - 1))} disabled={txnPage === 1} className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 disabled:opacity-40" aria-label="Previous page"><ChevronLeft className="w-4 h-4" /></button>
+                              <span className="px-2 text-xs text-zinc-500">Page {txnPage} of {myBooksTotalPages}</span>
+                              <button onClick={() => setTxnPage((page) => Math.min(myBooksTotalPages, page + 1))} disabled={txnPage >= myBooksTotalPages} className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 disabled:opacity-40" aria-label="Next page"><ChevronRight className="w-4 h-4" /></button>
+                            </div>
+                          </div>
                         )}
                       </div>
                     )}
@@ -655,7 +712,8 @@ export default function RequestsPage() {
                     {/* ===================================================== */}
                     {/* Borrow Requests */}
           {/* ===================================================== */}
-          <div className={isLibrarian ? "order-2" : ""}>
+          {isLibrarian && (
+          <div className="order-2">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
               <div>
                 <h2 className="text-2xl font-bold text-white">Borrow Requests</h2>
@@ -892,6 +950,7 @@ export default function RequestsPage() {
               </div>
             )}
           </div>
+          )}
 
           {isLibrarian && (
             <div className={isLibrarian ? "order-1 mt-8" : "mt-8"}>
@@ -994,30 +1053,23 @@ export default function RequestsPage() {
                 </div>
                 <div className="space-y-4 md:hidden">
                   {activeTxns.map((txn: any) => (
-                    <article key={txn.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-lg shadow-black/10">
-                      <div className="border-b border-zinc-800/80 pb-3">
-                        <p className="font-semibold text-zinc-100 break-words">{txn.book?.title || "Unknown"}</p>
-                        <p className="mt-1 text-sm text-zinc-500 break-words">{txn.book?.author || "Unknown author"}</p>
-                      </div>
-                      <div className="grid grid-cols-2 gap-4 py-4 text-sm">
-                        <div><p className="text-xs text-zinc-500">Member</p><div className="mt-1 flex items-center gap-2"><UserAvatar firstName={txn.user?.firstName} lastName={txn.user?.lastName} avatar={txn.user?.avatar} className="h-8 w-8" /><div className="break-words text-zinc-300">{txn.user?.firstName} {txn.user?.lastName}<p className="text-xs text-zinc-500">{txn.user?.libraryId || ""}</p></div></div></div>
-                        <div>
-                          <p className="text-xs text-zinc-500">Due Date</p>
-                          <div className="mt-1 flex flex-wrap items-center gap-2">
-                            <span className="text-zinc-300">{formatDate(txn.dueDate)}</span>
-                            {txn.status === "OVERDUE" && <span className="inline-flex items-center rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-400 ring-1 ring-red-500/30">Overdue</span>}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 border-t border-zinc-800/80 pt-3">
-                        <button onClick={() => openReturnModal(txn)} disabled={actionLoadingId !== null} className="inline-flex min-h-10 items-center justify-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40">
-                          <CheckCircle2 className="h-3.5 w-3.5" /> {actionLoadingId === txn.id ? "Returning..." : "Return"}
-                        </button>
-                        <button onClick={() => openMissingModal(txn)} disabled={actionLoadingId !== null} className="inline-flex min-h-10 items-center justify-center gap-1 rounded-lg bg-amber-500/15 px-3 py-2 text-xs font-medium text-amber-400 transition-colors hover:bg-amber-500/25 disabled:cursor-not-allowed disabled:opacity-40">
-                          <AlertTriangle className="h-3.5 w-3.5" /> Missing
-                        </button>
-                      </div>
-                    </article>
+                    <BorrowHistoryCard
+                      key={txn.id}
+                      transaction={txn}
+                      formatDate={formatDate}
+                      statusBadge={txnStatusBadge}
+                      statusLabel={txnStatusLabel}
+                      contextLabel="Member"
+                      contextValue={[txn.user?.firstName, txn.user?.lastName].filter(Boolean).join(" ") || "Unknown member"}
+                      onReturn={() => openReturnModal(txn)}
+                      onMissing={() => openMissingModal(txn)}
+                      onPayFine={async (amount) => {
+                        const response = await api.payFine(txn.id, amount);
+                        if (!response.success) throw new Error(response.error || "Unable to record fine payment.");
+                        setSuccessMsg("Fine paid successfully.");
+                        await loadActiveTransactions();
+                      }}
+                    />
                   ))}
                 </div>
                 </>

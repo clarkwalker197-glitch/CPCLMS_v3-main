@@ -192,7 +192,7 @@ export default function Sidebar() {
             { href: "/student/dashboard", label: "Home", icon: LayoutDashboard },
             { href: "/books", label: "Search", icon: Search },
             { href: "/requests", label: "My Books", icon: BookMarked },
-            { href: "/reservations", label: "Requests", icon: ClipboardList },
+            { href: "/reservations", label: "Reservations", icon: ClipboardList },
             { href: "/profile", label: "Profile", icon: UserRound },
           ]
     : [
@@ -325,11 +325,11 @@ export default function Sidebar() {
           onClick={() => setMoreOpen(true)}
           aria-expanded={moreOpen}
           aria-controls="mobile-more-menu"
-          className={`relative flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl px-0.5 py-1 text-[10px] font-medium leading-3 transition-colors ${moreOpen || ["/analytics", "/members", "/archive", "/activities", "/policies", "/profile", "/faq", "/suggestions", "/acquisition-requests"].some((href) => pathname === href || pathname.startsWith(href + "/")) ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}
+          className={`relative flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl px-0.5 py-1 text-[10px] font-medium leading-3 transition-colors ${moreOpen || ["/analytics", "/members", "/archive", "/activities", "/policies", "/faq", "/suggestions", "/acquisition-requests"].some((href) => pathname === href || pathname.startsWith(href + "/")) ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}
         >
           <MoreHorizontal className="h-5 w-5 shrink-0" />
           <span className="w-full whitespace-nowrap text-center">More</span>
-          {!moreOpen && ["/analytics", "/members", "/archive", "/activities", "/policies", "/profile", "/faq", "/suggestions", "/acquisition-requests"].some((href) => pathname === href || pathname.startsWith(href + "/")) && (
+          {!moreOpen && ["/analytics", "/members", "/archive", "/activities", "/policies", "/faq", "/suggestions", "/acquisition-requests"].some((href) => pathname === href || pathname.startsWith(href + "/")) && (
             <span className="absolute right-2 top-1 h-1.5 w-1.5 rounded-full bg-white" aria-hidden="true" />
           )}
         </button>
@@ -370,14 +370,12 @@ export default function Sidebar() {
                     { href: "/faq", label: "FAQ Manager", icon: HelpCircle },
                     { href: "/suggestions", label: "Suggestions Inbox", icon: MessageSquare },
                     { href: "/acquisition-requests", label: "Acquisition Requests", icon: LibraryBig },
-                    { href: "/profile", label: "Profile", icon: UserRound },
                   ]
                 : [
                     { href: "/faq", label: "FAQ", icon: HelpCircle },
                     { href: "/suggestions", label: "Suggestions", icon: MessageSquare },
                     { href: "/acquisition-requests", label: "Request a Book", icon: LibraryBig },
                     { href: "/policies", label: "Policies", icon: Shield },
-                    { href: "/profile", label: "Profile", icon: UserRound },
                   ]
               ).map((item) => {
                 const Icon = item.icon;

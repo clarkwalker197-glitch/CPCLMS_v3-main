@@ -4,7 +4,6 @@ import { ModalLayer } from "@/components/ModalLayer";
 import { useState, useEffect, useRef, useCallback, useId } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 import { formatBorrowId, normalizeBorrowId } from "@/lib/borrow-id";
-import { Flashlight } from "lucide-react";
 
 interface QRScannerProps {
   onScan: (data: string) => Promise<void> | void;
@@ -34,7 +33,6 @@ export function QRScanner({
   const [cameras, setCameras] = useState<{ id: string; label: string }[]>([]);
   const [selectedCamera, setSelectedCamera] = useState<string>("");
   const [lastResult, setLastResult] = useState<string>("");
-  const [flashlightOn, setFlashlightOn] = useState(false);
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const fallbackIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -297,23 +295,6 @@ export function QRScanner({
     setScannerEnabled(true);
   };
 
-  const toggleFlashlight = async () => {
-    const video = document.querySelector<HTMLVideoElement>(`#${scannerElementId} video`);
-    const track = video?.srcObject instanceof MediaStream ? video.srcObject.getVideoTracks()[0] : null;
-    if (!track) {
-      setError("Flashlight control is unavailable for this camera.");
-      return;
-    }
-    try {
-      const constraints = { advanced: [{ torch: !flashlightOn }] };
-      await track.applyConstraints(constraints as MediaTrackConstraints);
-      setFlashlightOn((enabled) => !enabled);
-      setError("");
-    } catch {
-      setError("This device does not support flashlight control in the browser.");
-    }
-  };
-
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const borrowId = normalizeBorrowId(manualInput);
@@ -387,12 +368,6 @@ export function QRScanner({
                 </span>
               </div>
 
-              <div className="mobile-qr-controls mb-3 flex items-center justify-between gap-2">
-                <span className="text-xs text-zinc-500">{scanning ? "Camera ready" : "Camera paused"}</span>
-                <button type="button" onClick={() => void toggleFlashlight()} aria-pressed={flashlightOn} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-zinc-700 px-3 text-sm text-zinc-300 hover:bg-zinc-800">
-                  <Flashlight className="h-4 w-4" /> {flashlightOn ? "Flash on" : "Flash"}
-                </button>
-              </div>
             </div>
           )}
         </div>

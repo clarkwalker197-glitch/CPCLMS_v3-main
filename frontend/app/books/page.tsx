@@ -35,7 +35,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 
-const PAGE_SIZE = 8;
+const PAGE_SIZE = 20;
 const MAX_BOOKS_PER_TRANSACTION = 3;
 const MAX_LIMIT_MESSAGE = "You can only borrow a maximum of 3 books per transaction.";
 
@@ -48,6 +48,7 @@ export default function BooksPage() {
   const { confirm } = useConfirmDialog();
   const router = useRouter();
   const [books, setBooks] = useState<any[]>([]);
+  const [totalBooks, setTotalBooks] = useState(0);
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -101,7 +102,9 @@ export default function BooksPage() {
       else if (mainCategoryFilter) localParams.categoryMain = mainCategoryFilter;
       if (classificationFilter) localParams.classificationNumber = classificationFilter;
       if (cachedBooks.length) {
-        setBooks(searchCachedBooks(cachedBooks, localParams, cachedCategories).map((book) => ({ ...book, bookType: "physical" })));
+        const cachedResults = searchCachedBooks(cachedBooks, localParams, cachedCategories).map((book) => ({ ...book, bookType: "physical" }));
+        setBooks(cachedResults);
+        setTotalBooks(cachedResults.length);
         setLoading(false);
       }
       const cachedSync = await offlineDb.meta.get("booksLastSyncedAt");
@@ -117,7 +120,8 @@ export default function BooksPage() {
       }
 
       const params: Record<string, string> = {};
-      params.limit = "100";
+      params.page = String(currentPage);
+      params.limit = String(PAGE_SIZE);
       params.sort = sort;
       params.order = sortOrder;
       if (debouncedSearch) params.search = debouncedSearch;
@@ -128,6 +132,7 @@ export default function BooksPage() {
       if (requestId !== requestSequence.current) return;
       if (booksRes.success) {
         setBooks((booksRes.data || []).map((book: any) => ({ ...book, bookType: "physical" })));
+        setTotalBooks(booksRes.meta?.total ?? (booksRes.data || []).length);
         await offlineDb.books.bulkPut(booksRes.data || []);
         if (!hasServerFilters) {
           const syncedAt = Date.now();
@@ -139,6 +144,7 @@ export default function BooksPage() {
         setError("You're moving too fast. Please wait a moment and try again.");
       } else if (booksRes.networkError && cachedBooks.length) {
         setBooks(searchCachedBooks(cachedBooks, localParams, cachedCategories).map((book) => ({ ...book, bookType: "physical" })));
+        setTotalBooks(searchCachedBooks(cachedBooks, localParams, cachedCategories).length);
         setShowingCachedCatalog(true);
       } else if (!booksRes.success) {
         setError(booksRes.error || "Unable to load the catalog.");
@@ -162,7 +168,7 @@ export default function BooksPage() {
     } finally {
       if (requestId === requestSequence.current) setLoading(false);
     }
-  }, [categoryFilter, classificationFilter, debouncedSearch, mainCategoryFilter, sort, sortOrder]);
+  }, [categoryFilter, classificationFilter, currentPage, debouncedSearch, mainCategoryFilter, sort, sortOrder]);
 
   const visibleBooks = books;
 
@@ -182,7 +188,7 @@ export default function BooksPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearch, categoryFilter, mainCategoryFilter, classificationFilter, visibleBooks.length]);
+  }, [debouncedSearch, categoryFilter, mainCategoryFilter, classificationFilter, sort, sortOrder]);
 
   const inCart = (id: string) => cart.some((b) => b.id === id);
 
@@ -304,15 +310,15 @@ export default function BooksPage() {
     setTimeout(() => setSuccessMsg(""), 4000);
   };
 
-  const totalPages = Math.max(1, Math.ceil(visibleBooks.length / PAGE_SIZE));
-  const paginatedBooks = visibleBooks.slice(
-    (currentPage - 1) * PAGE_SIZE,
-    currentPage * PAGE_SIZE
-  );
+  const totalPages = Math.max(1, Math.ceil(totalBooks / PAGE_SIZE));
+  const paginatedBooks = showingCachedCatalog
+    ? visibleBooks.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+    : visibleBooks;
 
   const getPageNumbers = () => {
     const pages: number[] = [];
-    for (let i = 1; i <= totalPages; i++) pages.push(i);
+    const start = Math.max(1, Math.min(currentPage - 2, totalPages - 4));
+    for (let i = start; i <= Math.min(totalPages, start + 4); i++) pages.push(i);
     return pages;
   };
 
@@ -495,7 +501,7 @@ export default function BooksPage() {
                   <List className="h-4 w-4" />
                 </button>
                 <span className="self-center px-2 text-xs text-zinc-500">
-                  {visibleBooks.length} books
+                  {totalBooks} books
                 </span>
               </div>
             </div>
@@ -738,14 +744,14 @@ export default function BooksPage() {
 
           {/* Pagination */}
           {!loading && visibleBooks.length > 0 && (
-            <div className="hidden items-center justify-between mt-6 md:flex">
-              <p className="text-sm text-zinc-500">
+            <div className="mt-6 flex flex-col items-center justify-between gap-3 sm:flex-row">
+              <p className="text-center text-sm text-zinc-500 sm:text-left">
                 Showing{" "}
                 <span className="text-zinc-300">
                   {(currentPage - 1) * PAGE_SIZE + 1}–
-                  {Math.min(currentPage * PAGE_SIZE, visibleBooks.length)}
+                  {Math.min((currentPage - 1) * PAGE_SIZE + paginatedBooks.length, totalBooks)}
                 </span>{" "}
-                of <span className="text-zinc-300">{visibleBooks.length}</span> books
+                of <span className="text-zinc-300">{totalBooks}</span> books
               </p>
               <div className="flex items-center gap-1">
                 <button
@@ -778,11 +784,6 @@ export default function BooksPage() {
                 </button>
               </div>
             </div>
-          )}
-          {!loading && visibleBooks.length > 0 && currentPage < totalPages && (
-            <button type="button" onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))} className="mt-4 min-h-11 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 text-sm font-semibold text-zinc-200 md:hidden">
-              Load more books
-            </button>
           )}
 
           {/* Borrow Cart Bar */}

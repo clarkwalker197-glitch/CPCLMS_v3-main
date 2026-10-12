@@ -221,7 +221,15 @@ const formatDate = (d?: string) =>
                   recentTransactions.length === 0 ? (
                     <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 px-4 py-10 text-center text-zinc-500">No recent transactions</div>
                   ) : recentTransactions.map((tx: any) => (
-                    <BorrowHistoryCard key={tx.id} transaction={{ ...tx, status: displayStatus(tx) }} formatDate={formatDate} statusBadge={statusBadge} statusLabel={{}} />
+                    <BorrowHistoryCard
+                      key={tx.id}
+                      transaction={{ ...tx, status: displayStatus(tx) }}
+                      formatDate={formatDate}
+                      statusBadge={statusBadge}
+                      statusLabel={{}}
+                      contextLabel="Borrower"
+                      contextValue={[user?.firstName, user?.lastName].filter(Boolean).join(" ")}
+                    />
                   ))
                 } />
               </div>

@@ -416,7 +416,6 @@ export default function BooksPage() {
                   onChange={setSearch}
                   placeholder="Search by title, author, or Dewey number..."
                   storageKey="cpc-recent-book-searches"
-                  quickFilters={["Fiction", "History", "Science"]}
                 />
               </div>
 

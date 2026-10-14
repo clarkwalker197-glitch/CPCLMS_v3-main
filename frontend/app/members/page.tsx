@@ -33,7 +33,8 @@ type AddMemberFormState = {
   confirmPassword: string;
   role: "STUDENT" | "FACULTY" | "LIBRARIAN";
   department: string;
-  yearSection: string;
+  year: string;
+  section: string;
   phone: string;
 };
 
@@ -47,7 +48,8 @@ const emptyAddMemberForm: AddMemberFormState = {
   confirmPassword: "",
   role: "STUDENT",
   department: "",
-  yearSection: "",
+  year: "",
+  section: "",
   phone: "",
 };
 
@@ -172,6 +174,10 @@ const [usersRes, statsRes] = await Promise.all([
       ? sanitizeNameInput(event.target.value)
       : field === "libraryId" && memberForm.role === "STUDENT"
         ? event.target.value.replace(/\D/g, "").slice(0, 8)
+        : field === "email"
+          ? event.target.value.slice(0, 50)
+          : field === "phone"
+            ? event.target.value.replace(/\D/g, "").slice(0, 11)
         : event.target.value;
     setMemberForm((current) => ({
       ...current,
@@ -215,8 +221,8 @@ const [usersRes, statsRes] = await Promise.all([
       return;
     }
 
-    if (memberForm.role === "STUDENT" && !memberForm.yearSection.trim()) {
-      setMemberFormError("Year & Section is required for Student accounts.");
+    if (memberForm.role === "STUDENT" && (!memberForm.year || !memberForm.section)) {
+      setMemberFormError("Year and Section are required for Student accounts.");
       return;
     }
 
@@ -231,7 +237,7 @@ const [usersRes, statsRes] = await Promise.all([
         password: memberForm.password,
         role: memberForm.role,
         department: memberForm.department.trim() || undefined,
-        yearSection: memberForm.yearSection.trim() || undefined,
+        yearSection: memberForm.role === "STUDENT" ? `${memberForm.year}-${memberForm.section}` : undefined,
         phone: memberForm.phone.trim() || undefined,
       };
 
@@ -433,11 +439,13 @@ const [usersRes, statsRes] = await Promise.all([
                 <input
                   type="email"
                   required
+                  maxLength={50}
                   value={memberForm.email}
                   onChange={handleAddMemberChange("email")}
                   className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
                   placeholder="member@example.com"
                 />
+                <p className="mt-1 text-xs text-zinc-500">max 50 characters</p>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -456,11 +464,16 @@ const [usersRes, statsRes] = await Promise.all([
                 <div>
                   <label className="block text-sm font-medium text-zinc-300 mb-1.5">Phone</label>
                   <input
+                    type="tel"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={11}
                     value={memberForm.phone}
                     onChange={handleAddMemberChange("phone")}
                     className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
                     placeholder="09XXXXXXXXX"
                   />
+                  <p className="mt-1 text-xs text-zinc-500">up to 11 digits</p>
                 </div>
               </div>
 
@@ -501,13 +514,33 @@ const [usersRes, statsRes] = await Promise.all([
               {memberForm.role === "STUDENT" && (
                 <div>
                   <label className="block text-sm font-medium text-zinc-300 mb-1.5">Year & Section *</label>
-                  <input
-                    required
-                    value={memberForm.yearSection}
-                    onChange={handleAddMemberChange("yearSection")}
-                    className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
-                    placeholder="e.g., 2-A"
-                  />
+                  <div className="grid grid-cols-2 gap-3">
+                    <select
+                      required
+                      aria-label="Year"
+                      value={memberForm.year}
+                      onChange={handleAddMemberChange("year")}
+                      className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-white focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Select Year</option>
+                      <option value="1">1st Year</option>
+                      <option value="2">2nd Year</option>
+                      <option value="3">3rd Year</option>
+                      <option value="4">4th Year</option>
+                    </select>
+                    <select
+                      required
+                      aria-label="Section"
+                      value={memberForm.section}
+                      onChange={handleAddMemberChange("section")}
+                      className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-white focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Select Section</option>
+                      {Array.from({ length: 26 }, (_, index) => String.fromCharCode(65 + index)).map((section) => (
+                        <option key={section} value={section}>{section}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               )}
 

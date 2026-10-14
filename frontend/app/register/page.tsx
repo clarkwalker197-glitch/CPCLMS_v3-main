@@ -39,7 +39,8 @@ const [formData, setFormData] = useState({
     email: '',
     phone: '',
     department: '',
-    yearSection: '',
+    year: '',
+    section: '',
     password: '',
     confirmPassword: '',
   });
@@ -92,7 +93,7 @@ const [formData, setFormData] = useState({
       return;
     }
 
-    if (!formData.yearSection.trim()) {
+    if (!formData.year || !formData.section) {
       setError('Year & Section is required for Student accounts');
       return;
     }
@@ -107,7 +108,7 @@ const result = await register({
         email: formData.email.trim(),
         phone: formData.phone.trim(),
         department: formData.department,
-        yearSection: formData.yearSection.trim(),
+        yearSection: `${formData.year}-${formData.section}`,
         password: formData.password,
       });
 
@@ -151,14 +152,18 @@ if (result.success) {
 
             {/* Logo + Institution + Heading */}
             <div className="relative z-10 flex flex-col gap-8">
-              <div className="flex items-center gap-3">
+              <Link
+                href="/"
+                aria-label="Cordova Public College Library Management System home"
+                className="flex items-center gap-3"
+              >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-<img src="/CPClogo.png" alt="Cordova Public College Logo" className="w-12 h-12 object-contain shrink-0" />
+                <img src="/CPClogo.png" alt="Cordova Public College Logo" className="w-12 h-12 object-contain shrink-0" />
                 <div>
                   <p className="auth-brand-school font-bold text-lg leading-tight text-white">Cordova Public College</p>
                   <p className="auth-brand-subtitle text-blue-200 text-sm">Library Management System</p>
                 </div>
-              </div>
+              </Link>
 
               {/* Heading + Subtitle */}
               <div className="max-w-md">
@@ -198,7 +203,10 @@ if (result.success) {
 {/* Logo */}
               <div className="flex flex-col items-center mb-5 sm:mb-8">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/CPClogo.png" alt="Cordova Public College Logo" className="w-16 h-16 sm:w-20 sm:h-20 object-contain mb-2 sm:mb-4" />
+                <Link href="/" aria-label="Cordova Public College Library Management System home">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/CPClogo.png" alt="Cordova Public College Logo" className="w-16 h-16 sm:w-20 sm:h-20 object-contain mb-2 sm:mb-4" />
+                </Link>
                 <h2 className="text-2xl sm:text-3xl font-bold text-white">Create Account</h2>
                 <p className="text-zinc-400 mt-2">Join the Library System to get started.</p>
               </div>
@@ -217,7 +225,7 @@ if (result.success) {
                   </label>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="relative">
-                      <input
+                                          <input
                         id="firstName"
                         name="firstName"
                         type="text"
@@ -264,16 +272,18 @@ if (result.success) {
                       type="text"
                       inputMode="numeric"
                       pattern="[0-9]*"
+                      maxLength={8}
                       required
                       value={formData.libraryId}
                       onChange={(e) => {
-                        const digitsOnly = e.target.value.replace(/[^0-9]/g, '');
+                        const digitsOnly = e.target.value.replace(/[^0-9]/g, '').slice(0, 8);
                         setFormData((prev) => ({ ...prev, libraryId: digitsOnly }));
                       }}
                       className={inputClass}
-                      placeholder="Enter your ID Number (e.g., 2025-01234)"
+                      placeholder="Enter your 8-digit ID Number"
                     />
                   </div>
+                  <p className="mt-1.5 text-xs text-zinc-500">8 digits</p>
                 </div>
 
 {/* Email + Phone Number */}
@@ -282,43 +292,51 @@ if (result.success) {
                     Contact Information
                   </label>
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <svg className="w-5 h-5 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                        </svg>
+                    <div>
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                          <svg className="w-5 h-5 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                          </svg>
+                        </div>
+                        <input
+                          id="email"
+                          name="email"
+                          type="email"
+                          maxLength={50}
+                          required
+                          value={formData.email}
+                          onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value.slice(0, 50) }))}
+                          className={inputClass}
+                          placeholder="Email"
+                        />
                       </div>
-                      <input
-                        id="email"
-                        name="email"
-                        type="email"
-                        required
-                        value={formData.email}
-                        onChange={handleChange}
-                        className={inputClass}
-                        placeholder="Email"
-                      />
+                      <p className="mt-1.5 text-xs text-zinc-500">max 50 characters</p>
                     </div>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <svg className="w-5 h-5 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M3 5a2 2 0 012-2h.5a2 2 0 011.856 1.257l.994 2.486a2 2 0 01-.288 2.13l-.9 1.125a.5.5 0 01-.12.144A12.05 12.05 0 0014.88 16.96a.5.5 0 00.144-.12l1.125-.9a2 2 0 012.13-.288l2.486.994A2 2 0 0122 18.5v.5a2 2 0 01-2 2H19a16 16 0 01-16-16V5z" />
-                        </svg>
+                    <div>
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                          <svg className="w-5 h-5 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M3 5a2 2 0 012-2h.5a2 2 0 011.856 1.257l.994 2.486a2 2 0 01-.288 2.13l-.9 1.125a.5.5 0 01-.12.144A12.05 12.05 0 0014.88 16.96a.5.5 0 00.144-.12l1.125-.9a2 2 0 012.13-.288l2.486.994A2 2 0 0122 18.5v.5a2 2 0 01-2 2H19a16 16 0 01-16-16V5z" />
+                          </svg>
+                        </div>
+                        <input
+                          id="phone"
+                          name="phone"
+                          type="text"
+                          inputMode="tel"
+                          pattern="[0-9]*"
+                          maxLength={11}
+                          value={formData.phone}
+                          onChange={(e) => {
+                            const digitsOnly = e.target.value.replace(/[^0-9]/g, '').slice(0, 11);
+                            setFormData((prev) => ({ ...prev, phone: digitsOnly }));
+                          }}
+                          className={inputClass}
+                          placeholder="Phone"
+                        />
                       </div>
-                      <input
-                        id="phone"
-                        name="phone"
-                        type="text"
-                        inputMode="tel"
-                        pattern="[0-9]*"
-                        value={formData.phone}
-                        onChange={(e) => {
-                          const digitsOnly = e.target.value.replace(/[^0-9]/g, '');
-                          setFormData((prev) => ({ ...prev, phone: digitsOnly }));
-                        }}
-                        className={inputClass}
-                        placeholder="Phone"
-                      />
+                      <p className="mt-1.5 text-xs text-zinc-500">11 digits</p>
                     </div>
                   </div>
                 </div>
@@ -361,23 +379,39 @@ if (result.success) {
                   <label className="block text-sm font-medium text-zinc-300 mb-1.5">
                     Academic Details
                   </label>
-                  <div className="grid grid-cols-1 gap-3">
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <svg className="w-5 h-5 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                      </div>
-                      <input
-                        id="yearSection"
-                        name="yearSection"
-                        type="text"
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label htmlFor="year" className="mb-1.5 block text-xs font-medium text-zinc-400">Year</label>
+                      <select
+                        id="year"
+                        name="year"
                         required
-                        value={formData.yearSection}
+                        value={formData.year}
                         onChange={handleChange}
-                        className={inputClass}
-                        placeholder="Year &amp; Section"
-                      />
+                        className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-3 text-white transition focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Select Year</option>
+                        <option value="1">1st Year</option>
+                        <option value="2">2nd Year</option>
+                        <option value="3">3rd Year</option>
+                        <option value="4">4th Year</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label htmlFor="section" className="mb-1.5 block text-xs font-medium text-zinc-400">Section</label>
+                      <select
+                        id="section"
+                        name="section"
+                        required
+                        value={formData.section}
+                        onChange={handleChange}
+                        className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-3 text-white transition focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Select Section</option>
+                        {Array.from({ length: 26 }, (_, index) => String.fromCharCode(65 + index)).map((section) => (
+                          <option key={section} value={section}>{section}</option>
+                        ))}
+                      </select>
                     </div>
                   </div>
                   <p className="mt-2 text-xs text-zinc-500">Faculty accounts are created by a librarian. Please contact the library.</p>

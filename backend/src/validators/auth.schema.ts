@@ -16,6 +16,16 @@ const nameSchema = (label: string) => z
   .max(50)
   .trim()
   .regex(/^\p{L}+(?:[ '\u2019-]\p{L}+)*$/u, `${label} can only contain letters, spaces, hyphens, and apostrophes`);
+const emailSchema = z
+  .string()
+  .email('Invalid email address')
+  .max(50, 'Email must be at most 50 characters')
+  .transform((email) => email.toLowerCase().trim());
+const phoneSchema = z
+  .string()
+  .max(11, 'Phone must be at most 11 digits')
+  .regex(/^\d{0,11}$/, 'Phone must contain digits only')
+  .optional();
 
 export const loginSchema = z.object({
   body: z.object({
@@ -35,13 +45,11 @@ export const registerSchema = z.object({
     lastName: nameSchema('Last name'),
     libraryId: z
       .string()
+      .trim()
       .min(1, 'ID Number is required')
-      .max(20)
-      .transform((s) => s.trim()),
-email: z
-      .string()
-      .email('Invalid email address')
-      .transform((email) => email.toLowerCase().trim()),
+      .max(8, 'ID Number must be at most 8 digits')
+      .regex(/^\d{1,8}$/, 'ID Number must contain digits only'),
+    email: emailSchema,
     password: z
       .string()
       .min(8, 'Password must be at least 8 characters')
@@ -51,14 +59,14 @@ email: z
         'Password must include at least two of letters, numbers, or symbols'
       ),
     department: departmentCodeSchema.optional(),
-    yearSection: z.string().optional(),
-    phone: z.string().optional(),
+    yearSection: z.string().trim().max(4).optional(),
+    phone: phoneSchema,
   }).superRefine((data, ctx) => {
-    if (!data.yearSection?.trim()) {
+    if (!/^[1-4]-[A-Z]$/.test(data.yearSection?.trim() || '')) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['yearSection'],
-        message: 'Year & Section is required for Student accounts',
+        message: 'Select a valid year and section',
       });
     }
     if (!data.department) {
@@ -77,14 +85,11 @@ export const createUserSchema = z.object({
     firstName: nameSchema('First name'),
     lastName: nameSchema('Last name'),
     suffix: z.string().trim().max(20).optional(),
-    email: z
-      .string()
-      .email('Invalid email address')
-      .transform((email) => email.toLowerCase().trim()),
+    email: emailSchema,
     libraryId: z
       .string()
-      .max(20)
       .trim()
+      .max(20)
       .optional(),
     password: z
       .string()
@@ -94,11 +99,8 @@ export const createUserSchema = z.object({
       errorMap: () => ({ message: 'Role must be STUDENT, FACULTY, or LIBRARIAN' }),
     }),
     department: departmentCodeSchema.optional(),
-    yearSection: z.string().optional(),
-    phone: z
-      .string()
-      .regex(/^\+?[\d\s-]{7,15}$/, 'Invalid phone number format')
-      .optional(),
+    yearSection: z.string().trim().max(4).optional(),
+    phone: phoneSchema,
   }).superRefine((data, ctx) => {
     if (data.role === 'LIBRARIAN' && !data.libraryId?.trim()) {
       ctx.addIssue({
@@ -113,6 +115,14 @@ export const createUserSchema = z.object({
         code: z.ZodIssueCode.custom,
         path: ['libraryId'],
         message: 'Student ID Number must contain exactly 8 digits',
+      });
+    }
+
+    if (data.role === 'STUDENT' && !/^[1-4]-[A-Z]$/.test(data.yearSection?.trim() || '')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['yearSection'],
+        message: 'Select a valid year and section',
       });
     }
 
@@ -150,8 +160,8 @@ export const updateProfileSchema = z.object({
   body: z.object({
     firstName: nameSchema('First name'),
     lastName: nameSchema('Last name'),
-    email: z.string().email('Invalid email address').transform((email) => email.toLowerCase().trim()),
-    phone: z.string().regex(/^\+?[\d\s-]{7,15}$/, 'Invalid phone number format').optional().or(z.literal('')),
+    email: emailSchema,
+    phone: phoneSchema,
     department: z.string().max(100).optional(),
     yearSection: z.string().max(100).optional(),
     removeProfilePicture: z.enum(['true', 'false']).optional(),

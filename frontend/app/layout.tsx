@@ -6,6 +6,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { SWSelfHeal } from "@/components/SWSelfHeal";
 import { PolicyUpdateNotice } from "@/components/PolicyUpdateNotice";
 import { ConfirmDialogProvider } from "@/components/ui/ConfirmModal";
+import SiteFooter from "@/components/SiteFooter";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -87,6 +88,7 @@ export default function RootLayout({
               <SWSelfHeal />
               <PolicyUpdateNotice />
               <main className="flex-1">{children}</main>
+              <SiteFooter />
             </AuthProvider>
           </ConfirmDialogProvider>
         </ThemeProvider>

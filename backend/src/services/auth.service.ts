@@ -28,6 +28,22 @@ import { isDepartmentCode } from '../constants/departments';
 
 const ACCESS_TOKEN_TTL_SECONDS = 2 * 60 * 60;
 
+function getUserUniqueConflict(error: unknown): ConflictError | null {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
+    return null;
+  }
+
+  const target = error.meta?.target;
+  const fields = (Array.isArray(target) ? target.join(' ') : String(target ?? '')).toLowerCase();
+  if (fields.includes('email')) {
+    return new ConflictError('An account with this email already exists');
+  }
+  if (fields.includes('libraryid') || fields.includes('library_id')) {
+    return new ConflictError('An account with this ID Number already exists');
+  }
+  return new ConflictError('An account with these details already exists');
+}
+
 export class AuthService {
   async googleLogin(credential: string, ipAddress?: string, userAgent?: string) {
     if (!env.GOOGLE_CLIENT_ID) throw new BadRequestError('Google authentication is not configured.');
@@ -244,6 +260,10 @@ async register(input: RegisterInput, ipAddress?: string, userAgent?: string) {
         tx,
       );
       return createdUser;
+    }).catch((error: unknown) => {
+      const conflict = getUserUniqueConflict(error);
+      if (conflict) throw conflict;
+      throw error;
     });
 
     const accessToken = this.generateAccessToken(user.id, user.libraryId, user.role);
@@ -315,6 +335,10 @@ async register(input: RegisterInput, ipAddress?: string, userAgent?: string) {
         ...(userAgent ? { userAgent } : {}),
       }, tx);
       return createdUser;
+    }).catch((error: unknown) => {
+      const conflict = getUserUniqueConflict(error);
+      if (conflict) throw conflict;
+      throw error;
     });
 
     return this.sanitizeUser(user);

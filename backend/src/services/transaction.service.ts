@@ -1100,6 +1100,7 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
    * - Notifies the borrower
    */
   async declareMissing(transactionId: string, librarianId: string, reason?: string) {
+    await this.synchronizeOverdueTransactions();
     const transaction = await prisma.borrowTransaction.findUnique({
       where: { id: transactionId },
       include: {
@@ -1115,9 +1116,9 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
 
     const now = new Date();
     const replacementValue = Number(transaction.book.replacementValue ?? 0);
-    const isOverdue = now > transaction.dueDate;
     const missingFineAmount = Number.isFinite(replacementValue) ? Math.max(0, replacementValue) : 0;
-    const fineAmount = isOverdue ? Math.max(transaction.fineAmount ?? 0, missingFineAmount) : missingFineAmount;
+    const outstandingOverdueFine = transaction.finePaid ? 0 : transaction.fineAmount ?? 0;
+    const fineAmount = Number((outstandingOverdueFine + missingFineAmount).toFixed(2));
 
     const [updated] = await prisma.$transaction([
       prisma.borrowTransaction.update({
@@ -1126,7 +1127,7 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
           returnDate: now,
           status: 'RETURNED',
           fineAmount,
-          finePaid: transaction.finePaid || fineAmount > 0,
+          finePaid: false,
           qrScanned: true,
           notes: reason ? `${transaction.notes ? transaction.notes + ' ' : ''}Declared missing: ${reason}`.trim() : (transaction.notes || undefined),
         },
@@ -1151,7 +1152,8 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
             borrower: `${transaction.user.firstName} ${transaction.user.lastName}`,
             reason: reason || null,
             replacementValue: missingFineAmount,
-            isOverdue,
+            outstandingOverdueFine,
+            totalFineAmount: fineAmount,
           },
         },
       }),
@@ -1160,7 +1162,7 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
           userId: transaction.userId,
           type: 'SYSTEM',
           title: 'Book Declared Missing',
-          message: `The book "${transaction.book.title}" you borrowed has been declared missing. Please contact the library.`,
+          message: `The book "${transaction.book.title}" you borrowed has been declared missing. A replacement charge of ₱${missingFineAmount.toFixed(2)} has been added to your unpaid fines${outstandingOverdueFine > 0 ? `, for a total of ₱${fineAmount.toFixed(2)}` : ''}. Please contact the library.`,
           link: `/transactions/${transaction.id}`,
         },
       }),

@@ -21,10 +21,14 @@ const statusBadge: Record<string, string> = {
   ACTIVE: "bg-blue-500/15 text-blue-400 ring-blue-500/30",
   RETURNED: "bg-emerald-500/15 text-emerald-400 ring-emerald-500/30",
   OVERDUE: "bg-red-500/15 text-red-400 ring-red-500/30",
+  MISSING: "bg-amber-500/15 text-amber-300 ring-amber-500/30",
   PENDING: "bg-amber-500/15 text-amber-400 ring-amber-500/30",
   APPROVED: "bg-emerald-500/15 text-emerald-400 ring-emerald-500/30",
   REJECTED: "bg-red-500/15 text-red-400 ring-red-500/30",
   CANCELLED: "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30",
+};
+const statusLabel: Record<string, string> = {
+  MISSING: "Missing",
 };
 
 export default function StudentDashboardPage() {
@@ -197,7 +201,7 @@ const formatDate = (d?: string) =>
                             <td className="px-6 py-4 text-zinc-400">{formatDate(tx.dueDate)}</td>
                             <td className="px-6 py-4">
                               <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${statusBadge[displayStatus(tx)] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>
-                                {displayStatus(tx)}
+                                {statusLabel[displayStatus(tx)] || displayStatus(tx)}
                               </span>
                             </td>
                           </tr>
@@ -215,7 +219,7 @@ const formatDate = (d?: string) =>
                       transaction={{ ...tx, status: displayStatus(tx) }}
                       formatDate={formatDate}
                       statusBadge={statusBadge}
-                      statusLabel={{}}
+                      statusLabel={statusLabel}
                       contextLabel="Borrower"
                       contextValue={[user?.firstName, user?.lastName].filter(Boolean).join(" ")}
                     />

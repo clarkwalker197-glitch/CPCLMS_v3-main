@@ -101,7 +101,7 @@ export default function BorrowHistoryCard({
                 <div><dt className="text-xs font-medium uppercase tracking-wide text-zinc-500">Student ID</dt><dd className="mt-1 break-words text-zinc-200">{transaction.user?.libraryId || transaction.libraryId || "—"}</dd></div>
                 <div><dt className="text-xs font-medium uppercase tracking-wide text-zinc-500">Borrow date</dt><dd className="mt-1 text-zinc-200">{formatDate(transaction.borrowDate || transaction.requestDate)}</dd></div>
                 <div><dt className="text-xs font-medium uppercase tracking-wide text-zinc-500">Due date</dt><dd className="mt-1 text-zinc-200">{formatDate(transaction.dueDate)}</dd></div>
-                <div><dt className="text-xs font-medium uppercase tracking-wide text-zinc-500">Return date</dt><dd className="mt-1 text-zinc-200">{formatDate(transaction.returnDate)}</dd></div>
+                <div><dt className="text-xs font-medium uppercase tracking-wide text-zinc-500">{transaction.status === "MISSING" ? "Missing date" : "Return date"}</dt><dd className="mt-1 text-zinc-200">{formatDate(transaction.returnDate)}</dd></div>
                 <div>
                   <dt className="text-xs font-medium uppercase tracking-wide text-zinc-500">Fine / payment status</dt>
                   <dd className={`mt-1 font-semibold ${hasFine ? transaction.finePaid ? "text-emerald-400" : "text-orange-400" : "text-zinc-300"}`}>

@@ -1125,7 +1125,7 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
         where: { id: transaction.id },
         data: {
           returnDate: now,
-          status: 'RETURNED',
+          status: 'MISSING',
           fineAmount,
           finePaid: false,
           qrScanned: true,

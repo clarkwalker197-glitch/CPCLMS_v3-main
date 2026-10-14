@@ -23,10 +23,14 @@ const statusBadge: Record<string, string> = {
   ACTIVE: "bg-blue-500/15 text-blue-400 ring-blue-500/30",
   RETURNED: "bg-emerald-500/15 text-emerald-400 ring-emerald-500/30",
   OVERDUE: "bg-red-500/15 text-red-400 ring-red-500/30",
+  MISSING: "bg-amber-500/15 text-amber-300 ring-amber-500/30",
   PENDING: "bg-amber-500/15 text-amber-400 ring-amber-500/30",
   APPROVED: "bg-emerald-500/15 text-emerald-400 ring-emerald-500/30",
   REJECTED: "bg-red-500/15 text-red-400 ring-red-500/30",
   CANCELLED: "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30",
+};
+const statusLabel: Record<string, string> = {
+  MISSING: "Missing",
 };
 
 export default function DashboardPage() {
@@ -195,7 +199,7 @@ export default function DashboardPage() {
                           <td className="px-6 py-4 text-zinc-400">{formatDate(tx.dueDate)}</td>
                           <td className="px-6 py-4">
                             <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${statusBadge[tx.status] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>
-                              {tx.status}
+                              {statusLabel[tx.status] || tx.status}
                             </span>
                           </td>
                         </tr>
@@ -208,7 +212,7 @@ export default function DashboardPage() {
                 recentTransactions.length === 0 ? (
                   <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 px-4 py-10 text-center text-zinc-500">No recent activity</div>
                 ) : recentTransactions.map((tx: any) => (
-                  <BorrowHistoryCard key={tx.id} transaction={tx} formatDate={formatDate} statusBadge={statusBadge} statusLabel={{}} contextLabel="Member" contextValue={`${tx.user?.firstName || ""} ${tx.user?.lastName || ""}`.trim() || "Unknown member"} />
+                  <BorrowHistoryCard key={tx.id} transaction={tx} formatDate={formatDate} statusBadge={statusBadge} statusLabel={statusLabel} contextLabel="Member" contextValue={`${tx.user?.firstName || ""} ${tx.user?.lastName || ""}`.trim() || "Unknown member"} />
                 ))
               } />
             </div>

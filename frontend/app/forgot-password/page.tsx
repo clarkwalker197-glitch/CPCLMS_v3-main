@@ -3,6 +3,8 @@
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 import api from "@/lib/api";
+import PasswordStrengthIndicator from "@/components/PasswordStrengthIndicator";
+import { analyzePassword } from "@/lib/password-strength";
 
 type Step = "request" | "verify" | "reset";
 
@@ -13,6 +15,8 @@ export default function ForgotPasswordPage() {
   const [resetToken, setResetToken] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -41,7 +45,10 @@ export default function ForgotPasswordPage() {
 
   const resetPassword = async (event: FormEvent) => {
     event.preventDefault(); setError("");
-    if (password.length < 8) { setError("Password must be at least 8 characters."); return; }
+    if (!analyzePassword(password).meetsRequirements) {
+      setError("Password must be at least 8 characters and include at least two of letters, numbers, or symbols.");
+      return;
+    }
     if (password !== confirmPassword) { setError("Passwords do not match."); return; }
     setSubmitting(true);
     try {
@@ -75,7 +82,30 @@ export default function ForgotPasswordPage() {
         {message && <div className="p-3 mb-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-sm text-emerald-400">{message}</div>}
         {step === "request" && <form onSubmit={submitRequest} className="space-y-5"><div><label htmlFor="email" className="block text-sm font-medium text-zinc-300 mb-1.5">Registered Email</label><input id="email" type="email" required value={email} onChange={(event) => setEmail(event.target.value)} className="w-full px-3 py-3 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="name@example.com" /></div><button disabled={submitting} className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl disabled:opacity-50">{submitting ? "Sending..." : "Send Verification Code"}</button></form>}
         {step === "verify" && <form onSubmit={verifyCode} className="space-y-5"><div><label htmlFor="code" className="block text-sm font-medium text-zinc-300 mb-1.5">Verification Code</label><input id="code" inputMode="numeric" maxLength={6} required value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} className="w-full px-3 py-3 bg-zinc-950 border border-zinc-700 rounded-xl text-white text-center tracking-[0.5em] text-xl focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="000000" /></div><button disabled={submitting} className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl disabled:opacity-50">{submitting ? "Verifying..." : "Verify"}</button><button type="button" onClick={resend} disabled={submitting} className="w-full text-sm text-blue-400 hover:text-blue-300 disabled:opacity-50">Didn&apos;t get a code? Resend</button></form>}
-        {step === "reset" && <form onSubmit={resetPassword} className="space-y-5"><div><label htmlFor="password" className="block text-sm font-medium text-zinc-300 mb-1.5">New Password</label><input id="password" type="password" minLength={8} required value={password} onChange={(event) => setPassword(event.target.value)} className="w-full px-3 py-3 bg-zinc-950 border border-zinc-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500" /></div><div><label htmlFor="confirmPassword" className="block text-sm font-medium text-zinc-300 mb-1.5">Confirm New Password</label><input id="confirmPassword" type="password" minLength={8} required value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} className="w-full px-3 py-3 bg-zinc-950 border border-zinc-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500" /></div><button disabled={submitting} className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl disabled:opacity-50">{submitting ? "Saving..." : "Reset Password"}</button></form>}
+        {step === "reset" && (
+          <form onSubmit={resetPassword} className="space-y-5">
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium text-zinc-300 mb-1.5">New Password</label>
+              <div className="relative">
+                <input id="password" type={showPassword ? "text" : "password"} minLength={8} required value={password} onChange={(event) => setPassword(event.target.value)} className="w-full px-3 py-3 pr-16 bg-zinc-950 border border-zinc-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <button type="button" onClick={() => setShowPassword((visible) => !visible)} className="absolute inset-y-0 right-0 px-3 text-sm font-medium text-zinc-400 hover:text-zinc-200" aria-label={showPassword ? "Hide new password" : "Show new password"}>
+                  {showPassword ? "Hide" : "Show"}
+                </button>
+              </div>
+              <PasswordStrengthIndicator password={password} />
+            </div>
+            <div>
+              <label htmlFor="confirmPassword" className="block text-sm font-medium text-zinc-300 mb-1.5">Confirm New Password</label>
+              <div className="relative">
+                <input id="confirmPassword" type={showConfirmPassword ? "text" : "password"} minLength={8} required value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} className="w-full px-3 py-3 pr-16 bg-zinc-950 border border-zinc-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <button type="button" onClick={() => setShowConfirmPassword((visible) => !visible)} className="absolute inset-y-0 right-0 px-3 text-sm font-medium text-zinc-400 hover:text-zinc-200" aria-label={showConfirmPassword ? "Hide confirmation password" : "Show confirmation password"}>
+                  {showConfirmPassword ? "Hide" : "Show"}
+                </button>
+              </div>
+            </div>
+            <button disabled={submitting} className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl disabled:opacity-50">{submitting ? "Saving..." : "Reset Password"}</button>
+          </form>
+        )}
         <Link href="/login" className="block text-center text-sm text-blue-400 hover:text-blue-300 mt-6">Back to Login</Link>
       </section>
     </main>

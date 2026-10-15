@@ -40,6 +40,7 @@ const envSchema = z.object({
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   EMAIL_USER: z.string().email().optional(),
   EMAIL_PASS: z.string().min(1).optional(),
+  EMAIL_FROM: z.string().email().optional(),
   BLOB_READ_WRITE_TOKEN: z.string().optional(),
   BLOB_STORE_ID: z.string().optional(),
 });
@@ -63,4 +64,3 @@ if (!process.env.COOKIE_SECRET) {
 }
 
 export { env };
-

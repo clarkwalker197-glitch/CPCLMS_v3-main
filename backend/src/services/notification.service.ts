@@ -14,6 +14,8 @@ export interface EmailPayload {
   to: string;
   subject: string;
   body: string;
+  html?: string;
+  fromName?: string;
   userId?: string;
 }
 
@@ -188,6 +190,8 @@ export class NotificationService {
       to: payload.to,
       subject: payload.subject,
       text: payload.body,
+      html: payload.html,
+      fromName: payload.fromName,
     });
 
     // Log the email in ActivityLog
@@ -229,6 +233,8 @@ export class NotificationService {
     });
 
     for (const txn of dueTomorrow) {
+      if (!txn.book || !txn.user) continue;
+
       const message = `Reminder: "${txn.book.title}" (${txn.book.accessionNo}) is due tomorrow (${txn.dueDate.toLocaleDateString()}). Please return or renew.`;
 
       await this.createNotification(
@@ -245,4 +251,3 @@ export class NotificationService {
 }
 
 export const notificationService = new NotificationService();
-

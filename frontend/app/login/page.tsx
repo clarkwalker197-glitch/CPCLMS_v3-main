@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import { GoogleLogin, GoogleOAuthProvider } from '@react-oauth/google';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, X } from 'lucide-react';
 
 function getPostLoginPath(role?: string, returnTo?: string | null) {
   if (returnTo?.startsWith('/') && !returnTo.startsWith('//') && !returnTo.includes('\\')) {
@@ -131,11 +131,28 @@ export default function LoginPage() {
             <div className="rounded-3xl bg-zinc-900 border border-zinc-800 p-5 sm:p-8 md:p-12 flex flex-col justify-center shadow-2xl shadow-black/40 md:min-h-[560px]">
               <div className="w-full max-w-md mx-auto">
                 {/* Logo */}
-                <div className="flex flex-col items-center mb-5 sm:mb-8">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/CPClogo.png" alt="Cordova Public College Logo" className="w-16 h-16 sm:w-20 sm:h-20 max-[380px]:w-14 max-[380px]:h-14 object-contain mb-2 sm:mb-4" />
-                  <h2 className="text-2xl sm:text-3xl font-bold text-white">Welcome Back</h2>
-                  <p className="text-zinc-400 mt-2">Sign in to the Library System to continue.</p>
+                <div className="mb-5 sm:mb-8">
+                  <div className="relative flex items-center justify-center">
+                    <Link
+                      href="/"
+                      aria-label="Back to landing page"
+                      className="rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-300"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src="/CPClogo.png" alt="Cordova Public College Logo" className="w-16 h-16 sm:w-20 sm:h-20 max-[380px]:w-14 max-[380px]:h-14 object-contain" />
+                    </Link>
+                    <Link
+                      href="/"
+                      aria-label="Close and return to landing page"
+                      className="absolute right-0 flex h-11 w-11 items-center justify-center rounded-full text-zinc-400 transition hover:bg-zinc-800 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-300 md:hidden"
+                    >
+                      <X className="h-6 w-6" aria-hidden="true" />
+                    </Link>
+                  </div>
+                  <div className="mt-2 flex flex-col items-center">
+                    <h2 className="text-2xl sm:text-3xl font-bold text-white">Welcome Back</h2>
+                    <p className="text-zinc-400 mt-2">Sign in to the Library System to continue.</p>
+                  </div>
                 </div>
 
                 <form onSubmit={handleSubmit} className="auth-form space-y-4 sm:space-y-5">

@@ -3,15 +3,15 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import NotificationBell from "@/components/NotificationBell";
-import UserAvatar from "@/components/UserAvatar";
 import Sidebar from "@/components/Sidebar";
+import HeaderUserActions from "@/components/HeaderUserActions";
 import ResponsiveTable from "@/components/ResponsiveTable";
 import { StatCard } from "@/components/StatCard";
 import BorrowHistoryCard from "@/components/BorrowHistoryCard";
 import api from "@/lib/api";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { offlineDb } from "@/lib/offline-db";
 import {
   Users,
   Library,
@@ -23,10 +23,14 @@ const statusBadge: Record<string, string> = {
   ACTIVE: "bg-blue-500/15 text-blue-400 ring-blue-500/30",
   RETURNED: "bg-emerald-500/15 text-emerald-400 ring-emerald-500/30",
   OVERDUE: "bg-red-500/15 text-red-400 ring-red-500/30",
+  MISSING: "bg-amber-500/15 text-amber-300 ring-amber-500/30",
   PENDING: "bg-amber-500/15 text-amber-400 ring-amber-500/30",
   APPROVED: "bg-emerald-500/15 text-emerald-400 ring-emerald-500/30",
   REJECTED: "bg-red-500/15 text-red-400 ring-red-500/30",
   CANCELLED: "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30",
+};
+const statusLabel: Record<string, string> = {
+  MISSING: "Missing",
 };
 
 export default function DashboardPage() {
@@ -35,6 +39,7 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<any>(null);
   const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showingCached, setShowingCached] = useState(false);
 
   useEffect(() => {
     if (user && user.role !== "LIBRARIAN") {
@@ -44,14 +49,47 @@ export default function DashboardPage() {
 
     async function load() {
       try {
+        const cachedDashboard = user?.id ? await offlineDb.dashboard.get(user.id) : undefined;
+        if (cachedDashboard?.snapshot) {
+          setStats(cachedDashboard.snapshot);
+          setShowingCached(true);
+        }
+        if (user?.id) {
+          const cachedTransactions = await offlineDb.transactions
+            .where("userId").equals(user.id).reverse().limit(5).toArray();
+          if (cachedTransactions.length) setRecentTransactions(cachedTransactions);
+        }
+        if (!navigator.onLine) return;
+
         const [statsRes, txRes] = await Promise.all([
           api.getDashboardStats(),
           api.getTransactions({ limit: "5" }),
         ]);
-        if (statsRes.success) setStats(statsRes.data);
-        setRecentTransactions(txRes.success ? (txRes.data || []) : []);
+        if (statsRes.success) {
+          setStats(statsRes.data);
+          setShowingCached(false);
+          if (user?.id) {
+            await offlineDb.dashboard.put({
+              id: user.id,
+              userId: user.id,
+              snapshot: statsRes.data,
+              updatedAt: new Date().toISOString(),
+              syncedAt: Date.now(),
+            });
+          }
+        } else if (statsRes.networkError) {
+          setShowingCached(true);
+        }
+        if (txRes.success) {
+          const transactions = (txRes.data || []).map((transaction: any) => ({
+            ...transaction,
+            userId: transaction.userId || user?.id,
+          }));
+          setRecentTransactions(transactions);
+          await offlineDb.transactions.bulkPut(transactions);
+        }
       } catch {
-        // silent fail for demo
+        setShowingCached(true);
       } finally {
         setLoading(false);
       }
@@ -61,10 +99,22 @@ export default function DashboardPage() {
 
   const ov = stats?.overview || {};
   const statsCards = [
-    { title: "Total Books", value: ov.totalBooks ?? 0, icon: Library, accent: "bg-blue-500/15 text-blue-400" },
-    { title: "Active Members", value: ov.totalUsers ?? 0, icon: Users, accent: "bg-violet-500/15 text-violet-400" },
-    { title: "Books Borrowed", value: ov.activeBorrows ?? 0, icon: BookMarked, accent: "bg-emerald-500/15 text-emerald-400" },
-    { title: "Overdue Books", value: ov.overdueBooks ?? 0, icon: AlertTriangle, accent: "bg-red-500/15 text-red-400" },
+    {
+      title: "Total Books",
+      value: ov.totalBooks ?? "—",
+      icon: Library,
+      accent: "bg-blue-500/15 text-blue-400",
+      href: "/books",
+    },
+    {
+      title: "Total Members",
+      value: ov.totalUsers ?? "—",
+      icon: Users,
+      accent: "bg-violet-500/15 text-violet-400",
+      href: "/members",
+    },
+    { title: "Books Borrowed", value: ov.activeBorrows ?? "—", icon: BookMarked, accent: "bg-emerald-500/15 text-emerald-400", href: "/requests" },
+    { title: "Overdue Books", value: ov.overdueBooks ?? "—", icon: AlertTriangle, accent: "bg-red-500/15 text-red-400", href: "/requests" },
   ];
 
   const formatDate = (d?: string) =>
@@ -77,38 +127,31 @@ export default function DashboardPage() {
 
         {/* ── Main Content ────────────────────────── */}
         <div className="flex-1 min-w-0">
-          <div className="max-w-7xl mx-auto px-6 lg:px-8 py-8 pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-8">
+          <div className="max-w-7xl mx-auto px-6 lg:px-8 py-8 pb-[calc(7rem+min(env(safe-area-inset-bottom),2rem))] lg:pb-8">
             {/* Header */}
             <div className="flex items-center justify-between gap-4 mb-8">
               <div>
                 <h1 className="text-2xl font-bold text-white">Library Dashboard</h1>
                 <p className="text-sm text-zinc-400 mt-1">Welcome back! Here&apos;s your library overview.</p>
+                {showingCached && (
+                  <p className="mt-2 text-xs text-amber-300">Showing last synchronized dashboard data — not live analytics.</p>
+                )}
               </div>
-              <div className="flex items-center gap-2">
-                <NotificationBell />
-
-                <Link
-                  href="/profile"
-                  aria-label="Open profile"
-                  className="ml-1 flex h-10 w-10 items-center justify-center rounded-xl shadow-lg shadow-blue-600/30 transition-colors hover:bg-blue-700"
-                >
-                    <UserAvatar firstName={user?.firstName} lastName={user?.lastName} avatar={user?.avatar} className="h-10 w-10" />
-                </Link>
-              </div>
+              <HeaderUserActions />
             </div>
 
             {/* Stats */}
-            <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="mobile-stats-grid mb-8 grid grid-cols-2 gap-4 sm:grid-cols-2 xl:grid-cols-4">
               {loading
                 ? Array.from({ length: 4 }).map((_, i) => (
                   <div key={i} className="h-32 rounded-2xl bg-zinc-900 animate-pulse" />
                 ))
-                : statsCards.map((card) => (
-                  <StatCard key={card.title} {...card} />
+                : statsCards.map((card, index) => (
+                  <StatCard key={index} {...card} />
                 ))}
             </div>
 
-            <div className="mb-8 flex items-center justify-between rounded-2xl border border-blue-500/20 bg-blue-500/10 p-5">
+            <div className="mobile-dashboard-promo mb-8 flex items-center justify-between rounded-2xl border border-blue-500/20 bg-blue-500/10 p-5">
               <div>
                 <h2 className="font-semibold text-white">Detailed library analytics</h2>
                 <p className="mt-1 text-sm text-zinc-400">Explore trends, fines, requests, inventory, and borrowing comparisons.</p>
@@ -124,7 +167,7 @@ export default function DashboardPage() {
                   View all
                 </Link>
               </div>
-              <div className="hidden sm:block overflow-x-auto">
+              <div className="hidden md:block overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-zinc-900 text-left text-xs uppercase tracking-wide text-zinc-500">
@@ -156,7 +199,7 @@ export default function DashboardPage() {
                           <td className="px-6 py-4 text-zinc-400">{formatDate(tx.dueDate)}</td>
                           <td className="px-6 py-4">
                             <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${statusBadge[tx.status] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>
-                              {tx.status}
+                              {statusLabel[tx.status] || tx.status}
                             </span>
                           </td>
                         </tr>
@@ -169,7 +212,7 @@ export default function DashboardPage() {
                 recentTransactions.length === 0 ? (
                   <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 px-4 py-10 text-center text-zinc-500">No recent activity</div>
                 ) : recentTransactions.map((tx: any) => (
-                  <BorrowHistoryCard key={tx.id} transaction={tx} formatDate={formatDate} statusBadge={statusBadge} statusLabel={{}} contextLabel="Member" contextValue={`${tx.user?.firstName || ""} ${tx.user?.lastName || ""}`.trim() || "Unknown member"} />
+                  <BorrowHistoryCard key={tx.id} transaction={tx} formatDate={formatDate} statusBadge={statusBadge} statusLabel={statusLabel} contextLabel="Member" contextValue={`${tx.user?.firstName || ""} ${tx.user?.lastName || ""}`.trim() || "Unknown member"} />
                 ))
               } />
             </div>

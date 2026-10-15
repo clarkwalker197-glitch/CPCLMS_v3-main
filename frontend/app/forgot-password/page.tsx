@@ -92,6 +92,7 @@ export default function ForgotPasswordPage() {
                   {showPassword ? "Hide" : "Show"}
                 </button>
               </div>
+              <input id="password" type="password" minLength={8} required value={password} onChange={(event) => setPassword(event.target.value)} className="w-full px-3 py-3 bg-zinc-950 border border-zinc-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
               <PasswordStrengthIndicator password={password} />
             </div>
             <div>
@@ -102,6 +103,7 @@ export default function ForgotPasswordPage() {
                   {showConfirmPassword ? "Hide" : "Show"}
                 </button>
               </div>
+              <input id="confirmPassword" type="password" minLength={8} required value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} className="w-full px-3 py-3 bg-zinc-950 border border-zinc-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <button disabled={submitting} className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl disabled:opacity-50">{submitting ? "Saving..." : "Reset Password"}</button>
           </form>

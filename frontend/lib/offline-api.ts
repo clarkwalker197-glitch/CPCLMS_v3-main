@@ -1,81 +1,62 @@
-import api, { type ApiResponse } from './api';
-import { canUseOfflineStorage, db } from './db';
-import { enqueueMutation } from './offline-sync';
-import type { BorrowRequestMutation, LocalBook } from './offline-types';
+import type { LocalBook, LocalRecord } from './offline-types';
 
-async function createPendingBorrowRecords(userId: string, data: BorrowRequestMutation): Promise<string[]> {
-  if (!canUseOfflineStorage() || !data.bookIds.length) return [];
-
-  const localIds = data.bookIds.map((bookId) => `local-borrow-${crypto.randomUUID()}-${bookId}`);
-  const now = Date.now();
-
-  const pendingRecords = await Promise.all(
-    data.bookIds.map(async (bookId, index) => {
-      const book = await db.books.get(bookId);
-      return {
-        id: localIds[index],
-        userId,
-        bookId,
-        status: 'PENDING',
-        notes: data.notes ?? '',
-        requestDate: new Date(now).toISOString(),
-        createdAt: now,
-        updatedAt: new Date(now).toISOString(),
-        _pending: true,
-        ...(book ? { book: { id: book.id, title: book.title, author: book.author } } : {}),
-      };
-    })
-  );
-
-  await db.borrowRequests.bulkPut(pendingRecords);
-  return localIds;
-}
-
-export async function getBooksLocalFirst(
-  params?: Record<string, string>
-): Promise<{ cached: LocalBook[]; response: ApiResponse<any[]> }> {
-  const cached = canUseOfflineStorage() ? await db.books.toArray() : [];
-  const response = await api.getBooks(params);
-  if (response.success && response.data && canUseOfflineStorage()) {
-    await db.books.bulkPut(response.data);
-  }
-  return { cached, response };
-}
-
-export async function createBorrowRequestLocalFirst(
-  userId: string,
-  data: BorrowRequestMutation
-): Promise<ApiResponse<any> & { queued?: boolean }> {
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
-    if (!canUseOfflineStorage()) {
-      return { success: false, error: 'Offline storage is unavailable on this device.' };
+export function searchCachedBooks(
+  books: LocalBook[],
+  params?: Record<string, string>,
+  categories: LocalRecord[] = []
+): LocalBook[] {
+  const get = (key: string) => params?.[key]?.trim().toLocaleLowerCase() || '';
+  const search = get('search');
+  const categoryId = params?.categoryId || '';
+  const categoryMain = params?.categoryMain || '';
+  const classification = get('classificationNumber');
+  const categoryIds = new Set<string>();
+  if (categoryId) {
+    categoryIds.add(categoryId);
+    let currentIds = [categoryId];
+    while (currentIds.length) {
+      const children = categories
+        .filter((category) => currentIds.includes(String(category.parentId || '')))
+        .map((category) => category.id)
+        .filter((id) => !categoryIds.has(id));
+      children.forEach((id) => categoryIds.add(id));
+      currentIds = children;
     }
-
-    const localRequestIds = await createPendingBorrowRecords(userId, data);
-    await enqueueMutation({
-      userId,
-      type: 'CREATE_BORROW_REQUEST',
-      payload: { ...data, localRequestIds },
-    });
-    return { success: true, queued: true, message: 'Borrow request queued for sync.' };
   }
+  const filtered = books.filter((book) => {
+    const category = book.category as Record<string, unknown> | undefined;
+    const searchable = [
+      book.title,
+      book.author,
+      book.isbn,
+      book.classificationNumber,
+      category?.name,
+      category?.slug,
+    ].map((value) => String(value || '').toLocaleLowerCase());
+    if (search && !searchable.some((value) => value.includes(search))) return false;
+    if (classification && !String(book.classificationNumber || '').toLocaleLowerCase().includes(classification)) return false;
+    if (categoryId && !categoryIds.has(String(book.categoryId || ''))) return false;
+    if (categoryMain) {
+      const mainCode = categoryMain.padStart(3, '0')[0];
+      const bookCode = String(book.classificationNumber || '').trim()[0];
+      if (bookCode !== mainCode) return false;
+    }
+    return true;
+  });
 
-  const response = await api.createBorrowRequest(data);
-  if (response.success && response.data && canUseOfflineStorage()) {
-    const records = Array.isArray(response.data.requests)
-      ? response.data.requests
-      : Array.isArray(response.data) ? response.data : [response.data];
-    await db.borrowRequests.bulkPut(records);
-  }
-  return response;
-}
+  const sort = params?.sort || 'title';
+  const direction = params?.order === 'desc' ? -1 : 1;
+  filtered.sort((left, right) => {
+    const sortField = sort === 'classification' ? 'classificationNumber' : sort;
+    const leftValue = sort === 'availability'
+      ? Number(left.availableCopies || 0)
+      : String(left[sortField] || '');
+    const rightValue = sort === 'availability'
+      ? Number(right.availableCopies || 0)
+      : String(right[sortField] || '');
+    if (typeof leftValue === 'number' && typeof rightValue === 'number') return (leftValue - rightValue) * direction;
+    return String(leftValue).localeCompare(String(rightValue), undefined, { numeric: true, sensitivity: 'base' }) * direction;
+  });
 
-export async function markNotificationReadLocalFirst(userId: string, id: string): Promise<void> {
-  if (canUseOfflineStorage()) await db.notifications.update(id, { isRead: true, _pending: true });
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
-    await enqueueMutation({ userId, type: 'MARK_NOTIFICATION_READ', payload: { id } });
-    return;
-  }
-  const response = await api.markNotificationRead(id);
-  if (response.success && canUseOfflineStorage()) await db.notifications.update(id, { _pending: false });
+  return filtered;
 }

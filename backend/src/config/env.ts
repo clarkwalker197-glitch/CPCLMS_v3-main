@@ -2,10 +2,30 @@
 // Environment Configuration (Validated via Zod)
 // ============================================================
 
+import fs from 'fs';
+import path from 'path';
 import { z } from 'zod';
 import dotenv from 'dotenv';
 
-dotenv.config();
+export const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+export function resolveDotenvPath(): string | undefined {
+  const candidates = [
+    path.resolve(process.cwd(), '.env'),
+    path.resolve(__dirname, '../../.env'),
+    path.resolve(__dirname, '../../../.env'),
+    path.resolve(__dirname, '../../../../.env'),
+  ];
+
+  return candidates.find((candidate) => fs.existsSync(candidate));
+}
+
+const envPath = resolveDotenvPath();
+if (envPath) {
+  dotenv.config({ path: envPath });
+} else {
+  dotenv.config();
+}
 
 const frontendOriginSchema = z.preprocess((value) => {
   if (typeof value !== 'string') return value;
@@ -19,14 +39,43 @@ const frontendOriginSchema = z.preprocess((value) => {
   z.array(z.string().url()),
 ]).default('http://localhost:3000'));
 
+const optionalTrimmedString = z.preprocess(
+  (value) => (typeof value === 'string' ? value.trim() || undefined : value),
+  z.string().optional(),
+);
+
+const vapidSubjectSchema = z
+  .string()
+  .trim()
+  .default('https://cpc-library.online')
+  .transform((subject) => (
+    subject.startsWith('https://') || subject.startsWith('mailto:')
+      ? subject
+      : `https://${subject}`
+  ))
+  .refine((subject) => {
+    if (subject.startsWith('mailto:')) {
+      return z.string().email().safeParse(subject.slice('mailto:'.length)).success;
+    }
+
+    try {
+      return new URL(subject).protocol === 'https:';
+    } catch {
+      return false;
+    }
+  }, 'VAPID_SUBJECT must be an HTTPS URL or a mailto: email address');
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().default(4000),
   DATABASE_URL: z.string().url(),
   JWT_SECRET: z.string().min(16, 'JWT_SECRET must be at least 16 characters'),
-  JWT_EXPIRES_IN: z.string().default('15m'),
+  JWT_EXPIRES_IN: z.string().default('2h'),
   JWT_REFRESH_SECRET: z.string().min(16, 'JWT_REFRESH_SECRET must be at least 16 characters'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
+  VAPID_PUBLIC_KEY: z.string().optional(),
+  VAPID_PRIVATE_KEY: z.string().optional(),
+  VAPID_SUBJECT: vapidSubjectSchema,
   FRONTEND_URL: frontendOriginSchema,
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(15 * 60 * 1000),
   RATE_LIMIT_MAX: z.coerce.number().default(100),
@@ -43,6 +92,26 @@ const envSchema = z.object({
   EMAIL_FROM: z.string().email().optional(),
   BLOB_READ_WRITE_TOKEN: z.string().optional(),
   BLOB_STORE_ID: z.string().optional(),
+  RESEND_API_KEY: z.preprocess(
+    (value) => (typeof value === 'string' ? value.trim() || undefined : value),
+    z.string().optional()
+  ),
+  EMAIL_FROM: z.preprocess(
+    (value) => (typeof value === 'string' ? value.trim() : value),
+    z.string().optional().refine((value) => {
+      if (value === undefined) return true;
+      const displayNameAddress = value.match(/^(?:[^<>]*\s)?<([^<>]+)>$/);
+      return z.string().email().safeParse(displayNameAddress?.[1] ?? value).success;
+    }, 'Invalid email')
+  ),
+  BLOB_READ_WRITE_TOKEN: optionalTrimmedString.refine(
+    (value) => value === undefined || (!value.startsWith('"') && !value.startsWith("'") && !value.endsWith('"') && !value.endsWith("'")),
+    'BLOB_READ_WRITE_TOKEN must not include surrounding quotes',
+  ),
+  BLOB_STORE_ID: optionalTrimmedString,
+  VERCEL_OIDC_TOKEN: optionalTrimmedString,
+  VERCEL: optionalTrimmedString,
+  RAILWAY_ENVIRONMENT: optionalTrimmedString,
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -53,6 +122,11 @@ if (!parsed.success) {
 }
 
 const env = parsed.data;
+
+if (Boolean(env.VAPID_PUBLIC_KEY) !== Boolean(env.VAPID_PRIVATE_KEY)) {
+  console.error('❌ VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY must be configured together.');
+  process.exit(1);
+}
 
 if (env.NODE_ENV === 'production' && !process.env.COOKIE_SECRET) {
   console.error('❌ COOKIE_SECRET must be set in production.');

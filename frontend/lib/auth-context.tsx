@@ -4,10 +4,9 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { User, getUser, isAuthenticated as checkAuth } from './auth';
 import api from './api';
 import { clearOfflineData } from './offline-db';
-import { syncNow } from './offline-sync';
 import { ModalLayer } from '@/components/ModalLayer';
 
-const IDLE_TIMEOUT_MS = 7 * 24 * 60 * 60 * 1000;
+const IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 const IDLE_WARNING_MS = IDLE_TIMEOUT_MS - 60 * 1000;
 const ACTIVITY_THROTTLE_MS = 1000;
 
@@ -15,7 +14,11 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   isAuthenticated: boolean;
-  login: (identifier: string, password: string) => Promise<{ success: boolean; error?: string; user?: User }>;
+  login: (identifier: string, password: string, rememberMe?: boolean) => Promise<{
+    success: boolean;
+    error?: string;
+    user?: User;
+  }>;
   googleLogin: (credential: string) => Promise<{ success: boolean; error?: string; user?: User }>;
   register: (data: RegisterData) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
@@ -28,7 +31,6 @@ interface RegisterData {
   libraryId: string;
   email: string;
   password: string;
-  role?: string;
   department?: string;
   yearSection?: string;
   phone?: string;
@@ -44,11 +46,8 @@ const getStoredLastActivity = (): number => {
 
 const setStoredLastActivity = (timestamp = Date.now()) => {
   if (typeof window === 'undefined') return;
-  lastActivityRefValue = timestamp;
   localStorage.setItem(LAST_ACTIVITY_STORAGE_KEY, String(timestamp));
 };
-
-let lastActivityRefValue = Date.now();
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -74,6 +73,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     api.clearTokens();
+    void clearOfflineData();
     localStorage.removeItem(LAST_ACTIVITY_STORAGE_KEY);
     lastActivityRef.current = Date.now();
     setUser(null);
@@ -99,13 +99,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (res.success && res.data) {
         setUser(res.data);
         localStorage.setItem('user', JSON.stringify(res.data));
-        void syncNow();
         return;
       }
 
-      const authFailure = typeof res.error === 'string' && /401|unauthorized|forbidden|token/i.test(res.error);
-      if (authFailure) {
-        api.clearTokens();
+      if (!checkAuth()) {
+        void clearOfflineData();
         localStorage.removeItem(LAST_ACTIVITY_STORAGE_KEY);
         lastActivityRef.current = Date.now();
         setUser(null);
@@ -129,9 +127,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const init = async () => {
       if (checkAuth()) {
         const storedUser = getUser();
+        const lastActivityAt = getStoredLastActivity();
+        if (storedUser && Date.now() - lastActivityAt >= IDLE_TIMEOUT_MS && navigator.onLine) {
+          handleAuthExpired();
+          setLoading(false);
+          return;
+        }
         if (storedUser) {
           setUser(storedUser);
-          lastActivityRef.current = getStoredLastActivity();
+          lastActivityRef.current = lastActivityAt;
         }
         await refreshUser();
       } else {
@@ -142,15 +146,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     init();
-  }, [refreshUser]);
+  }, [handleAuthExpired, refreshUser]);
 
-  const login = async (identifier: string, password: string) => {
-    try {
-      const res = await api.login(identifier, password);
+  const login = async (identifier: string, password: string, rememberMe = true) => {
+  try {
+    const res = await api.login(identifier, password, rememberMe);
       if (res.success && res.data) {
         const nextUser = res.data.user;
+        await clearOfflineData();
         setUser(nextUser);
-        void syncNow();
         lastActivityRef.current = Date.now();
         setStoredLastActivity(lastActivityRef.current);
         return { success: true, user: nextUser };
@@ -166,8 +170,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const res = await api.googleLogin(credential);
       if (res.success && res.data) {
         const nextUser = res.data.user;
+        await clearOfflineData();
         setUser(nextUser);
-        void syncNow();
         lastActivityRef.current = Date.now();
         setStoredLastActivity(lastActivityRef.current);
         return { success: true, user: nextUser };
@@ -238,7 +242,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         scheduleIdleTimers();
         return;
       }
-      handleAuthExpired();
+      if (Date.now() - getStoredLastActivity() >= IDLE_TIMEOUT_MS) {
+        handleAuthExpired();
+      } else {
+        scheduleIdleTimers();
+      }
     }, logoutDelay);
   }, [clearIdleTimers, handleAuthExpired, isIdleWindowActive, user]);
 
@@ -275,6 +283,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       scheduleIdleTimers();
     };
 
+    const handleStorageActivity = (event: StorageEvent) => {
+      if (event.key === 'accessToken' && event.newValue === null) {
+        clearIdleTimers();
+        setShowIdleWarning(false);
+        setUser(null);
+        return;
+      }
+
+      if (event.key !== LAST_ACTIVITY_STORAGE_KEY || !event.newValue) return;
+      const updatedAt = Number(event.newValue);
+      if (!Number.isFinite(updatedAt) || updatedAt <= lastActivityRef.current) return;
+
+      lastActivityRef.current = updatedAt;
+      setShowIdleWarning(false);
+      scheduleIdleTimers();
+    };
+
+    const handleOffline = () => {
+      clearIdleTimers();
+      setShowIdleWarning(false);
+    };
+
     const activityEvents: Array<keyof WindowEventMap> = [
       'mousemove',
       'keydown',
@@ -288,10 +318,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       window.addEventListener(eventName, handleActivity, { passive: true });
     });
     window.addEventListener('online', scheduleIdleTimers);
-    window.addEventListener('offline', () => {
-      clearIdleTimers();
-      setShowIdleWarning(false);
-    });
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('storage', handleStorageActivity);
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     scheduleIdleTimers();
@@ -302,10 +330,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         window.removeEventListener(eventName, handleActivity);
       });
       window.removeEventListener('online', scheduleIdleTimers);
-      window.removeEventListener('offline', () => {
-        clearIdleTimers();
-        setShowIdleWarning(false);
-      });
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('storage', handleStorageActivity);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [clearIdleTimers, isIdleWindowActive, scheduleIdleTimers, user]);
@@ -327,32 +353,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       {user && showIdleWarning && (
         <ModalLayer>
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4">
-          <div
-            role="alertdialog"
-            aria-modal="true"
-            aria-labelledby="idle-warning-title"
-            className="w-full max-w-sm rounded-2xl border border-zinc-700 bg-zinc-900 p-6 text-center shadow-2xl"
-          >
-            <h2 id="idle-warning-title" className="text-lg font-semibold text-white">
-              Still there?
-            </h2>
-            <p className="mt-2 text-sm text-zinc-400">
-              You will be logged out in 1 minute due to inactivity.
-            </p>
-            <button
-              type="button"
-              onClick={() => {
-                const now = Date.now();
-                lastActivityRef.current = now;
-                setStoredLastActivity(now);
-                setShowIdleWarning(false);
-                scheduleIdleTimers();
-              }}
-              className="mt-5 w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+            <div
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="idle-warning-title"
+              className="w-full max-w-sm rounded-2xl border border-zinc-700 bg-zinc-900 p-6 text-center shadow-2xl"
             >
-              Continue session
-            </button>
-          </div>
+              <h2 id="idle-warning-title" className="text-lg font-semibold text-white">
+                Still there?
+              </h2>
+              <p className="mt-2 text-sm text-zinc-400">
+                You will be logged out in 1 minute due to inactivity.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  const now = Date.now();
+                  lastActivityRef.current = now;
+                  setStoredLastActivity(now);
+                  setShowIdleWarning(false);
+                  scheduleIdleTimers();
+                }}
+                className="mt-5 w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+              >
+                Continue session
+              </button>
+            </div>
           </div>
         </ModalLayer>
       )}
@@ -367,4 +393,3 @@ export function useAuth() {
   }
   return context;
 }
-

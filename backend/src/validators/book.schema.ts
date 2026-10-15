@@ -45,6 +45,7 @@ export const createBookSchema = z.object({
     pages: z.coerce.number().int().positive().optional(),
     categoryId: categoryIdSchema,
     classificationNumber: classificationNumberSchema,
+    replacementValue: z.coerce.number({ invalid_type_error: 'Replacement value must be a valid number' }).min(0, 'Replacement value must be zero or greater').max(1000000000, 'Replacement value is too large').refine((value) => Number.isFinite(value), 'Replacement value must be a valid number'),
     description: z.string().optional(),
     coverImage: imageUrlSchema.optional(),
     language: z.string().default('English'),
@@ -66,6 +67,7 @@ export const updateBookSchema = z.object({
     pages: z.coerce.number().int().positive().optional(),
     categoryId: z.string().optional(),
     classificationNumber: classificationNumberSchema.optional(),
+    replacementValue: z.coerce.number({ invalid_type_error: 'Replacement value must be a valid number' }).min(0, 'Replacement value must be zero or greater').max(1000000000, 'Replacement value is too large').refine((value) => Number.isFinite(value), 'Replacement value must be a valid number').optional(),
     description: z.string().optional(),
     coverImage: imageUrlSchema.optional(),
     language: z.string().optional(),
@@ -102,13 +104,13 @@ export const createEBookSchema = z.object({
     publishYear: z.coerce.number().int().min(1000).max(9999).optional(),
     edition: z.string().optional(),
     categoryId: categoryIdSchema,
-    classificationNumber: classificationNumberSchema,
+    classificationNumber: classificationNumberSchema.optional(),
     description: z.string().optional(),
     coverImage: z.string().url().optional(),
     language: z.string().default('English'),
     fileUrl: z.string().url('File URL must be a valid URL'),
     fileSize: z.coerce.number().int().positive().optional(),
-    format: z.enum(['PDF', 'EPUB', 'MOBI']).default('PDF'),
+    format: z.enum(['PDF', 'EPUB', 'MOBI']).optional(),
   }),
 });
 
@@ -158,4 +160,3 @@ export type CreateCategoryInput = z.infer<typeof createCategorySchema>['body'];
 export type UpdateCategoryInput = z.infer<typeof updateCategorySchema>['body'];
 export type CreateEBookInput = z.infer<typeof createEBookSchema>['body'];
 export type UpdateEBookInput = z.infer<typeof updateEBookSchema>['body'];
-

@@ -20,6 +20,7 @@ router.post(
   '/',
   authenticate,
   authorize('LIBRARIAN'),
+  uploadEBookFiles,
   validate(createEBookSchema),
   ebookController.createEBook
 );
@@ -29,12 +30,13 @@ router.post(
   authorize('LIBRARIAN'),
   uploadEBookFiles,
   validate(uploadEBookSchema),
-  ebookController.uploadEBook
+  ebookController.createEBook
 );
 router.put(
   '/:id',
   authenticate,
   authorize('LIBRARIAN'),
+  uploadEBookFiles,
   validate(updateEBookSchema),
   ebookController.updateEBook
 );
@@ -46,4 +48,3 @@ router.delete(
 );
 
 export default router;
-

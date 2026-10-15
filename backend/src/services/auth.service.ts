@@ -9,7 +9,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../config';
-import { env } from '../config/env';
+import { env, REFRESH_TOKEN_TTL_MS } from '../config/env';
 import { getSortParams } from '../utils/sorting';
 import { JwtPayload } from '../types';
 import {
@@ -22,11 +22,30 @@ import {
 } from '../utils/errors';
 import { RegisterInput, CreateUserInput } from '../validators';
 import { notificationService } from './notification.service';
+import { recordActivity } from './activity-log.service';
 import { OAuth2Client } from 'google-auth-library';
 import { isDepartmentCode } from '../constants/departments';
 
+const ACCESS_TOKEN_TTL_SECONDS = 2 * 60 * 60;
+
+function getUserUniqueConflict(error: unknown): ConflictError | null {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
+    return null;
+  }
+
+  const target = error.meta?.target;
+  const fields = (Array.isArray(target) ? target.join(' ') : String(target ?? '')).toLowerCase();
+  if (fields.includes('email')) {
+    return new ConflictError('An account with this email already exists');
+  }
+  if (fields.includes('libraryid') || fields.includes('library_id')) {
+    return new ConflictError('An account with this ID Number already exists');
+  }
+  return new ConflictError('An account with these details already exists');
+}
+
 export class AuthService {
-  async googleLogin(credential: string, ipAddress?: string) {
+  async googleLogin(credential: string, ipAddress?: string, userAgent?: string) {
     if (!env.GOOGLE_CLIENT_ID) throw new BadRequestError('Google authentication is not configured.');
     const ticket = await new OAuth2Client(env.GOOGLE_CLIENT_ID).verifyIdToken({
       idToken: credential,
@@ -56,8 +75,8 @@ export class AuthService {
 
     const accessToken = this.generateAccessToken(user.id, user.libraryId, user.role);
     const refreshToken = await this.generateRefreshToken(user.id);
-    await this.logActivity(user.id, 'LOGIN_GOOGLE', 'User', user.id, ipAddress);
-    return { accessToken, refreshToken: refreshToken.token, expiresIn: 15 * 60, user: this.sanitizeUser(user) };
+    await this.logActivity(user.id, 'LOGIN_GOOGLE', 'User', user.id, ipAddress, userAgent ? { userAgent } : undefined);
+    return { accessToken, refreshToken: refreshToken.token, expiresIn: ACCESS_TOKEN_TTL_SECONDS, user: this.sanitizeUser(user) };
   }
 
   async requestPasswordReset(identifier: string) {
@@ -132,7 +151,7 @@ export class AuthService {
     return { resetToken: resetTokenValue };
   }
 
-  async resetPassword(rawToken: string, newPassword: string) {
+  async resetPassword(rawToken: string, newPassword: string, ipAddress?: string, userAgent?: string) {
     const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
     const resetToken = await prisma.passwordResetToken.findUnique({ where: { tokenHash } });
     if (!resetToken || resetToken.usedAt || resetToken.expiresAt <= new Date()) {
@@ -140,17 +159,26 @@ export class AuthService {
     }
 
     const password = await bcrypt.hash(newPassword, 12);
-    await prisma.$transaction([
-      prisma.user.update({ where: { id: resetToken.userId }, data: { password } }),
-      prisma.passwordResetToken.update({ where: { id: resetToken.id }, data: { usedAt: new Date() } }),
-      prisma.refreshToken.updateMany({ where: { userId: resetToken.userId, revokedAt: null }, data: { revokedAt: new Date() } }),
-    ]);
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({ where: { id: resetToken.userId }, data: { password } });
+      await tx.passwordResetToken.update({ where: { id: resetToken.id }, data: { usedAt: new Date() } });
+      await tx.refreshToken.updateMany({ where: { userId: resetToken.userId, revokedAt: null }, data: { revokedAt: new Date() } });
+      await this.logActivity(
+        resetToken.userId,
+        'RESET_PASSWORD',
+        'User',
+        resetToken.userId,
+        ipAddress,
+        userAgent ? { userAgent } : undefined,
+        tx,
+      );
+    });
     return { message: 'Password reset successfully.' };
   }
   // ────────────────────────────────────────
   //  PUBLIC: LOGIN
   // ────────────────────────────────────────
-  async login(identifier: string, password: string, ipAddress?: string) {
+  async login(identifier: string, password: string, ipAddress?: string, userAgent?: string) {
     const normalized = (identifier || '').trim().toLowerCase();
     let user;
     try {
@@ -169,9 +197,26 @@ export class AuthService {
       throw error;
     }
     if (!user) {
+      await recordActivity({
+        actorName: 'Unknown user',
+        action: 'FAILED_LOGIN',
+        description: 'Failed login attempt',
+        entity: 'Authentication',
+        ipAddress,
+        details: { loginIdentifier: normalized, status: 'Failed', ...(userAgent ? { userAgent } : {}) },
+      });
       throw new UnauthorizedError('Invalid ID Number or password');
     }
     if (!user.isActive) {
+      await recordActivity({
+        userId: user.id,
+        action: 'FAILED_LOGIN',
+        description: 'Failed login attempt for deactivated account',
+        entity: 'Authentication',
+        entityId: user.id,
+        ipAddress,
+        details: { loginIdentifier: normalized, reason: 'Account deactivated', status: 'Failed', ...(userAgent ? { userAgent } : {}) },
+      });
       throw new UnauthorizedError(
         'Your account has been deactivated. Please contact the library.'
       );
@@ -179,6 +224,15 @@ export class AuthService {
 
     const passwordValid = await bcrypt.compare(password, user.password);
     if (!passwordValid) {
+      await recordActivity({
+        userId: user.id,
+        action: 'FAILED_LOGIN',
+        description: 'Failed login attempt',
+        entity: 'Authentication',
+        entityId: user.id,
+        ipAddress,
+        details: { loginIdentifier: normalized, status: 'Failed', ...(userAgent ? { userAgent } : {}) },
+      });
       throw new UnauthorizedError('Invalid ID Number or password');
     }
 
@@ -187,12 +241,12 @@ export class AuthService {
     const refreshToken = await this.generateRefreshToken(user.id);
 
     // Log activity
-    await this.logActivity(user.id, 'LOGIN', 'User', user.id, ipAddress);
+    await this.logActivity(user.id, 'LOGIN', 'User', user.id, ipAddress, userAgent ? { userAgent } : undefined);
 
     return {
       accessToken,
       refreshToken: refreshToken.token,
-      expiresIn: 15 * 60, // seconds (matches JWT_EXPIRES_IN = 15m)
+      expiresIn: ACCESS_TOKEN_TTL_SECONDS,
       user: this.sanitizeUser(user),
     };
   }
@@ -200,7 +254,7 @@ export class AuthService {
   // ────────────────────────────────────────
   //  PUBLIC: REGISTER (self-registration → STUDENT role)
   // ────────────────────────────────────────
-async register(input: RegisterInput, ipAddress?: string) {
+async register(input: RegisterInput, ipAddress?: string, userAgent?: string) {
     const existing = await prisma.user.findFirst({
       where: {
         OR: [{ email: input.email }, { libraryId: input.libraryId }],
@@ -215,34 +269,48 @@ async register(input: RegisterInput, ipAddress?: string) {
     }
 
     const libraryId = input.libraryId;
-    if ((input.role === 'STUDENT' || input.role === 'FACULTY') && input.department && !isDepartmentCode(input.department)) {
+    if (input.department && !isDepartmentCode(input.department)) {
       throw new BadRequestError('Department must be one of the official programs');
     }
     const hashedPassword = await bcrypt.hash(input.password, 12);
 
-const user = await prisma.user.create({
-      data: {
-        libraryId,
-        firstName: input.firstName,
-        lastName: input.lastName,
-        email: input.email,
-        password: hashedPassword,
-        role: input.role || 'STUDENT',
-        department: input.department,
-        yearSection: input.yearSection,
-        phone: input.phone,
-      },
+    const user = await prisma.$transaction(async (tx) => {
+      const createdUser = await tx.user.create({
+        data: {
+          libraryId,
+          firstName: input.firstName,
+          lastName: input.lastName,
+          email: input.email,
+          password: hashedPassword,
+          role: 'STUDENT',
+          department: input.department,
+          yearSection: input.yearSection,
+          phone: input.phone,
+        },
+      });
+      await this.logActivity(
+        createdUser.id,
+        'REGISTER',
+        'User',
+        createdUser.id,
+        ipAddress,
+        userAgent ? { userAgent } : undefined,
+        tx,
+      );
+      return createdUser;
+    }).catch((error: unknown) => {
+      const conflict = getUserUniqueConflict(error);
+      if (conflict) throw conflict;
+      throw error;
     });
 
     const accessToken = this.generateAccessToken(user.id, user.libraryId, user.role);
     const refreshToken = await this.generateRefreshToken(user.id);
 
-    await this.logActivity(user.id, 'REGISTER', 'User', user.id, ipAddress);
-
     return {
       accessToken,
       refreshToken: refreshToken.token,
-      expiresIn: 15 * 60,
+      expiresIn: ACCESS_TOKEN_TTL_SECONDS,
       user: this.sanitizeUser(user),
     };
   }
@@ -250,7 +318,7 @@ const user = await prisma.user.create({
   // ────────────────────────────────────────
   //  ADMIN: Create user with any role (LIBRARIAN only)
   // ────────────────────────────────────────
-  async createUser(adminId: string, input: CreateUserInput, ipAddress?: string) {
+  async createUser(adminId: string, input: CreateUserInput, ipAddress?: string, userAgent?: string) {
     const actingUser = await prisma.user.findUnique({ where: { id: adminId } });
     if (!actingUser) {
       throw new NotFoundError('User account');
@@ -282,22 +350,34 @@ const user = await prisma.user.create({
     }
     const hashedPassword = await bcrypt.hash(input.password, 12);
 
-    const user = await prisma.user.create({
-      data: {
-        libraryId,
-        firstName: input.firstName,
-        lastName: input.lastName,
-        email: input.email,
-        password: hashedPassword,
-        role: input.role,
-        department: input.department,
-        yearSection: input.yearSection,
-        phone: input.phone,
-        isActive: true,
-      },
+    const user = await prisma.$transaction(async (tx) => {
+      const createdUser = await tx.user.create({
+        data: {
+          libraryId,
+          firstName: input.firstName,
+          lastName: input.lastName,
+          suffix: input.suffix || null,
+          email: input.email,
+          password: hashedPassword,
+          role: input.role,
+          department: input.department,
+          yearSection: input.yearSection,
+          phone: input.phone,
+          isActive: true,
+        },
+      });
+      await this.logActivity(adminId, 'CREATE_USER', 'User', createdUser.id, ipAddress, {
+        createdUserName: [createdUser.firstName, createdUser.lastName, createdUser.suffix].filter(Boolean).join(' '),
+        createdUserLibraryId: createdUser.libraryId,
+        createdUserRole: createdUser.role,
+        ...(userAgent ? { userAgent } : {}),
+      }, tx);
+      return createdUser;
+    }).catch((error: unknown) => {
+      const conflict = getUserUniqueConflict(error);
+      if (conflict) throw conflict;
+      throw error;
     });
-
-    await this.logActivity(adminId, 'CREATE_USER', 'User', user.id, ipAddress);
 
     return this.sanitizeUser(user);
   }
@@ -305,7 +385,11 @@ const user = await prisma.user.create({
   // ────────────────────────────────────────
   //  REFRESH TOKEN
   // ────────────────────────────────────────
-  async refreshAccessToken(refreshTokenStr: string, ipAddress?: string) {
+  async refreshAccessToken(refreshTokenStr?: string) {
+    if (!refreshTokenStr) {
+      throw new UnauthorizedError('Refresh token is required.');
+    }
+
     // Find the stored token
     const storedToken = await prisma.refreshToken.findUnique({
       where: { token: refreshTokenStr },
@@ -355,25 +439,21 @@ const user = await prisma.user.create({
     );
     const newRefreshToken = await this.generateRefreshToken(storedToken.userId);
 
-    await this.logActivity(
-      storedToken.userId,
-      'TOKEN_REFRESH',
-      'User',
-      storedToken.userId,
-      ipAddress
-    );
-
     return {
       accessToken,
       refreshToken: newRefreshToken.token,
-      expiresIn: 15 * 60,
+      expiresIn: ACCESS_TOKEN_TTL_SECONDS,
     };
   }
 
   // ────────────────────────────────────────
   //  LOGOUT (revoke specific refresh token)
   // ────────────────────────────────────────
-  async logout(refreshTokenStr: string) {
+  async logout(refreshTokenStr?: string) {
+    if (!refreshTokenStr) {
+      return;
+    }
+
     await prisma.refreshToken.updateMany({
       where: { token: refreshTokenStr, revokedAt: null },
       data: { revokedAt: new Date() },
@@ -396,7 +476,9 @@ const user = await prisma.user.create({
   async changePassword(
     userId: string,
     currentPassword: string,
-    newPassword: string
+    newPassword: string,
+    ipAddress?: string,
+    userAgent?: string,
   ) {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundError('User');
@@ -407,22 +489,34 @@ const user = await prisma.user.create({
     }
 
     const hashed = await bcrypt.hash(newPassword, 12);
-    await prisma.user.update({
-      where: { id: userId },
-      data: { password: hashed },
-    });
-
-    // Invalidate all other sessions (security best practice)
-    await prisma.refreshToken.updateMany({
-      where: { userId, revokedAt: null },
-      data: { revokedAt: new Date() },
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: userId },
+        data: { password: hashed },
+      });
+      await tx.refreshToken.updateMany({
+        where: { userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      await this.logActivity(
+        userId,
+        'CHANGE_PASSWORD',
+        'User',
+        userId,
+        ipAddress,
+        userAgent ? { userAgent } : undefined,
+        tx,
+      );
     });
   }
 
-  async updateNotificationPreferences(userId: string, notificationsEnabled: boolean) {
+  async updateNotificationPreferences(
+    userId: string,
+    preferences: { notificationsEnabled?: boolean; systemNotificationsEnabled?: boolean },
+  ) {
     const user = await prisma.user.update({
       where: { id: userId },
-      data: { notificationsEnabled },
+      data: preferences,
     });
     return this.sanitizeUser(user);
   }
@@ -474,7 +568,7 @@ const user = await prisma.user.create({
     department?: string;
     yearSection?: string;
     avatar?: string | null;
-  }) {
+  }, ipAddress?: string, userAgent?: string) {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundError('User');
     if (user.role === 'STUDENT' && !data.yearSection?.trim()) {
@@ -487,19 +581,25 @@ const user = await prisma.user.create({
       throw new BadRequestError('Department must be one of the official programs');
     }
 
-    const updated = await prisma.user.update({
-      where: { id: userId },
-      data: {
-        firstName: data.firstName,
-        lastName: data.lastName,
-        email: data.email,
-        phone: data.phone || null,
-        department: data.department?.trim() || null,
-        yearSection: user.role === 'STUDENT' ? data.yearSection?.trim() : null,
-        ...(data.avatar !== undefined ? { avatar: data.avatar } : {}),
-      },
+    const updated = await prisma.$transaction(async (tx) => {
+      const changedUser = await tx.user.update({
+        where: { id: userId },
+        data: {
+          firstName: data.firstName,
+          lastName: data.lastName,
+          email: data.email,
+          phone: data.phone || null,
+          department: data.department?.trim() || null,
+          yearSection: user.role === 'STUDENT' ? data.yearSection?.trim() : null,
+          ...(data.avatar !== undefined ? { avatar: data.avatar } : {}),
+        },
+      });
+      await this.logActivity(userId, 'EDIT_MEMBER', 'User', userId, ipAddress, {
+        memberName: `${changedUser.firstName} ${changedUser.lastName}`,
+        ...(userAgent ? { userAgent } : {}),
+      }, tx);
+      return changedUser;
     });
-
     return this.sanitizeUser(updated);
   }
 
@@ -567,6 +667,7 @@ const user = await prisma.user.create({
       libraryId: true,
       firstName: true,
       lastName: true,
+      suffix: true,
       email: true,
       avatar: true,
       role: true,
@@ -610,7 +711,7 @@ const user = await prisma.user.create({
 // ────────────────────────────────────────
   //  TOGGLE USER ACTIVE STATUS (admin)
   // ────────────────────────────────────────
-  async deleteUser(targetUserId: string, adminId: string) {
+  async deleteUser(targetUserId: string, adminId: string, ipAddress?: string, userAgent?: string) {
     if (targetUserId === adminId) {
       throw new BadRequestError('You cannot delete your own account');
     }
@@ -620,12 +721,17 @@ const user = await prisma.user.create({
 
     // Revoke sessions while preserving the user's history for archive/restore.
     const archivedAt = new Date();
-    await prisma.$transaction([
-      prisma.refreshToken.deleteMany({ where: { userId: targetUserId } }),
-      prisma.user.update({ where: { id: targetUserId }, data: { isActive: false, archivedAt } }),
-    ]);
-
-    await this.logActivity(adminId, 'DELETE_USER', 'User', targetUserId);
+    await prisma.$transaction(async (tx) => {
+      await tx.refreshToken.deleteMany({ where: { userId: targetUserId } });
+      await tx.user.update({ where: { id: targetUserId }, data: { isActive: false, archivedAt } });
+      await this.logActivity(adminId, 'DELETE_USER', 'User', targetUserId, ipAddress, {
+        deletedUserName: `${user.firstName} ${user.lastName}`,
+        deletedUserLibraryId: user.libraryId,
+        deletedUserRole: user.role,
+        status: 'Archived',
+        ...(userAgent ? { userAgent } : {}),
+      }, tx);
+    });
     return { id: targetUserId };
   }
 
@@ -643,7 +749,7 @@ const user = await prisma.user.create({
     return prisma.user.update({ where: { id: targetUserId }, data: { isActive: true, archivedAt: null } });
   }
 
-  async toggleUserStatus(targetUserId: string, adminId: string) {
+  async toggleUserStatus(targetUserId: string, adminId: string, ipAddress?: string, userAgent?: string) {
     if (targetUserId === adminId) {
       throw new BadRequestError('You cannot deactivate your own account');
     }
@@ -651,18 +757,34 @@ const user = await prisma.user.create({
     const user = await prisma.user.findUnique({ where: { id: targetUserId } });
     if (!user) throw new NotFoundError('User');
 
-    const updated = await prisma.user.update({
-      where: { id: targetUserId },
-      data: { isActive: !user.isActive },
-    });
-
-    // If deactivating, revoke all sessions
-    if (updated.isActive === false) {
-      await prisma.refreshToken.updateMany({
-        where: { userId: targetUserId, revokedAt: null },
-        data: { revokedAt: new Date() },
+    const updated = await prisma.$transaction(async (tx) => {
+      const changedUser = await tx.user.update({
+        where: { id: targetUserId },
+        data: {
+          isActive: !user.isActive,
+          archivedAt: user.isActive ? new Date() : null,
+        },
       });
-    }
+      if (!changedUser.isActive) {
+        await tx.refreshToken.updateMany({
+          where: { userId: targetUserId, revokedAt: null },
+          data: { revokedAt: new Date() },
+        });
+      }
+      await this.logActivity(
+        adminId,
+        changedUser.isActive ? 'ACTIVATE_MEMBER' : 'DEACTIVATE_MEMBER',
+        'User',
+        targetUserId,
+        ipAddress,
+        {
+          memberName: `${changedUser.firstName} ${changedUser.lastName}`,
+          ...(userAgent ? { userAgent } : {}),
+        },
+        tx,
+      );
+      return changedUser;
+    });
 
     return this.sanitizeUser(updated);
   }
@@ -694,7 +816,7 @@ const user = await prisma.user.create({
     });
 
     const rawToken = crypto.randomBytes(48).toString('hex');
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+    const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
 
     const record = await prisma.refreshToken.create({
       data: {
@@ -735,15 +857,21 @@ const user = await prisma.user.create({
     action: string,
     entity: string,
     entityId: string,
-    ipAddress?: string
+    ipAddress?: string,
+    details?: Record<string, string>,
+    client: Prisma.TransactionClient = prisma,
   ) {
-    try {
-      await prisma.activityLog.create({
-        data: { userId, action, entity, entityId, ipAddress },
-      });
-    } catch {
-      // Non-critical — don't block auth flow if logging fails
-    }
+    const target = details?.bookTitle || details?.memberName || details?.createdUserName || details?.deletedUserName;
+    const readableAction = action.replace(/_/g, ' ').toLowerCase();
+    await recordActivity({
+      userId,
+      action,
+      description: target ? `${readableAction}: ${target}` : readableAction,
+      entity,
+      entityId,
+      ipAddress,
+      details,
+    }, client);
   }
 
   /**

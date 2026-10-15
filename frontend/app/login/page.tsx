@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import { GoogleLogin, GoogleOAuthProvider } from '@react-oauth/google';
 import { X } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
 
 function getPostLoginPath(role?: string, returnTo?: string | null) {
   if (returnTo?.startsWith('/') && !returnTo.startsWith('//') && !returnTo.includes('\\')) {
@@ -27,7 +28,9 @@ export default function LoginPage() {
   const [searchParams] = useState(() => new URLSearchParams(typeof window !== 'undefined' ? window.location.search : ''));
   const returnTo = searchParams.get('returnTo');
   const resetMessage = searchParams.get('reset') === 'success' ? 'Password reset successfully. You can now sign in.' : '';
-  const inactivityMessage = searchParams.get('reason') === 'inactivity' ? 'You have been logged out due to inactivity.' : '';
+  const sessionExpiredMessage = ['session-expired', 'inactivity'].includes(searchParams.get('reason') || '')
+    ? 'Your session expired. Please sign in again.'
+    : '';
 
   useEffect(() => {
     if (!loading && isAuthenticated) {
@@ -42,7 +45,7 @@ export default function LoginPage() {
     setSubmitting(true);
 
     try {
-      const result = await login(identifier.trim(), password);
+      const result = await login(identifier.trim(), password, rememberMe);
       if (result.success) {
         const target = getPostLoginPath(result.user?.role, returnTo);
         router.push(target);
@@ -68,9 +71,9 @@ export default function LoginPage() {
     <GoogleOAuthProvider clientId={googleClientId || 'not-configured'}>
       <div className="relative min-h-screen bg-zinc-950 flex flex-col">
         <div className="flex-1 flex items-center justify-center p-4 sm:p-8">
-          <div className="w-full max-w-6xl grid md:grid-cols-2 gap-6">
+          <div className="w-full max-w-6xl grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
             {/* ── Left Card: Dark branding ─────────────────────────── */}
-            <div className="auth-brand-panel relative overflow-hidden rounded-3xl bg-gradient-to-b from-[#0f172a] via-blue-950 to-blue-900 text-white p-10 sm:p-12 flex flex-col justify-between shadow-[0_20px_60px_-15px_rgba(37,99,235,0.5)] ring-1 ring-white/10 min-h-[560px]">
+            <div className="auth-brand-panel relative hidden overflow-hidden rounded-3xl bg-gradient-to-b from-[#0f172a] via-blue-950 to-blue-900 p-10 text-white shadow-[0_20px_60px_-15px_rgba(37,99,235,0.5)] ring-1 ring-white/10 md:flex md:min-h-[560px] md:flex-col md:justify-between md:p-12">
               {/* Decorative glow */}
               <div className="absolute -top-32 -right-32 w-96 h-96 bg-blue-500/30 rounded-full blur-3xl" />
               <div className="absolute -bottom-40 -left-20 w-80 h-80 bg-sky-400/20 rounded-full blur-3xl" />
@@ -97,6 +100,18 @@ export default function LoginPage() {
                     <X className="h-6 w-6" />
                   </Link>
                 </div>
+                <Link
+                  href="/"
+                  aria-label="Cordova Public College Library Management System home"
+                  className="flex items-center gap-3 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-300"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/CPClogo.png" alt="Cordova Public College Logo" className="w-12 h-12 object-contain shrink-0" />
+                  <div>
+                    <p className="auth-brand-school font-bold text-lg leading-tight text-white">Cordova Public College</p>
+                    <p className="auth-brand-subtitle text-blue-200 text-sm">Library Management System</p>
+                  </div>
+                </Link>
 
                 {/* Heading + Subtitle */}
                 <div className="max-w-md">
@@ -131,17 +146,17 @@ export default function LoginPage() {
             </div>
 
             {/* ── Right Card: Login Form ──────────────────────────── */}
-            <div className="rounded-3xl bg-zinc-900 border border-zinc-800 p-10 sm:p-12 flex flex-col justify-center shadow-2xl shadow-black/40 min-h-[560px]">
+            <div className="rounded-3xl bg-zinc-900 border border-zinc-800 p-5 sm:p-8 md:p-12 flex flex-col justify-center shadow-2xl shadow-black/40 md:min-h-[560px]">
               <div className="w-full max-w-md mx-auto">
                 {/* Logo */}
-                <div className="flex flex-col items-center mb-8">
+                <div className="flex flex-col items-center mb-5 sm:mb-8">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/CPClogo.png" alt="Cordova Public College Logo" className="w-20 h-20 object-contain mb-4" />
-                  <h2 className="text-3xl font-bold text-white">Welcome Back</h2>
+                  <img src="/CPClogo.png" alt="Cordova Public College Logo" className="w-16 h-16 sm:w-20 sm:h-20 max-[380px]:w-14 max-[380px]:h-14 object-contain mb-2 sm:mb-4" />
+                  <h2 className="text-2xl sm:text-3xl font-bold text-white">Welcome Back</h2>
                   <p className="text-zinc-400 mt-2">Sign in to the Library System to continue.</p>
                 </div>
 
-                <form onSubmit={handleSubmit} className="space-y-5">
+                <form onSubmit={handleSubmit} className="auth-form space-y-4 sm:space-y-5">
                   {error && (
                     <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-sm text-red-400">
                       {error}
@@ -152,9 +167,9 @@ export default function LoginPage() {
                       {resetMessage}
                     </div>
                   )}
-                  {inactivityMessage && (
+                  {sessionExpiredMessage && (
                     <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-sm text-amber-300">
-                      {inactivityMessage}
+                      {sessionExpiredMessage}
                     </div>
                   )}
 
@@ -178,7 +193,7 @@ export default function LoginPage() {
                         value={identifier}
                         onChange={(e) => setIdentifier(e.target.value.replace(/[^0-9]/g, ''))}
                         className="w-full pl-10 pr-3 py-3 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                        placeholder="Enter your ID Number (e.g., 2025-0123)"
+                        placeholder="e.g. 2025-0123"
                       />
                     </div>
                   </div>
@@ -201,15 +216,18 @@ export default function LoginPage() {
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         className="w-full pl-10 pr-14 py-3 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                        placeholder="Enter your password"
+                        placeholder="Password"
                       />
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute inset-y-0 right-0 pr-4 flex items-center text-sm font-medium text-zinc-400 hover:text-zinc-200 transition"
+                        className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-zinc-400 transition hover:text-zinc-200 md:w-auto md:pr-4 md:text-sm md:font-medium"
                         aria-label={showPassword ? 'Hide password' : 'Show password'}
                       >
-                        {showPassword ? 'Hide' : 'Show'}
+                        <span className="hidden md:inline">{showPassword ? 'Hide' : 'Show'}</span>
+                        <span className="md:hidden">
+                          {showPassword ? <EyeOff className="h-5 w-5" aria-hidden="true" /> : <Eye className="h-5 w-5" aria-hidden="true" />}
+                        </span>
                       </button>
                     </div>
                   </div>
@@ -247,27 +265,29 @@ export default function LoginPage() {
                     <span className="absolute left-1/2 -top-2.5 -translate-x-1/2 bg-zinc-900 px-3 text-xs text-zinc-500">OR</span>
                   </div>
 
-                  <GoogleLogin
-                    onSuccess={async ({ credential }) => {
-                      if (!credential) return setError('Google did not return a valid credential');
-                      setError('');
-                      const result = await googleLogin(credential);
-                      if (result.success) router.push(getPostLoginPath(result.user?.role, returnTo));
-                      else setError(result.error || 'Google login failed');
-                    }}
-                    onError={() => setError('Google login failed. Please try again.')}
-                    theme="filled_black"
-                    size="large"
-                    width="100%"
-                    text="signin_with"
-                  />
+                  <div className="google-login-button">
+                    <GoogleLogin
+                      onSuccess={async ({ credential }) => {
+                        if (!credential) return setError('Google did not return a valid credential');
+                        setError('');
+                        const result = await googleLogin(credential);
+                        if (result.success) router.push(getPostLoginPath(result.user?.role, returnTo));
+                        else setError(result.error || 'Google login failed');
+                      }}
+                      onError={() => setError('Google login failed. Please try again.')}
+                      theme="filled_black"
+                      size="large"
+                      width="100%"
+                      text="signin_with"
+                    />
+                  </div>
                 </form>
 
                 {/* Register link */}
                 <div className="mt-5">
                   <Link
                     href="/register"
-                    className="w-full py-3 bg-blue-600/10 text-blue-400 font-medium rounded-xl hover:bg-blue-600/20 transition-colors border border-blue-600/30 flex items-center justify-center gap-2"
+                    className="auth-register-link w-full py-3 bg-blue-600/10 text-blue-400 font-medium rounded-xl hover:bg-blue-600/20 transition-colors border border-blue-600/30 flex items-center justify-center gap-2"
                   >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -285,12 +305,6 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Copyright footer */}
-        <div className="pb-6 text-center">
-          <p className="text-xs text-zinc-600">
-            © 2026 Cordova Public College. All rights reserved.
-          </p>
-        </div>
       </div>
     </GoogleOAuthProvider>
   );

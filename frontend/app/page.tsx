@@ -145,19 +145,13 @@ export default function Home() {
                 alt="Melecio Paes"
                 className="w-24 h-24 rounded-full object-cover mx-auto mb-6 ring-1 ring-blue-500/20"
               />
-              <h3 className="text-lg font-semibold text-white">Melecio Paes</h3>
+              <h3 className="text-lg font-semibold text-white">Melecio Paes III</h3>
               <p className="text-base text-zinc-500 mt-2">Frontend Developer</p>
             </div>
           </div>
         </section>
       </main>
 
-      <footer className="border-t border-zinc-800 py-8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2 text-sm text-zinc-500">
-          <p>© {new Date().getFullYear()} Cordova Public College Library</p>
-          <p>Library Management System</p>
-        </div>
-      </footer>
     </div>
   );
 }

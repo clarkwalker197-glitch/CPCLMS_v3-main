@@ -5,13 +5,18 @@ import { useAuth } from '@/lib/auth-context';
 import api from '@/lib/api';
 import { resolveMediaUrl } from '@/lib/api';
 import Sidebar from '@/components/Sidebar';
+import HeaderUserActions from "@/components/HeaderUserActions";
 import MediaImage from '@/components/MediaImage';
 import ResponsiveTable from '@/components/ResponsiveTable';
 import { SortHeader, SortSelect, nextSortOrder, type SortOption } from '@/components/SortControls';
 import { AddEBookModal } from '@/components/AddEBookModal';
 import { EditEBookModal } from '@/components/EditEBookModal';
 import MobileBookTypeSelect from '@/components/MobileBookTypeSelect';
+import MobileSearchInput from '@/components/MobileSearchInput';
 import { DEWEY_MAIN_CATEGORIES, subcategoriesForMain } from '@/lib/categories';
+import { offlineDb } from '@/lib/offline-db';
+import { searchCachedBooks } from '@/lib/offline-api';
+import { useConfirmDialog } from '@/components/ui/ConfirmModal';
 import {
   Plus,
   Search,
@@ -38,6 +43,7 @@ const formatBadge: Record<string, string> = {
 
 export default function EBooksPage() {
   const { user } = useAuth();
+  const { confirm } = useConfirmDialog();
   const [ebooks, setEbooks] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,13 +61,43 @@ export default function EBooksPage() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedEBook, setSelectedEBook] = useState<any | null>(null);
   const [togglingStatusId, setTogglingStatusId] = useState<string | null>(null);
+  const [showingCached, setShowingCached] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(false);
 
   const isLibrarian = user?.role === 'LIBRARIAN';
+
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 769px)");
+    const updateLayout = () => setIsDesktop(media.matches);
+    updateLayout();
+    media.addEventListener("change", updateLayout);
+    return () => media.removeEventListener("change", updateLayout);
+  }, []);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
+      const cachedBooks = await offlineDb.ebooks.toArray();
+      const cachedCategories = await offlineDb.categories.toArray();
+      const cachedParams: Record<string, string> = { sort, order: sortOrder };
+      if (search) cachedParams.search = search;
+      if (categoryFilter) cachedParams.categoryId = categoryFilter;
+      else if (mainCategoryFilter) cachedParams.categoryMain = mainCategoryFilter;
+      if (classificationFilter) cachedParams.classificationNumber = classificationFilter;
+      if (cachedBooks.length) {
+        setEbooks(searchCachedBooks(cachedBooks, cachedParams, cachedCategories));
+        setLoading(false);
+      }
+      if (cachedCategories.length) {
+        setCategories(cachedCategories.filter((category: any) => category.slug?.startsWith('dewey-')));
+      }
+      if (!navigator.onLine) {
+        setShowingCached(true);
+        if (!cachedBooks.length) setError('The e-book catalog is not available offline yet. Reconnect to synchronize it.');
+        return;
+      }
+
       const params: Record<string, string> = {};
       params.limit = '100';
       params.sort = sort;
@@ -74,10 +110,20 @@ export default function EBooksPage() {
         api.getEBooks(params),
         api.getCategories(),
       ]);
-      if (ebooksRes.success) setEbooks(ebooksRes.data || []);
+      if (ebooksRes.success) {
+        setEbooks(ebooksRes.data || []);
+        await offlineDb.ebooks.bulkPut(ebooksRes.data || []);
+        setShowingCached(false);
+      } else if (ebooksRes.networkError && cachedBooks.length) {
+        setEbooks(searchCachedBooks(cachedBooks, cachedParams, cachedCategories));
+        setShowingCached(true);
+      } else if (!ebooksRes.success) {
+        setError(ebooksRes.error || 'Failed to load e-books');
+      }
       if (catsRes.success) setCategories((catsRes.data || []).filter((category: any) => category.slug?.startsWith('dewey-')));
     } catch {
-      setError('Failed to load e-books');
+      setShowingCached(true);
+      if (!ebooks.length) setError('Failed to load e-books. Reconnect to synchronize the catalog.');
     } finally {
       setLoading(false);
     }
@@ -110,31 +156,39 @@ export default function EBooksPage() {
   };
 
   const handleToggleAvailability = async (ebook: any) => {
-    const newStatus = ebook.status === 'AVAILABLE' ? 'MAINTENANCE' : 'AVAILABLE';
-    const action = newStatus === 'AVAILABLE' ? 'available' : 'not available';
-    const message = newStatus === 'AVAILABLE' 
-      ? `Mark "${ebook.title}" as available? Students will be able to access this e-book.`
-      : `Mark "${ebook.title}" as not available? Students will no longer be able to access this e-book.`;
-    
-    if (!window.confirm(message)) return;
     if (togglingStatusId) return;
-    setTogglingStatusId(ebook.id);
-    try {
-      const res = await api.updateEBook(ebook.id, { status: newStatus });
-      if (res.success) {
-        setSuccessMsg(`E-book marked as ${action}`);
-        loadData();
-        setTimeout(() => setSuccessMsg(""), 4000);
-      } else if (res.rateLimited) {
-        setError("You're moving too fast. Please wait a moment and try again.");
-      } else {
-        setError(res.error || "Failed to update e-book");
-      }
-    } catch {
-      setError("Failed to update e-book");
-    } finally {
-      setTogglingStatusId(null);
-    }
+    const newStatus = ebook.status === 'AVAILABLE' ? 'MAINTENANCE' : 'AVAILABLE';
+    const available = newStatus === 'AVAILABLE';
+    await confirm({
+      title: available ? 'Mark e-book as available?' : 'Mark e-book as unavailable?',
+      description: available
+        ? `Students will be able to access “${ebook.title}”.`
+        : `Students will no longer be able to access “${ebook.title}”.`,
+      confirmLabel: available ? 'Mark available' : 'Mark unavailable',
+      variant: available ? 'default' : 'warning',
+      onConfirm: async () => {
+        setTogglingStatusId(ebook.id);
+        try {
+          const res = await api.updateEBook(ebook.id, { status: newStatus });
+          if (!res.success) {
+            const message = res.rateLimited
+              ? "You're moving too fast. Please wait a moment and try again."
+              : res.error || 'Failed to update e-book';
+            setError(message);
+            throw new Error(message);
+          }
+          setSuccessMsg(`E-book marked as ${available ? 'available' : 'not available'}`);
+          void loadData();
+          setTimeout(() => setSuccessMsg(''), 4000);
+        } catch (caught) {
+          const message = caught instanceof Error ? caught.message : 'Failed to update e-book';
+          setError(message);
+          throw caught;
+        } finally {
+          setTogglingStatusId(null);
+        }
+      },
+    });
   };
 
   const handleEditSuccess = () => {
@@ -176,7 +230,7 @@ export default function EBooksPage() {
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex">
       <Sidebar />
       <div className="flex-1 min-w-0">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-[calc(7rem+min(env(safe-area-inset-bottom),2rem))] lg:pb-8">
           {successMsg && (
             <div className="p-4 mb-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-sm text-emerald-400">
               {successMsg}
@@ -189,35 +243,51 @@ export default function EBooksPage() {
           )}
 
           {/* Header */}
-          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className={`flex items-start justify-between gap-4 ${isLibrarian ? "mb-3" : "mb-6"}`}>
             <div>
               <h1 className="text-2xl font-bold text-white">E-Books</h1>
               <p className="mt-1 text-sm text-zinc-400">Browse and access digital books</p>
+              {showingCached && (
+                <p className="mt-2 text-xs text-amber-300">
+                  Offline — showing cached e-book details. File downloads require an internet connection.
+                </p>
+              )}
             </div>
-            {isLibrarian && (
+            <HeaderUserActions />
+          </div>
+          {isLibrarian && (
+            <div className="mb-6 flex justify-end">
               <button
                 onClick={() => setShowAddModal(true)}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-600/30 transition-colors hover:bg-blue-700 sm:w-auto sm:justify-start"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-600/30 transition-colors hover:bg-blue-700"
               >
                 <Plus className="h-4 w-4" />
                 Add E-Book
               </button>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* Toolbar */}
-          <div className="mb-6 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3 sm:p-4">
+          <div className="mobile-search-toolbar mb-6 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3 sm:p-4">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-              <div className="relative w-full sm:flex-1">
+              <div className="hidden relative w-full sm:flex-1 md:block">
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
                   <Search className="h-5 w-5 text-zinc-500" />
                 </div>
                 <input
                   type="text"
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={(event) => setSearch(event.target.value)}
                   placeholder="Search by title, author, or Dewey number..."
                   className="min-h-[44px] w-full rounded-xl border border-zinc-700 bg-zinc-950 pl-10 pr-3 text-sm text-white placeholder:text-zinc-500 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div className="w-full md:hidden">
+                <MobileSearchInput
+                  value={search}
+                  onChange={setSearch}
+                  placeholder="Search by title, author, or Dewey number..."
+                  storageKey="cpc-recent-ebook-searches"
                 />
               </div>
 
@@ -244,6 +314,8 @@ export default function EBooksPage() {
               </div>
             </div>
 
+            <details className="mobile-filter-details" open={isDesktop}>
+            <summary>Filters and sort</summary>
             <div className="mt-2 grid grid-cols-2 gap-2 sm:mt-3 sm:flex sm:flex-wrap sm:items-center sm:gap-3">
               <SortSelect options={sortOptions} sort={sort} order={sortOrder} onChange={changeSort} />
               <select
@@ -304,11 +376,12 @@ export default function EBooksPage() {
                 </span>
               </div>
             </div>
+            </details>
           </div>
 
           {/* Loading */}
           {loading && (
-            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {Array.from({ length: 6 }).map((_, i) => (
                 <div key={i} className="h-72 rounded-2xl bg-zinc-900 animate-pulse" />
               ))}
@@ -362,12 +435,12 @@ export default function EBooksPage() {
                         </span>
                       )}
                     </div>
-                    <div className="mt-2 flex items-stretch gap-2">
+                    <div className="mt-2 flex flex-col items-stretch gap-2 min-[400px]:flex-row">
                       {isLibrarian ? (
                         <>
                           <button
                             onClick={() => handleEdit(ebook)}
-                            className="flex-1 min-w-0 whitespace-nowrap inline-flex items-center justify-center gap-1 rounded-lg bg-zinc-800 px-2 py-2 text-[10px] font-medium text-zinc-200 transition-colors hover:bg-zinc-700 sm:text-xs"
+                            className="flex min-h-9 min-w-0 flex-1 whitespace-nowrap items-center justify-center gap-1 rounded-lg bg-zinc-800 px-2 py-2 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-700"
                           >
                             <Pencil className="h-4 w-4 shrink-0" />
                             <span>Edit</span>
@@ -376,7 +449,7 @@ export default function EBooksPage() {
                             onClick={() => handleToggleAvailability(ebook)}
                             disabled={togglingStatusId !== null}
                             aria-label={ebook.status === 'AVAILABLE' ? 'Mark not available' : 'Mark available'}
-                            className={`flex-1 min-w-0 whitespace-nowrap inline-flex items-center justify-center gap-1 rounded-lg px-2 py-2 text-[10px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 sm:text-xs ${
+                            className={`flex min-h-9 min-w-0 flex-1 whitespace-nowrap items-center justify-center gap-1 rounded-lg px-2 py-2 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                               ebook.status === 'AVAILABLE'
                                 ? 'bg-orange-500/10 text-orange-400 hover:bg-orange-500/20'
                                 : 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
@@ -407,7 +480,7 @@ export default function EBooksPage() {
           {/* LIST VIEW */}
           {!loading && view === 'list' && ebooks.length > 0 && (
             <>
-            <div className="hidden sm:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
+            <div className="hidden md:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
@@ -512,7 +585,7 @@ export default function EBooksPage() {
 
           {/* Pagination */}
           {!loading && ebooks.length > 0 && (
-            <div className="flex items-center justify-between mt-6">
+            <div className="hidden items-center justify-between mt-6 md:flex">
               <p className="text-sm text-zinc-500">
                 Showing{' '}
                 <span className="text-zinc-300">
@@ -553,6 +626,11 @@ export default function EBooksPage() {
                 </button>
               </div>
             </div>
+          )}
+          {!loading && ebooks.length > 0 && currentPage < totalPages && (
+            <button type="button" onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))} className="mt-4 min-h-11 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 text-sm font-semibold text-zinc-200 md:hidden">
+              Load more e-books
+            </button>
           )}
         </div>
       </div>

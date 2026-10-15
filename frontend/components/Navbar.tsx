@@ -116,4 +116,3 @@ const navLinks = [
     </nav>
   );
 }
-

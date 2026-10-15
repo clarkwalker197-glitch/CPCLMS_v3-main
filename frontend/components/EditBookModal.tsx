@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import api from "@/lib/api";
 import MediaImage from "@/components/MediaImage";
 import { categoryCodeForId, categoryDisplayName, categoryForClassification, categoryIdForDewey, DEWEY_MAIN_CATEGORIES, mainCategoryForClassification, mainCategoryForCode, normalizeClassificationNumber, sanitizeClassificationInput, subcategoriesForMain } from "@/lib/categories";
-import { BookOpen, Upload, X, Trash2 } from "lucide-react";
+import { BookOpen, Upload, X } from "lucide-react";
 
 interface Category {
   id: string;
@@ -25,6 +25,7 @@ interface Book {
   pages?: number;
   categoryId?: string;
   classificationNumber?: string;
+  replacementValue?: number | string | null;
   description?: string;
   coverImage?: string;
   language?: string;
@@ -49,6 +50,31 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+async function hasValidCoverSignature(file: File): Promise<boolean> {
+  const bytes = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+
+  if (file.type === "image/jpeg") {
+    return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  }
+  if (file.type === "image/png") {
+    return bytes.length >= 8
+      && bytes[0] === 0x89
+      && bytes[1] === 0x50
+      && bytes[2] === 0x4e
+      && bytes[3] === 0x47
+      && bytes[4] === 0x0d
+      && bytes[5] === 0x0a
+      && bytes[6] === 0x1a
+      && bytes[7] === 0x0a;
+  }
+  if (file.type === "image/webp") {
+    return bytes.length >= 12
+      && String.fromCharCode(...bytes.slice(0, 4)) === "RIFF"
+      && String.fromCharCode(...bytes.slice(8, 12)) === "WEBP";
+  }
+  return false;
+}
+
 export function EditBookModal(props: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -69,6 +95,7 @@ export function EditBookModal(props: {
     language: "English",
     copies: "1",
     availableCopies: "1",
+    replacementValue: "0",
   };
 
   const [form, setForm] = useState(emptyForm);
@@ -77,6 +104,7 @@ export function EditBookModal(props: {
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [coverError, setCoverError] = useState("");
   const coverInputRef = useRef<HTMLInputElement>(null);
 
   // Initialize form when book changes
@@ -95,12 +123,14 @@ export function EditBookModal(props: {
         language: props.book.language || "English",
         copies: props.book.copies ? String(props.book.copies) : "1",
         availableCopies: props.book.availableCopies ? String(props.book.availableCopies) : "1",
+        replacementValue: props.book.replacementValue != null ? String(props.book.replacementValue) : "0",
       });
       const categoryCode = categoryCodeForId(props.book.categoryId, props.categories);
       setMainCategoryCode((mainCategoryForCode(categoryCode) || mainCategoryForCode(props.book.classificationNumber?.slice(0, 3)))?.code || "");
       setOriginalCoverImage(props.book.coverImage || "");
       setCoverFile(null);
       setError("");
+      setCoverError("");
     }
   }, [props.book, props.open]);
 
@@ -108,9 +138,7 @@ export function EditBookModal(props: {
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => setForm((f) => ({ ...f, [field]: e.target.value }));
 
-  const clearCoverError = () => setError((currentError) => (
-    /cover image/i.test(currentError) ? "" : currentError
-  ));
+  const clearCoverError = () => setCoverError("");
 
   const updateClassificationNumber = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = sanitizeClassificationInput(e.target.value);
@@ -126,8 +154,9 @@ export function EditBookModal(props: {
     classificationNumber: normalizeClassificationNumber(current.classificationNumber) || current.classificationNumber,
   }));
 
-  const onPickCoverFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const onPickCoverFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.currentTarget;
+    const file = input.files?.[0];
     if (!file) {
       clearCoverError();
       return;
@@ -135,18 +164,31 @@ export function EditBookModal(props: {
     const extension = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
     const allowedExtensions = ACCEPTED_COVER_TYPES[file.type];
     if (!allowedExtensions?.includes(extension)) {
-      setError("Cover image must be a JPG, PNG, or WEBP file.");
+      setCoverError("Choose a JPG, PNG, or WEBP cover image with a matching file type.");
       setCoverFile(null);
-      e.target.value = "";
+      input.value = "";
       return;
     }
     if (file.size > MAX_COVER_MB * 1024 * 1024) {
-      setError(`Cover image must be under ${MAX_COVER_MB}MB.`);
+      setCoverError(`Cover image must be ${MAX_COVER_MB}MB or smaller.`);
       setCoverFile(null);
-      e.target.value = "";
+      input.value = "";
       return;
     }
-    setError("");
+    try {
+      if (!await hasValidCoverSignature(file)) {
+        setCoverError("The selected file is not a valid JPG, PNG, or WEBP image.");
+        setCoverFile(null);
+        input.value = "";
+        return;
+      }
+    } catch {
+      setCoverError("Could not read the selected cover image. Please choose it again.");
+      setCoverFile(null);
+      input.value = "";
+      return;
+    }
+    setCoverError("");
     setCoverFile(file);
   };
 
@@ -164,6 +206,7 @@ export function EditBookModal(props: {
     setCoverFile(null);
     setOriginalCoverImage("");
     setError("");
+    setCoverError("");
   };
 
   const handleClose = () => {
@@ -189,6 +232,7 @@ export function EditBookModal(props: {
 
     const copiesNum = form.copies ? Number(form.copies) : 1;
     const availableCopiesNum = form.availableCopies ? Number(form.availableCopies) : 1;
+    const replacementValue = Number(form.replacementValue);
 
     if (!Number.isInteger(copiesNum) || copiesNum < 1) {
       setError("Total copies must be a whole number of 1 or more.");
@@ -205,6 +249,11 @@ export function EditBookModal(props: {
       return;
     }
 
+    if (!Number.isFinite(replacementValue) || replacementValue < 0) {
+      setError("Replacement value must be a valid non-negative amount in pesos.");
+      return;
+    }
+
     setLoading(true);
     try {
       const commonFields = {
@@ -216,6 +265,7 @@ export function EditBookModal(props: {
         pages: form.pages ? Number(form.pages) : undefined,
         categoryId: form.categoryId || undefined,
         classificationNumber,
+        replacementValue: Number(replacementValue.toFixed(2)),
         description: form.description.trim() || undefined,
         language: form.language.trim() || "English",
         copies: copiesNum,
@@ -231,6 +281,11 @@ export function EditBookModal(props: {
         });
         fd.append('coverImage', coverFile);
 
+        if (!navigator.onLine) {
+          setError('An internet connection is required to update the book.');
+          return;
+        }
+
         const token = localStorage.getItem('accessToken');
         const headers: Record<string, string> = {};
         if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -239,6 +294,7 @@ export function EditBookModal(props: {
           `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'}/books/${props.book.id}`,
           {
             method: 'PUT',
+            credentials: 'include',
             headers,
             body: fd,
           }
@@ -255,26 +311,6 @@ export function EditBookModal(props: {
         setError(res.error || "Too many requests. Please wait a moment and try again.");
       } else {
         setError(res.error || "Failed to update book. Please check the fields and try again.");
-      }
-    } catch (err: any) {
-      setError(err?.message || "Network error. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!props.book || loading) return;
-    if (!window.confirm("Are you sure you want to delete this book? It can be restored later from the Archive.")) return;
-    setLoading(true);
-    setError("");
-    try {
-      const res = await api.delete(`/books/${props.book.id}`);
-      if (res.success) {
-        props.onSuccess();
-        handleClose();
-      } else {
-        setError(res.error || "Failed to archive book.");
       }
     } catch (err: any) {
       setError(err?.message || "Network error. Please try again.");
@@ -301,7 +337,8 @@ export function EditBookModal(props: {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-4 max-h-[65vh] overflow-y-auto pr-1">
+      <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pr-1">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className={labelClass}>Title *</label>
@@ -419,9 +456,25 @@ export function EditBookModal(props: {
             />
           </div>
           <div>
+            <label className={labelClass}>Replacement Value (₱)</label>
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              className={inputClass}
+              value={form.replacementValue}
+              onChange={update("replacementValue")}
+              placeholder="e.g., 350.00"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
             <label className={labelClass}>Language</label>
             <input className={inputClass} value={form.language} onChange={update("language")} />
           </div>
+          <div></div>
         </div>
 
         <div>
@@ -437,6 +490,9 @@ export function EditBookModal(props: {
               <Upload className="w-3.5 h-3.5" />
               Choose cover image
             </button>
+          )}
+          {coverError && (
+            <p className="mt-2 text-sm text-red-400" role="alert">{coverError}</p>
           )}
           {!coverFile && originalCoverImage && (
             <div className="space-y-2">
@@ -491,22 +547,11 @@ export function EditBookModal(props: {
           />
         </div>
 
-        <div className="border-t border-zinc-800 pt-4">
-          <button
-            type="button"
-            onClick={handleDelete}
-            disabled={loading}
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40"
-          >
-            <Trash2 className="w-4 h-4" />
-            Delete Book
-          </button>
-          <p className="text-xs text-zinc-500 mt-2">This archives the book. It can be restored from Archive.</p>
-        </div>
-      </form>
+      </div>
 
-      <div className="flex gap-2 mt-6">
+      <div className="mt-4 flex shrink-0 gap-2 border-t border-zinc-800 pt-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         <button
+          type="button"
           onClick={handleClose}
           disabled={loading}
           className="flex-1 px-4 py-2.5 rounded-lg border border-zinc-700 text-zinc-300 hover:text-white hover:border-zinc-600 font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -514,13 +559,14 @@ export function EditBookModal(props: {
           Cancel
         </button>
         <button
-          onClick={handleSubmit}
+          type="submit"
           disabled={loading}
           className="flex-1 px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {loading ? "Saving..." : "Save Changes"}
         </button>
       </div>
+      </form>
     </Dialog>
   );
 }

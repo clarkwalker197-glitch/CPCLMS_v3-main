@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import api from "@/lib/api";
 import Sidebar from "@/components/Sidebar";
+import HeaderUserActions from "@/components/HeaderUserActions";
 import { Search } from "lucide-react";
 
 function TransactionLookupContent() {
@@ -59,11 +60,14 @@ function TransactionLookupContent() {
     <div className="min-h-screen bg-zinc-950 text-zinc-100 lg:flex">
       {isAuthenticated && <Sidebar />}
       <main className="min-w-0 flex-1">
-        <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6 lg:px-8">
-          <header className="mb-8">
-            <p className="text-xs font-semibold uppercase text-blue-300">CPC Library</p>
-            <h1 className="mt-2 text-2xl font-bold text-white">Transaction details</h1>
-            <p className="mt-1 text-sm text-zinc-400">Read-only status and book information.</p>
+        <div className={`mx-auto max-w-3xl px-4 py-10 sm:px-6 lg:px-8 ${isAuthenticated ? "pb-[calc(7rem+min(env(safe-area-inset-bottom),2rem))] lg:pb-10" : ""}`}>
+          <header className="mb-8 flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase text-blue-300">CPC Library</p>
+              <h1 className="mt-2 text-2xl font-bold text-white">Transaction details</h1>
+              <p className="mt-1 text-sm text-zinc-400">Read-only status and book information.</p>
+            </div>
+            {isAuthenticated && <HeaderUserActions />}
           </header>
 
           {!isAuthenticated && !authLoading && (

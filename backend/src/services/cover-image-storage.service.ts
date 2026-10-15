@@ -1,7 +1,11 @@
+import fs from 'fs/promises';
+import path from 'path';
 import { randomUUID } from 'crypto';
 import { del, put } from '@vercel/blob';
 import { prisma } from '../config';
+import { COVERS_DIR } from '../middlewares/upload';
 import { AppError, BadRequestError } from '../utils/errors';
+import { getBlobAuthenticationOptions, logBlobUploadFailure } from './blob-storage.service';
 
 const COVER_FORMATS = {
   'image/jpeg': 'jpg',
@@ -13,7 +17,7 @@ export function coverExtensionForMimeType(mimeType: string): string | undefined 
   return COVER_FORMATS[mimeType as keyof typeof COVER_FORMATS];
 }
 
-function hasMatchingImageSignature(buffer: Buffer, mimeType: string): boolean {
+export function hasMatchingImageSignature(buffer: Buffer, mimeType: string): boolean {
   if (mimeType === 'image/jpeg') {
     return buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
   }
@@ -26,33 +30,38 @@ function hasMatchingImageSignature(buffer: Buffer, mimeType: string): boolean {
   return false;
 }
 
+async function storeLocalCoverImage(file: Pick<Express.Multer.File, 'buffer' | 'mimetype'>): Promise<string> {
+  const format = COVER_FORMATS[file.mimetype as keyof typeof COVER_FORMATS]!;
+  const filename = `cover-${randomUUID()}.${format}`;
+  const filePath = path.join(COVERS_DIR, filename);
+
+  await fs.writeFile(filePath, file.buffer);
+  return `/uploads/covers/${filename}`;
+}
+
 export async function storeCoverImage(file: Pick<Express.Multer.File, 'buffer' | 'mimetype'>): Promise<string> {
   const format = COVER_FORMATS[file.mimetype as keyof typeof COVER_FORMATS];
   if (!format || !hasMatchingImageSignature(file.buffer, file.mimetype)) {
     throw new BadRequestError('Cover image must be a valid JPG, PNG, or WEBP image');
   }
 
-  const hasReadWriteToken = Boolean(process.env.BLOB_READ_WRITE_TOKEN?.trim());
-  const hasVercelOidc = Boolean(process.env.VERCEL_OIDC_TOKEN && process.env.BLOB_STORE_ID);
-  if (!hasReadWriteToken && !hasVercelOidc) {
-    throw new AppError(
-      'Cover image storage is not configured. Set BLOB_READ_WRITE_TOKEN, or connect a Vercel Blob store and provide BLOB_STORE_ID with VERCEL_OIDC_TOKEN.',
-      503
-    );
+  const blobAuthentication = getBlobAuthenticationOptions();
+  if (blobAuthentication) {
+    try {
+      const content = Uint8Array.from(file.buffer).buffer as ArrayBuffer;
+      const blob = await put(`covers/cover-${randomUUID()}.${format}`, content, {
+        ...blobAuthentication,
+        access: 'public',
+        contentType: file.mimetype,
+        cacheControlMaxAge: 60 * 60 * 24 * 30,
+      });
+      return blob.url;
+    } catch (error) {
+      throw new AppError(logBlobUploadFailure('cover', error), 503);
+    }
   }
 
-  try {
-    const content = Uint8Array.from(file.buffer).buffer as ArrayBuffer;
-    const blob = await put(`covers/cover-${randomUUID()}.${format}`, content, {
-      access: 'public',
-      contentType: file.mimetype,
-      cacheControlMaxAge: 60 * 60 * 24 * 30,
-    });
-    return blob.url;
-  } catch (error) {
-    console.error('Vercel Blob cover upload failed:', error);
-    throw new AppError('Could not store the cover image. Please try again.', 503);
-  }
+  return storeLocalCoverImage(file);
 }
 
 function isManagedCoverImageUrl(value: string): boolean {
@@ -66,8 +75,39 @@ function isManagedCoverImageUrl(value: string): boolean {
   }
 }
 
+function tryResolveLocalCoverFile(value: string): string | null {
+  let pathname: string;
+  try {
+    pathname = value.startsWith('/') ? value : new URL(value).pathname;
+  } catch {
+    return null;
+  }
+
+  if (!pathname.startsWith('/uploads/covers/')) return null;
+  const filename = decodeURIComponent(pathname.slice('/uploads/covers/'.length));
+  if (path.basename(filename) !== filename) return null;
+
+  const filePath = path.resolve(COVERS_DIR, filename);
+  if (!filePath.startsWith(`${path.resolve(COVERS_DIR)}${path.sep}`)) return null;
+  return filePath;
+}
+
 export async function deleteUnreferencedCoverImage(value?: string | null): Promise<void> {
-  if (!value || !isManagedCoverImageUrl(value)) return;
+  if (!value) return;
+
+  if (isManagedCoverImageUrl(value)) {
+    const [bookReferences, ebookReferences] = await Promise.all([
+      prisma.book.count({ where: { coverImage: value } }),
+      prisma.eBook.count({ where: { coverImage: value } }),
+    ]);
+    if (bookReferences || ebookReferences) return;
+
+    await del(value);
+    return;
+  }
+
+  const filePath = tryResolveLocalCoverFile(value);
+  if (!filePath) return;
 
   const [bookReferences, ebookReferences] = await Promise.all([
     prisma.book.count({ where: { coverImage: value } }),
@@ -75,15 +115,32 @@ export async function deleteUnreferencedCoverImage(value?: string | null): Promi
   ]);
   if (bookReferences || ebookReferences) return;
 
-  await del(value);
+  await fs.unlink(filePath).catch((error: NodeJS.ErrnoException) => {
+    if (error.code !== 'ENOENT') throw error;
+  });
 }
 
 export async function tryDeleteNewCoverImage(value?: string | null): Promise<void> {
-  if (!value || !isManagedCoverImageUrl(value)) return;
+  if (!value) return;
+
+  if (isManagedCoverImageUrl(value)) {
+    try {
+      await del(value);
+    } catch (error) {
+      console.error('Could not delete a newly uploaded cover image from Vercel Blob:', error);
+    }
+    return;
+  }
+
+  const filePath = tryResolveLocalCoverFile(value);
+  if (!filePath) return;
+
   try {
-    await del(value);
+    await fs.unlink(filePath).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== 'ENOENT') throw error;
+    });
   } catch (error) {
-    console.error('Could not delete a newly uploaded cover image from Vercel Blob:', error);
+    console.error('Could not delete a newly uploaded local cover image:', error);
   }
 }
 
@@ -91,6 +148,6 @@ export async function tryDeleteUnreferencedCoverImage(value?: string | null): Pr
   try {
     await deleteUnreferencedCoverImage(value);
   } catch (error) {
-    console.error('Could not delete an unreferenced cover image from Vercel Blob:', error);
+    console.error('Could not delete an unreferenced cover image:', error);
   }
 }

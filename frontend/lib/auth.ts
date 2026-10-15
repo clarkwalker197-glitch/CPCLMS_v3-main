@@ -15,13 +15,14 @@ export interface User {
   avatar: string | null;
   isActive: boolean;
   notificationsEnabled: boolean;
+  systemNotificationsEnabled: boolean;
   createdAt: string;
 }
 
 export function getUser(): User | null {
   if (typeof window === 'undefined') return null;
   try {
-    const userStr = localStorage.getItem('user');
+    const userStr = sessionStorage.getItem('user') || localStorage.getItem('user');
     return userStr ? JSON.parse(userStr) : null;
   } catch {
     return null;
@@ -30,7 +31,7 @@ export function getUser(): User | null {
 
 export function isAuthenticated(): boolean {
   if (typeof window === 'undefined') return false;
-  return !!localStorage.getItem('accessToken');
+  return !!(sessionStorage.getItem('accessToken') || localStorage.getItem('accessToken'));
 }
 
 export function hasRole(...roles: string[]): boolean {
@@ -77,4 +78,3 @@ export function getRoleColor(role: string): string {
   };
   return colors[role] || 'bg-gray-100 text-gray-800';
 }
-

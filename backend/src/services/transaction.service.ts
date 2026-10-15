@@ -10,6 +10,7 @@
 // ============================================================
 
 import { Prisma } from '@prisma/client';
+import { Role } from '@prisma/client';
 import { prisma } from '../config';
 import { env } from '../config/env';
 import { NotFoundError, BadRequestError, ConflictError } from '../utils/errors';
@@ -18,8 +19,36 @@ import { getSortParams } from '../utils/sorting';
 import { generateQRFromText } from '../utils/qrcode';
 import { policyService } from './policy.service';
 import { notificationService } from './notification.service';
-import { Role } from '@prisma/client';
+import { sendPushToUser } from './push.service';
+import { recordActivity } from './activity-log.service';
 import crypto from 'crypto';
+
+type ActivityRequestContext = { ipAddress?: string; userAgent?: string };
+
+const FINE_PER_BOOK_PER_DAY = 5;
+
+type LinkedBorrowRecord<T extends {
+  userId: string | null;
+  bookId: string | null;
+  user: unknown;
+  book: unknown;
+}> = T & {
+  userId: string;
+  bookId: string;
+  user: NonNullable<T['user']>;
+  book: NonNullable<T['book']>;
+};
+
+function assertLinkedBorrowRecord<T extends {
+  userId: string | null;
+  bookId: string | null;
+  user: unknown;
+  book: unknown;
+}>(record: T): asserts record is LinkedBorrowRecord<T> {
+  if (!record.userId || !record.bookId || !record.user || !record.book) {
+    throw new BadRequestError('This archived record no longer has an active user and book link');
+  }
+}
 
 function generateTransactionId(): string {
   return crypto.randomInt(0, 100_000_000).toString().padStart(8, '0');
@@ -54,6 +83,23 @@ export class TransactionService {
    */
   static readonly MAX_BOOKS_PER_TRANSACTION = 3;
 
+  private async acquireIdempotencyRecord(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    key: string,
+    operation: string,
+    requestHash: string
+  ) {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${userId}), hashtext(${key}))`;
+    const existing = await tx.idempotencyRecord.findUnique({
+      where: { userId_key: { userId, key } },
+    });
+    if (existing && (existing.operation !== operation || existing.requestHash !== requestHash)) {
+      throw new ConflictError('This idempotency key was already used for a different request.');
+    }
+    return existing;
+  }
+
   /**
    * Calculate the due date from the borrower's role and the actual borrow date.
    * Policy values are configurable by librarians; fallbacks keep existing
@@ -81,6 +127,52 @@ export class TransactionService {
     throw new ConflictError('Could not allocate a unique transaction ID. Please retry approval.');
   }
 
+  static getReservationRolePriority(role?: Role | null): number {
+    switch (role) {
+      case Role.FACULTY:
+        return 0;
+      case Role.STUDENT:
+        return 1;
+      default:
+        return 2;
+    }
+  }
+
+  static sortReservationsByPriority<T extends { user?: { role?: Role | null } | null; reservationDate?: Date | string | null; id?: string | null }>(
+    a: T,
+    b: T
+  ): number {
+    const priorityDelta = TransactionService.getReservationRolePriority(a.user?.role) - TransactionService.getReservationRolePriority(b.user?.role);
+    if (priorityDelta !== 0) return priorityDelta;
+
+    const aTime = a.reservationDate ? new Date(a.reservationDate).getTime() : Number.MAX_SAFE_INTEGER;
+    const bTime = b.reservationDate ? new Date(b.reservationDate).getTime() : Number.MAX_SAFE_INTEGER;
+    if (aTime !== bTime) return aTime - bTime;
+
+    const aId = a.id ?? '';
+    const bId = b.id ?? '';
+    return aId.localeCompare(bId);
+  }
+
+  private async recalculateReservationQueueForBook(bookId: string, tx: Prisma.TransactionClient = prisma) {
+    const activeReservations = await tx.reservation.findMany({
+      where: { bookId, status: 'ACTIVE' },
+      include: { user: { select: { role: true } } },
+      orderBy: [{ user: { role: 'asc' } }, { reservationDate: 'asc' }, { id: 'asc' }],
+    });
+
+    const ordered = [...activeReservations].sort(TransactionService.sortReservationsByPriority);
+    for (let index = 0; index < ordered.length; index += 1) {
+      const nextReservation = ordered[index];
+      if (nextReservation.queuePosition !== index + 1) {
+        await tx.reservation.update({
+          where: { id: nextReservation.id },
+          data: { queuePosition: index + 1 },
+        });
+      }
+    }
+  }
+
   /**
    * Create borrow request(s)
    * - Enforces a maximum of 3 books per transaction.
@@ -95,8 +187,10 @@ export class TransactionService {
     userId: string;
     bookIds: string[];
     notes?: string;
+    auditContext?: ActivityRequestContext;
+    idempotencyKey?: string;
   }) {
-    const { userId, bookIds, notes } = input;
+    const { userId, bookIds, notes, auditContext, idempotencyKey } = input;
     const uniqueBookIds = Array.from(new Set(bookIds));
 
     // Enforce per-transaction limit of 3 books
@@ -114,7 +208,32 @@ export class TransactionService {
     }
 
     const requestBatchId = crypto.randomUUID();
+    const requestHash = crypto.createHash('sha256')
+      .update(JSON.stringify({ bookIds: uniqueBookIds, notes: notes ?? null }))
+      .digest('hex');
+    let replayed = false;
     const created = await prisma.$transaction(async (tx) => {
+      if (idempotencyKey) {
+        const existing = await this.acquireIdempotencyRecord(
+          tx,
+          userId,
+          idempotencyKey,
+          'CREATE_BORROW_REQUEST',
+          requestHash
+        );
+        if (existing) {
+          replayed = true;
+          return tx.borrowRequest.findMany({
+            where: { userId, requestBatchId: existing.resourceId },
+            include: {
+              book: { select: { id: true, title: true, author: true, accessionNo: true, isbn: true } },
+              user: { select: { firstName: true, lastName: true, libraryId: true, role: true } },
+            },
+            orderBy: { createdAt: 'asc' },
+          });
+        }
+      }
+
       const books = await tx.$queryRaw<Array<{ id: string; title: string; status: string; availableCopies: number }>>`
         SELECT id, title, status, available_copies AS "availableCopies"
         FROM books
@@ -155,7 +274,7 @@ export class TransactionService {
       let approvedStillBlocking = false;
       const approvedRequests = existingRequests.filter((r) => r.status === 'APPROVED');
       if (approvedRequests.length > 0) {
-        const approvedBookIds = approvedRequests.map((r) => r.bookId);
+        const approvedBookIds = approvedRequests.flatMap((r) => r.bookId ? [r.bookId] : []);
         const activeTxns = await tx.borrowTransaction.count({
           where: {
             userId,
@@ -216,11 +335,29 @@ export class TransactionService {
         created.push(request);
       }
 
+      if (idempotencyKey) {
+        await tx.idempotencyRecord.create({
+          data: {
+            userId,
+            key: idempotencyKey,
+            operation: 'CREATE_BORROW_REQUEST',
+            requestHash,
+            resourceId: requestBatchId,
+          },
+        });
+      }
+
       return created;
     }, {
       timeout: 20000,
       maxWait: 20000,
     });
+
+    if (replayed) {
+      return {
+        requests: created.map(({ requestBatchId: _requestBatchId, transactionId: _transactionId, ...request }) => request),
+      };
+    }
 
     const requesterName = `${user.firstName} ${user.lastName}`;
     const bookCount = uniqueBookIds.length;
@@ -236,7 +373,15 @@ export class TransactionService {
             action: 'BORROW_REQUEST',
             entity: 'BorrowRequest',
             entityId: request.id,
-            details: { bookTitle: request.book.title, bookId: request.bookId, requestBatchId },
+            ipAddress: auditContext?.ipAddress,
+            details: {
+              bookTitle: request.book.title,
+              bookId: request.bookId,
+              requestBatchId,
+              ...(notes ? { notes } : {}),
+              ...(auditContext?.userAgent ? { userAgent: auditContext.userAgent } : {}),
+              status: 'PENDING',
+            },
           },
         })
       )
@@ -257,7 +402,7 @@ export class TransactionService {
   /**
   * Stage a Borrow ID for a pending request (librarian only) without activating the borrow.
    */
-  async approveRequest(requestId: string, librarianId: string) {
+  async approveRequest(requestId: string, librarianId: string, auditContext?: ActivityRequestContext) {
     const request = await prisma.borrowRequest.findUnique({
       where: { id: requestId },
       select: { id: true, requestBatchId: true, transactionId: true },
@@ -265,11 +410,12 @@ export class TransactionService {
     if (!request) throw new NotFoundError('Borrow request');
     return this.approveTransactionBatch(
       request.requestBatchId || request.transactionId || request.id,
-      librarianId
+      librarianId,
+      auditContext
     );
   }
 
-  async approveTransactionBatch(requestBatchId: string, librarianId: string) {
+  async approveTransactionBatch(requestBatchId: string, librarianId: string, auditContext?: ActivityRequestContext) {
     const requestBatchWhere = {
       OR: [
         { requestBatchId },
@@ -289,7 +435,9 @@ export class TransactionService {
     if (requests.length > TransactionService.MAX_BOOKS_PER_TRANSACTION) {
       throw new BadRequestError('This transaction exceeds the maximum of 3 books');
     }
+    for (const request of requests) assertLinkedBorrowRecord(request);
     const user = requests[0].user;
+    if (!user) throw new BadRequestError('The archived user cannot approve this request');
     if (requests.some((request) => request.userId !== user.id)) {
       throw new BadRequestError('Transaction request contains multiple members');
     }
@@ -345,6 +493,23 @@ export class TransactionService {
       },
       orderBy: { requestDate: 'asc' },
     });
+    for (const request of stagedRequests) assertLinkedBorrowRecord(request);
+    await prisma.activityLog.create({
+      data: {
+        userId: librarianId,
+        action: 'APPROVE_REQUEST',
+        entity: 'BorrowRequest',
+        entityId: transactionId,
+        ipAddress: auditContext?.ipAddress,
+        details: {
+          transactionId,
+          borrowerName: `${user.firstName} ${user.lastName}`,
+          bookTitles: stagedRequests.map((request) => request.book?.title || 'Deleted book'),
+          status: 'Awaiting borrower verification',
+          ...(auditContext?.userAgent ? { userAgent: auditContext.userAgent } : {}),
+        },
+      },
+    });
 
     return {
       transactionId,
@@ -353,7 +518,7 @@ export class TransactionService {
     };
   }
 
-  async verifyBorrowRequest(borrowId: string, userId: string) {
+  async verifyBorrowRequest(borrowId: string, userId: string, auditContext?: ActivityRequestContext) {
     const transactionId = normalizeBorrowId(borrowId);
     const requests = await prisma.borrowRequest.findMany({
       where: { transactionId },
@@ -373,7 +538,12 @@ export class TransactionService {
       throw new BadRequestError('This transaction exceeds the maximum of 3 books');
     }
 
+    for (const request of requests) assertLinkedBorrowRecord(request);
     const user = requests[0].user;
+    if (!user) throw new BadRequestError('The archived user cannot verify this request');
+    if (requests.some((request) => !request.book || !request.bookId)) {
+      throw new BadRequestError('This archived request no longer has a linked book');
+    }
     const borrowDate = new Date();
     const dueDate = await this.calculateBorrowDueDate(user, borrowDate);
     const maxBooks = user.role === Role.STUDENT
@@ -381,7 +551,7 @@ export class TransactionService {
       : user.role === Role.FACULTY
         ? user.maxBooksAllowed ?? await policyService.getNumber('FACULTY_MAX_BOOKS', 10)
         : 999;
-    const bookIds = requests.map((request) => request.bookId);
+    const bookIds = requests.flatMap((request) => request.bookId ? [request.bookId] : []);
 
     const transactions = await prisma.$transaction(async (tx) => {
       const claimed = await tx.borrowRequest.updateMany({
@@ -414,8 +584,11 @@ export class TransactionService {
         throw new BadRequestError(`You have reached the maximum limit of ${maxBooks} active borrows`);
       }
 
-      const createdTransactions = await Promise.all(requests.map((request) =>
-        tx.borrowTransaction.create({
+      const createdTransactions = await Promise.all(requests.map((request) => {
+        if (!request.bookId || !request.book) {
+          throw new BadRequestError('This archived request no longer has a linked book');
+        }
+        return tx.borrowTransaction.create({
           data: {
             userId,
             bookId: request.bookId,
@@ -429,8 +602,8 @@ export class TransactionService {
             book: { select: { title: true, accessionNo: true, isbn: true, shelf: true, row: true } },
             user: { select: { id: true, firstName: true, lastName: true, libraryId: true, avatar: true, role: true } },
           },
-        })
-      ));
+        });
+      }));
 
       await Promise.all(books.map((book) => tx.book.update({
         where: { id: book.id },
@@ -446,25 +619,35 @@ export class TransactionService {
           type: 'REQUEST_APPROVED',
           title: 'Borrow Transaction Approved',
           message: `Your request for ${requests.length} book(s) is approved. Due date: ${dueDate.toLocaleDateString()}.`,
-          link: '/transactions',
+          link: '/requests',
         },
       });
       await tx.activityLog.create({
         data: {
           userId,
-          action: 'APPROVE_REQUEST',
+          action: 'BORROW',
           entity: 'BorrowRequest',
           entityId: transactionId,
+          ipAddress: auditContext?.ipAddress,
           details: {
             transactionId,
             borrowerName: `${user.firstName} ${user.lastName}`,
-            bookTitles: requests.map((request) => request.book.title),
+            bookTitles: requests.map((request) => request.book?.title || 'Deleted book'),
             dueDate,
+            status: 'Verified',
+            ...(auditContext?.userAgent ? { userAgent: auditContext.userAgent } : {}),
           },
         },
       });
       return createdTransactions;
     }, { timeout: 20000, maxWait: 20000 });
+
+    await sendPushToUser(userId, {
+      title: 'Borrow Transaction Approved',
+      body: `Your request for ${requests.length} book(s) is approved. Due date: ${dueDate.toLocaleDateString()}.`,
+      url: '/requests',
+      tag: `request-approved-${transactionId}`,
+    });
 
     for (const request of requests) {
       const reservation = await prisma.reservation.findFirst({
@@ -494,7 +677,7 @@ export class TransactionService {
   /**
    * Reject a borrow request (with reason)
    */
-  async rejectRequest(requestId: string, librarianId: string, reason: string) {
+  async rejectRequest(requestId: string, librarianId: string, reason: string, auditContext?: ActivityRequestContext) {
     const request = await prisma.borrowRequest.findUnique({
       where: { id: requestId },
       include: { book: true },
@@ -502,6 +685,9 @@ export class TransactionService {
     if (!request) throw new NotFoundError('Borrow request');
     if (request.status !== 'PENDING') {
       throw new BadRequestError('Request already processed');
+    }
+    if (!request.book || !request.bookId) {
+      throw new BadRequestError('This archived request no longer has a linked book');
     }
 
     if (request.transactionId) {
@@ -512,7 +698,7 @@ export class TransactionService {
       if (requests.some((entry) => entry.status !== request.status)) {
         throw new BadRequestError('This transaction has already been processed');
       }
-      const bookTitles = requests.map((entry) => entry.book.title).join(', ');
+      const bookTitles = requests.map((entry) => entry.book?.title || 'Deleted book').join(', ');
       await prisma.$transaction([
         prisma.borrowRequest.updateMany({
           where: { transactionId: request.transactionId, status: request.status },
@@ -533,10 +719,25 @@ export class TransactionService {
             action: 'REJECT_REQUEST',
             entity: 'BorrowRequest',
             entityId: request.transactionId,
-            details: { transactionId: request.transactionId, bookTitles, reason },
+            ipAddress: auditContext?.ipAddress,
+            details: {
+              transactionId: request.transactionId,
+              bookTitles,
+              reason,
+              status: 'Rejected',
+              ...(auditContext?.userAgent ? { userAgent: auditContext.userAgent } : {}),
+            },
           },
         }),
       ]);
+      if (request.userId) {
+        await sendPushToUser(request.userId, {
+          title: 'Borrow Transaction Rejected',
+          body: `Your request for ${bookTitles} was rejected. Reason: ${reason}`,
+          url: '/requests',
+          tag: `request-rejected-${request.transactionId}`,
+        });
+      }
       return;
     }
 
@@ -550,7 +751,7 @@ export class TransactionService {
           userId: request.userId,
           type: 'REQUEST_REJECTED',
           title: 'Borrow Request Rejected',
-          message: `Your request to borrow "${request.book.title}" was rejected. Reason: ${reason}`,
+          message: `Your request to borrow "${request.book?.title || 'a book'}" was rejected. Reason: ${reason}`,
           link: '/requests',
         },
       }),
@@ -560,10 +761,24 @@ export class TransactionService {
           action: 'REJECT_REQUEST',
           entity: 'BorrowRequest',
           entityId: requestId,
-          details: { bookTitle: request.book.title, reason },
+          ipAddress: auditContext?.ipAddress,
+          details: {
+            bookTitle: request.book?.title || 'Deleted book',
+            reason,
+            status: 'Rejected',
+            ...(auditContext?.userAgent ? { userAgent: auditContext.userAgent } : {}),
+          },
         },
       }),
     ]);
+    if (request.userId) {
+      await sendPushToUser(request.userId, {
+        title: 'Borrow Request Rejected',
+        body: `Your request to borrow "${request.book.title}" was rejected. Reason: ${reason}`,
+        url: '/requests',
+        tag: `request-rejected-${request.id}`,
+      });
+    }
   }
 
   /**
@@ -609,9 +824,9 @@ export class TransactionService {
       books: requests.map((request) => ({
         requestId: request.id,
         bookId: request.bookId,
-        title: request.book.title,
-        author: request.book.author,
-        accessionNo: request.book.accessionNo,
+        title: request.book?.title || 'Deleted book',
+        author: request.book?.author || 'Unknown',
+        accessionNo: request.book?.accessionNo || '—',
         status: transactions.find((transaction) => transaction.bookId === request.bookId)?.status ?? request.status,
         dueDate: transactions.find((transaction) => transaction.bookId === request.bookId)?.dueDate ?? null,
       })),
@@ -707,8 +922,8 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
         if (statusDifference) return statusDifference * direction;
       }
       if (sort === 'memberName') {
-        const aName = `${a.user.firstName} ${a.user.lastName}`;
-        const bName = `${b.user.firstName} ${b.user.lastName}`;
+        const aName = a.user ? `${a.user.firstName} ${a.user.lastName}` : 'Deleted user';
+        const bName = b.user ? `${b.user.firstName} ${b.user.lastName}` : 'Deleted user';
         const nameDifference = aName.localeCompare(bName);
         if (nameDifference) return nameDifference * direction;
       }
@@ -733,7 +948,7 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
    * - Updates book availability
    * - Notifies next in reservation queue
    */
-  async returnBook(transactionIdOrQr: string) {
+  async returnBook(transactionIdOrQr: string, actorUserId?: string, auditContext?: ActivityRequestContext) {
     await this.synchronizeOverdueTransactions();
     let transaction;
 
@@ -773,6 +988,9 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
 
     if (!transaction) throw new NotFoundError('Active transaction for this book');
     if (transaction.returnDate) throw new BadRequestError('Book already returned');
+    if (!transaction.book || !transaction.user || !transaction.bookId || !transaction.userId) {
+      throw new BadRequestError('This transaction no longer has an active user and book link');
+    }
 
     const now = new Date();
     const isOverdue = now >= new Date(transaction.dueDate.getFullYear(), transaction.dueDate.getMonth(), transaction.dueDate.getDate() + 1);
@@ -780,11 +998,10 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
     // Calculate fine
     let fineAmount = 0;
     if (isOverdue) {
-      const finePerDay = await policyService.getFloat('FINE_PER_DAY', 5);
       const dueStart = new Date(transaction.dueDate.getFullYear(), transaction.dueDate.getMonth(), transaction.dueDate.getDate());
       const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const diffDays = Math.floor((todayStart.getTime() - dueStart.getTime()) / (1000 * 60 * 60 * 24));
-      fineAmount = diffDays * finePerDay;
+      fineAmount = diffDays * FINE_PER_BOOK_PER_DAY;
     }
 
     const [updated] = await prisma.$transaction([
@@ -794,7 +1011,7 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
           returnDate: now,
           status: 'RETURNED',
           fineAmount,
-          fineWaived: fineAmount > 0 && !transaction.finePaid,
+          finePaid: transaction.finePaid || fineAmount > 0,
           qrScanned: true,
         },
         include: {
@@ -808,19 +1025,25 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
       }),
       prisma.activityLog.create({
         data: {
-          userId: transaction.userId,
+          userId: actorUserId || transaction.userId,
           action: 'RETURN_BOOK',
           entity: 'BorrowTransaction',
           entityId: transaction.id,
+          ipAddress: auditContext?.ipAddress,
           details: {
             bookTitle: transaction.book.title,
             accessionNo: transaction.book.accessionNo,
             isOverdue,
             fineAmount,
+            status: 'Returned',
+            ...(auditContext?.userAgent ? { userAgent: auditContext.userAgent } : {}),
           },
         },
       }),
     ]);
+    if (!updated.book) throw new BadRequestError('The book was removed before the transaction could be updated');
+
+    await this.recalculateReservationQueueForBook(transaction.bookId);
 
     // Notify all librarians about the returned book
     const borrowerName = `${transaction.user.firstName} ${transaction.user.lastName}`;
@@ -831,24 +1054,31 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
       '/requests'
     );
 
-    // Returning the book waives any overdue fine.
-    if (fineAmount > 0 && !transaction.finePaid) {
+    if (fineAmount > 0) {
+      const fineMessage = `Your overdue fine of ₱${fineAmount.toFixed(2)} for "${transaction.book.title}" was automatically marked as paid when the book was returned.`;
       await prisma.notification.create({
         data: {
           userId: transaction.userId,
           type: 'OVERDUE_FINE',
-          title: 'Overdue Fine Waived',
-          message: `Your overdue fine of ₱${fineAmount.toFixed(2)} for "${transaction.book.title}" was waived when the book was returned.`,
-          link: `/transactions/${transaction.id}`,
+          title: 'Overdue Fine Paid',
+          message: fineMessage,
+          link: `/requests?transactionId=${encodeURIComponent(transaction.id)}`,
         },
       });
+      if (transaction.userId) {
+        await sendPushToUser(transaction.userId, {
+          title: 'Overdue Fine Paid',
+          body: fineMessage,
+          url: `/requests?transactionId=${encodeURIComponent(transaction.id)}`,
+          tag: `fine-paid-${transaction.id}`,
+        });
+      }
     }
 
-    // Check and notify next reservation in queue
     const nextReservation = await prisma.reservation.findFirst({
       where: { bookId: transaction.bookId, status: 'ACTIVE' },
-      orderBy: { queuePosition: 'asc' },
-      include: { user: { select: { firstName: true, lastName: true } } },
+      orderBy: [{ user: { role: 'asc' } }, { reservationDate: 'asc' }, { queuePosition: 'asc' }],
+      include: { user: { select: { firstName: true, lastName: true, role: true } } },
     });
 
     if (nextReservation) {
@@ -874,25 +1104,34 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
    * - Notifies the borrower
    */
   async declareMissing(transactionId: string, librarianId: string, reason?: string) {
+    await this.synchronizeOverdueTransactions();
     const transaction = await prisma.borrowTransaction.findUnique({
       where: { id: transactionId },
-      include: { book: true, user: { select: { id: true, firstName: true, lastName: true } } },
+      include: {
+        book: true,
+        user: { select: { id: true, firstName: true, lastName: true } },
+      },
     });
     if (!transaction) throw new NotFoundError('Transaction');
     if (transaction.returnDate) throw new BadRequestError('Book already returned');
+    if (!transaction.book || !transaction.user || !transaction.bookId || !transaction.userId) {
+      throw new BadRequestError('This transaction no longer has an active user and book link');
+    }
 
     const now = new Date();
-    const isOverdue = now > transaction.dueDate;
-    const fineAmount =
-      (isOverdue ? transaction.fineAmount ?? 0 : 0) || 0;
+    const replacementValue = Number(transaction.book.replacementValue ?? 0);
+    const missingFineAmount = Number.isFinite(replacementValue) ? Math.max(0, replacementValue) : 0;
+    const outstandingOverdueFine = transaction.finePaid ? 0 : transaction.fineAmount ?? 0;
+    const fineAmount = Number((outstandingOverdueFine + missingFineAmount).toFixed(2));
 
     const [updated] = await prisma.$transaction([
       prisma.borrowTransaction.update({
         where: { id: transaction.id },
         data: {
           returnDate: now,
-          status: isOverdue ? 'OVERDUE' : 'RETURNED',
+          status: 'MISSING',
           fineAmount,
+          finePaid: false,
           qrScanned: true,
           notes: reason ? `${transaction.notes ? transaction.notes + ' ' : ''}Declared missing: ${reason}`.trim() : (transaction.notes || undefined),
         },
@@ -916,6 +1155,9 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
             accessionNo: transaction.book.accessionNo,
             borrower: `${transaction.user.firstName} ${transaction.user.lastName}`,
             reason: reason || null,
+            replacementValue: missingFineAmount,
+            outstandingOverdueFine,
+            totalFineAmount: fineAmount,
           },
         },
       }),
@@ -924,11 +1166,12 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
           userId: transaction.userId,
           type: 'SYSTEM',
           title: 'Book Declared Missing',
-          message: `The book "${transaction.book.title}" you borrowed has been declared missing. Please contact the library.`,
+          message: `The book "${transaction.book.title}" you borrowed has been declared missing. A replacement charge of ₱${missingFineAmount.toFixed(2)} has been added to your unpaid fines${outstandingOverdueFine > 0 ? `, for a total of ₱${fineAmount.toFixed(2)}` : ''}. Please contact the library.`,
           link: `/transactions/${transaction.id}`,
         },
       }),
     ]);
+    if (!updated.book) throw new BadRequestError('The book was removed before the transaction could be updated');
 
     return updated;
   }
@@ -1036,11 +1279,10 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
   async synchronizeOverdueTransactions() {
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const finePerDay = await policyService.getFloat('FINE_PER_DAY', 5);
     return prisma.$executeRaw`
       UPDATE borrow_transactions
       SET status = 'OVERDUE',
-          fine_amount = GREATEST(0, (${todayStart}::date - due_date::date)) * ${finePerDay}
+          fine_amount = GREATEST(0, (${todayStart}::date - due_date::date)) * ${FINE_PER_BOOK_PER_DAY}
       WHERE status IN ('ACTIVE', 'OVERDUE')
         AND due_date < ${todayStart}
         AND return_date IS NULL
@@ -1050,12 +1292,16 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
   /**
    * Pay fine for an overdue/returned transaction
    */
-  async payFine(transactionId: string, amount: number) {
+  async payFine(
+    transactionId: string,
+    amount: number,
+    actorUserId: string,
+    auditContext?: ActivityRequestContext,
+  ) {
     const transaction = await prisma.borrowTransaction.findUnique({
       where: { id: transactionId },
     });
     if (!transaction) throw new NotFoundError('Transaction');
-    if (transaction.fineWaived) throw new BadRequestError('Fine was waived when the book was returned');
     if (transaction.finePaid) throw new BadRequestError('Fine already paid');
     if (!transaction.fineAmount || transaction.fineAmount <= 0) {
       throw new BadRequestError('No fine to pay');
@@ -1067,24 +1313,44 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
       );
     }
 
-    const updated = await prisma.borrowTransaction.update({
-      where: { id: transactionId },
-      data: { finePaid: true },
-      include: {
-        book: { select: { title: true, accessionNo: true } },
-        user: { select: { firstName: true, lastName: true, libraryId: true } },
-      },
+    const updated = await prisma.$transaction(async (tx) => {
+      const paidTransaction = await tx.borrowTransaction.update({
+        where: { id: transactionId },
+        data: { finePaid: true },
+        include: {
+          book: { select: { title: true, accessionNo: true } },
+          user: { select: { firstName: true, lastName: true, libraryId: true } },
+        },
+      });
+      await recordActivity({
+        userId: actorUserId,
+        action: 'PAY_FINE',
+        description: `Paid fine for "${paidTransaction.book?.title || 'Deleted book'}"`,
+        entity: 'BorrowTransaction',
+        entityId: transactionId,
+        ipAddress: auditContext?.ipAddress,
+        details: {
+          bookTitle: paidTransaction.book?.title || 'Deleted book',
+          borrowerName: paidTransaction.user ? `${paidTransaction.user.firstName} ${paidTransaction.user.lastName}` : 'Unknown member',
+          fineAmount: transaction.fineAmount,
+          status: 'Paid',
+          ...(auditContext?.userAgent ? { userAgent: auditContext.userAgent } : {}),
+        },
+      }, tx);
+      return paidTransaction;
     });
 
-    await prisma.notification.create({
-      data: {
-        userId: transaction.userId,
-        type: 'SYSTEM',
-        title: 'Fine Paid',
-        message: `Your fine of ₱${transaction.fineAmount.toFixed(2)} for "${updated.book.title}" has been paid.`,
-        link: `/transactions/${transactionId}`,
-      },
-    });
+    if (transaction.userId) {
+      await prisma.notification.create({
+        data: {
+          userId: transaction.userId,
+          type: 'SYSTEM',
+          title: 'Fine Paid',
+          message: `Your fine of ₱${transaction.fineAmount.toFixed(2)} for "${updated.book?.title || 'a deleted book'}" has been paid.`,
+          link: `/transactions/${transactionId}`,
+        },
+      });
+    }
 
     return updated;
   }
@@ -1115,10 +1381,10 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
       requestId: request.id,
       transactionId: receipt.transactionId,
       approvalCode: formatBorrowId(receipt.transactionId),
-      bookTitle: firstRequest.book.title,
-      accessionNo: firstRequest.book.accessionNo,
-      memberName: `${firstRequest.user.firstName} ${firstRequest.user.lastName}`,
-      libraryId: firstRequest.user.libraryId,
+      bookTitle: firstRequest.book?.title || 'Deleted book',
+      accessionNo: firstRequest.book?.accessionNo || '—',
+      memberName: firstRequest.user ? `${firstRequest.user.firstName} ${firstRequest.user.lastName}` : 'Deleted user',
+      libraryId: firstRequest.user?.libraryId || '—',
       qrCode: receipt.qrCode,
     };
   }
@@ -1150,102 +1416,377 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
    * - Respects queue limit
    * - Auto-positions in queue
    */
-  async reserveBook(userId: string, bookId: string) {
-    const book = await prisma.book.findUnique({ where: { id: bookId } });
-    if (!book) throw new NotFoundError('Book');
+  async reserveBook(
+    userId: string,
+    bookId: string,
+    auditContext?: ActivityRequestContext,
+    idempotencyKey?: string
+  ) {
+    const requestHash = crypto.createHash('sha256').update(JSON.stringify({ bookId })).digest('hex');
+    const reservationInclude = {
+      book: { select: { title: true, author: true, accessionNo: true, isbn: true } },
+      user: { select: { firstName: true, lastName: true, libraryId: true, role: true } },
+    } as const;
 
-    // Allow reservation even if available (for future-borrow planning)
-    // But warn via notification
+    const result = await prisma.$transaction(async (tx) => {
+      if (idempotencyKey) {
+        const existing = await this.acquireIdempotencyRecord(
+          tx,
+          userId,
+          idempotencyKey,
+          'CREATE_RESERVATION',
+          requestHash
+        );
+        if (existing) {
+          const reservation = await tx.reservation.findUnique({
+            where: { id: existing.resourceId },
+            include: reservationInclude,
+          });
+          if (!reservation) throw new NotFoundError('Previously created reservation');
+          return { reservation, bookTitle: reservation.book?.title ?? '', replayed: true };
+        }
+      }
 
-    const existing = await prisma.reservation.findFirst({
-      where: { userId, bookId, status: 'ACTIVE' },
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${bookId})::bigint)`;
+      const user = await tx.user.findUnique({
+        where: { id: userId },
+        select: { id: true, firstName: true, lastName: true, role: true },
+      });
+      if (!user) throw new NotFoundError('User');
+      if (!['STUDENT', 'FACULTY'].includes(user.role)) {
+        throw new BadRequestError('Only students and faculty can reserve books.');
+      }
+
+      const book = await tx.book.findUnique({ where: { id: bookId } });
+      if (!book) throw new NotFoundError('Book');
+      if (book.availableCopies > 0 && book.status === 'AVAILABLE') {
+        throw new BadRequestError('This book is currently available. Please borrow it instead.');
+      }
+
+      const existingReservation = await tx.reservation.findFirst({
+        where: { userId, bookId, status: 'ACTIVE' },
+      });
+      if (existingReservation) {
+        throw new ConflictError('You already have an active reservation for this book');
+      }
+
+      const activeBorrow = await tx.borrowTransaction.findFirst({
+        where: { userId, bookId, status: 'ACTIVE' },
+      });
+      if (activeBorrow) throw new ConflictError('You already have this book borrowed');
+
+      const queueLimit = await policyService.getNumber('RESERVATION_QUEUE_LIMIT', 10);
+      const activeReservations = await tx.reservation.count({
+        where: { bookId, status: 'ACTIVE' },
+      });
+      if (activeReservations >= queueLimit) {
+        throw new BadRequestError(`Reservation queue is full (max ${queueLimit}) for this book`);
+      }
+
+      const maxExpiryDays = await policyService.getNumber('MAX_RESERVATION_DAYS', 3);
+      const queuePosition = activeReservations + 1;
+      const created = await tx.reservation.create({
+        data: {
+          userId,
+          bookId,
+          status: 'ACTIVE',
+          expiryDate: new Date(Date.now() + maxExpiryDays * 24 * 60 * 60 * 1000),
+          queuePosition,
+          notified: false,
+        },
+        include: reservationInclude,
+      });
+      await this.recalculateReservationQueueForBook(bookId, tx);
+      const reservation = await tx.reservation.findUnique({
+        where: { id: created.id },
+        include: reservationInclude,
+      });
+      if (!reservation) throw new NotFoundError('Created reservation');
+
+      if (idempotencyKey) {
+        await tx.idempotencyRecord.create({
+          data: {
+            userId,
+            key: idempotencyKey,
+            operation: 'CREATE_RESERVATION',
+            requestHash,
+            resourceId: reservation.id,
+          },
+        });
+      }
+
+      return { reservation, bookTitle: book.title, replayed: false };
+    }, {
+      timeout: 20000,
+      maxWait: 20000,
     });
-    if (existing) throw new ConflictError('You already have an active reservation for this book');
 
-    // Check if already borrowed
-    const activeBorrow = await prisma.borrowTransaction.findFirst({
-      where: { userId, bookId, status: 'ACTIVE' },
-    });
-    if (activeBorrow) throw new ConflictError('You already have this book borrowed');
+    if (!result.replayed) {
+      await prisma.notification.create({
+        data: {
+          userId,
+          type: 'SYSTEM',
+          title: 'Reservation placed',
+          message: `Your reservation for "${result.bookTitle}" is queued at position ${result.reservation.queuePosition ?? 1}.`,
+          link: `/reservations/${result.reservation.id}`,
+        },
+      });
 
-    // Check queue limit
-    const queueLimit = await policyService.getNumber('RESERVATION_QUEUE_LIMIT', 10);
-    const activeReservations = await prisma.reservation.count({
-      where: { bookId, status: 'ACTIVE' },
-    });
-    if (activeReservations >= queueLimit) {
-      throw new BadRequestError(`Reservation queue is full (max ${queueLimit}) for this book`);
+      await prisma.activityLog.create({
+        data: {
+          userId,
+          action: 'RESERVE_BOOK',
+          entity: 'Reservation',
+          entityId: result.reservation.id,
+          ipAddress: auditContext?.ipAddress,
+          details: {
+            bookTitle: result.bookTitle,
+            queuePosition: result.reservation.queuePosition,
+            status: 'Reserved',
+            ...(auditContext?.userAgent ? { userAgent: auditContext.userAgent } : {}),
+          },
+        },
+      });
     }
 
-    // Get expiry days
-    const maxExpiryDays = await policyService.getNumber('MAX_RESERVATION_DAYS', 3);
+    return result.reservation;
+  }
 
-    const reservation = await prisma.reservation.create({
-      data: {
-        userId,
-        bookId,
-        expiryDate: new Date(Date.now() + maxExpiryDays * 24 * 60 * 60 * 1000),
-        queuePosition: activeReservations + 1,
+  async approveReservation(reservationId: string, librarianId: string, auditContext?: ActivityRequestContext) {
+    const reservation = await prisma.reservation.findUnique({
+      where: { id: reservationId },
+      include: {
+        book: { select: { title: true } },
+        user: { select: { firstName: true, lastName: true, role: true } },
       },
+    });
+    if (!reservation) throw new NotFoundError('Reservation');
+    if (!reservation.book || !reservation.bookId || !reservation.userId) {
+      throw new BadRequestError('This archived reservation can no longer be approved');
+    }
+    if (reservation.status !== 'ACTIVE') throw new BadRequestError('Reservation is already resolved.');
+
+    const updated = await prisma.reservation.update({
+      where: { id: reservationId },
+      data: { notified: true },
       include: {
         book: { select: { title: true, author: true, accessionNo: true, isbn: true } },
-        user: { select: { firstName: true, lastName: true, libraryId: true } },
+        user: { select: { firstName: true, lastName: true, libraryId: true, role: true } },
+      },
+    });
+
+    await prisma.notification.create({
+      data: {
+        userId: reservation.userId,
+        type: 'SYSTEM',
+        title: 'Reservation approved',
+        message: `Your reservation for "${reservation.book.title}" has been approved and is active.`,
+        link: `/reservations/${reservation.id}`,
+      },
+    });
+
+    await prisma.activityLog.create({
+      data: {
+        userId: librarianId,
+        action: 'APPROVE_RESERVATION',
+        entity: 'Reservation',
+        entityId: reservationId,
+        ipAddress: auditContext?.ipAddress,
+        details: {
+          bookTitle: reservation.book.title,
+          status: 'Approved',
+          ...(auditContext?.userAgent ? { userAgent: auditContext.userAgent } : {}),
+        },
+      },
+    });
+
+    return updated;
+  }
+
+  async rejectReservation(reservationId: string, librarianId: string, reason = 'No reason provided', auditContext?: ActivityRequestContext) {
+    const reservation = await prisma.reservation.findUnique({
+      where: { id: reservationId },
+      include: { book: { select: { title: true } }, user: { select: { firstName: true, lastName: true } } },
+    });
+    if (!reservation) throw new NotFoundError('Reservation');
+    if (!reservation.book || !reservation.bookId || !reservation.userId) {
+      throw new BadRequestError('This archived reservation can no longer be rejected');
+    }
+    const bookId = reservation.bookId;
+    if (reservation.status !== 'ACTIVE') throw new BadRequestError('Reservation already processed');
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const cancelled = await tx.reservation.update({
+        where: { id: reservationId },
+        data: { status: 'CANCELLED' },
+      });
+      await this.recalculateReservationQueueForBook(bookId, tx);
+      return cancelled;
+    });
+
+    await prisma.notification.create({
+      data: {
+        userId: reservation.userId,
+        type: 'RESERVATION_CANCELLED',
+        title: 'Reservation rejected',
+        message: `Your reservation for "${reservation.book.title}" was rejected. Reason: ${reason}`,
+        link: '/reservations',
+      },
+    });
+
+    await prisma.activityLog.create({
+      data: {
+        userId: librarianId,
+        action: 'REJECT_RESERVATION',
+        entity: 'Reservation',
+        entityId: reservationId,
+        ipAddress: auditContext?.ipAddress,
+        details: {
+          bookTitle: reservation.book.title,
+          reason,
+          status: 'Rejected',
+          ...(auditContext?.userAgent ? { userAgent: auditContext.userAgent } : {}),
+        },
+      },
+    });
+
+    return updated;
+  }
+
+  async pickupReservation(reservationId: string, userId: string, auditContext?: ActivityRequestContext) {
+    const reservation = await prisma.reservation.findUnique({
+      where: { id: reservationId },
+      include: {
+        book: { select: { id: true, title: true, availableCopies: true, status: true } },
+        user: { select: { id: true, firstName: true, lastName: true, role: true, maxBorrowDays: true, maxBooksAllowed: true } },
+      },
+    });
+    if (!reservation) throw new NotFoundError('Reservation');
+    if (!reservation.book || !reservation.user || !reservation.bookId || !reservation.userId) {
+      throw new BadRequestError('This archived reservation can no longer be picked up');
+    }
+    const bookId = reservation.bookId;
+    if (reservation.userId !== userId) throw new BadRequestError('This reservation is not assigned to you.');
+    if (reservation.status !== 'ACTIVE') throw new BadRequestError('This reservation has already been fulfilled or cancelled.');
+
+    const book = await prisma.book.findUnique({ where: { id: reservation.bookId } });
+    if (!book) throw new NotFoundError('Book');
+    if ((book.availableCopies ?? 0) < 1) {
+      throw new BadRequestError('This reserved book is not available for pickup yet.');
+    }
+
+    const loanDate = new Date();
+    const dueDate = await this.calculateBorrowDueDate(
+      { role: reservation.user.role, maxBorrowDays: reservation.user.maxBorrowDays ?? null },
+      loanDate
+    );
+
+    const transaction = await prisma.$transaction(async (tx) => {
+      const transactionId = await this.generateUniqueTransactionId(tx);
+      const created = await tx.borrowTransaction.create({
+        data: {
+          userId,
+          bookId,
+          transactionId,
+          borrowDate: loanDate,
+          dueDate,
+          status: 'ACTIVE',
+          notes: 'Checked out as a reservation pickup',
+        },
+        include: {
+          book: { select: { title: true, accessionNo: true, isbn: true } },
+          user: { select: { firstName: true, lastName: true, libraryId: true, role: true } },
+        },
+      });
+
+      await tx.book.update({
+        where: { id: bookId },
+        data: {
+          availableCopies: { decrement: 1 },
+          status: book.availableCopies - 1 <= 0 ? 'BORROWED' : 'AVAILABLE',
+        },
+      });
+
+      await tx.reservation.update({
+        where: { id: reservation.id },
+        data: {
+          status: 'FULFILLED',
+          notified: true,
+        },
+      });
+
+      await this.recalculateReservationQueueForBook(bookId, tx);
+      return created;
+    });
+
+    await prisma.notification.create({
+      data: {
+        userId,
+        type: 'REQUEST_APPROVED',
+        title: 'Reservation ready for pickup',
+        message: `Your reserved book "${reservation.book.title}" is ready. Please collect it before ${dueDate.toLocaleDateString()}.`,
+        link: `/transactions/${transaction.id}`,
       },
     });
 
     await prisma.activityLog.create({
       data: {
         userId,
-        action: 'RESERVE_BOOK',
+        action: 'PICKUP_RESERVATION',
         entity: 'Reservation',
-        entityId: reservation.id,
-        details: { bookTitle: book.title, queuePosition: reservation.queuePosition },
+        entityId: reservationId,
+        ipAddress: auditContext?.ipAddress,
+        details: {
+          bookTitle: reservation.book.title,
+          status: 'Picked up',
+          dueDate,
+          ...(auditContext?.userAgent ? { userAgent: auditContext.userAgent } : {}),
+        },
       },
     });
 
-    return reservation;
+    return transaction;
   }
 
   /**
    * Cancel a reservation
    * - Recalculates queue positions
    */
-  async cancelReservation(reservationId: string, userId: string) {
+  async cancelReservation(reservationId: string, userId: string, auditContext?: ActivityRequestContext) {
     const reservation = await prisma.reservation.findUnique({
       where: { id: reservationId },
       include: { book: { select: { title: true } } },
     });
     if (!reservation) throw new NotFoundError('Reservation');
+    if (!reservation.book || !reservation.bookId) {
+      throw new BadRequestError('This archived reservation can no longer be cancelled');
+    }
+    const bookId = reservation.bookId;
     if (reservation.userId !== userId) throw new BadRequestError('Not your reservation');
     if (reservation.status !== 'ACTIVE') throw new BadRequestError('Reservation already processed');
 
-    await prisma.$transaction([
-      prisma.reservation.update({
+    await prisma.$transaction(async (tx) => {
+      await tx.reservation.update({
         where: { id: reservationId },
         data: { status: 'CANCELLED' },
-      }),
-      prisma.activityLog.create({
-        data: {
-          userId,
-          action: 'CANCEL_RESERVATION',
-          entity: 'Reservation',
-          entityId: reservationId,
-          details: { bookTitle: reservation.book.title },
-        },
-      }),
-    ]);
-
-    // Recalculate positions for remaining reservations of this book
-    const remaining = await prisma.reservation.findMany({
-      where: { bookId: reservation.bookId, status: 'ACTIVE' },
-      orderBy: { queuePosition: 'asc' },
-    });
-    for (let i = 0; i < remaining.length; i++) {
-      await prisma.reservation.update({
-        where: { id: remaining[i].id },
-        data: { queuePosition: i + 1 },
       });
-    }
+      await this.recalculateReservationQueueForBook(bookId, tx);
+    });
+
+    await prisma.activityLog.create({
+      data: {
+        userId,
+        action: 'CANCEL_RESERVATION',
+        entity: 'Reservation',
+        entityId: reservationId,
+        ipAddress: auditContext?.ipAddress,
+        details: {
+          bookTitle: reservation.book.title,
+          status: 'Cancelled',
+          ...(auditContext?.userAgent ? { userAgent: auditContext.userAgent } : {}),
+        },
+      },
+    });
   }
 
   /**
@@ -1262,10 +1803,10 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
       prisma.reservation.findMany({
         where,
         include: {
-          user: { select: { id: true, firstName: true, lastName: true, libraryId: true } },
+          user: { select: { id: true, firstName: true, lastName: true, libraryId: true, role: true } },
           book: { select: { id: true, title: true, author: true, accessionNo: true, isbn: true, availableCopies: true, status: true } },
         },
-        orderBy: [{ queuePosition: 'asc' }, { reservationDate: 'desc' }],
+        orderBy: [{ user: { role: 'asc' } }, { reservationDate: 'asc' }, { queuePosition: 'asc' }],
         skip,
         take,
       }),
@@ -1297,19 +1838,26 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
     await this.synchronizeOverdueTransactions();
 
     for (const txn of overdueTransactions) {
-      const finePerDay = await policyService.getFloat('FINE_PER_DAY', 5);
+      if (!txn.book || !txn.userId) continue;
       const dueStart = new Date(txn.dueDate.getFullYear(), txn.dueDate.getMonth(), txn.dueDate.getDate());
       const diffDays = Math.floor((todayStart.getTime() - dueStart.getTime()) / (1000 * 60 * 60 * 24));
-      const fine = Math.max(0, diffDays) * finePerDay;
+      const fine = Math.max(0, diffDays) * FINE_PER_BOOK_PER_DAY;
 
+      const overdueMessage = `"${txn.book.title}" is ${diffDays} day(s) overdue. Fine: ₱${fine.toFixed(2)}. Please return immediately.`;
       await prisma.notification.create({
         data: {
           userId: txn.userId,
           type: 'OVERDUE_FINE',
           title: 'Book Overdue',
-          message: `"${txn.book.title}" is ${diffDays} day(s) overdue. Fine: ₱${fine.toFixed(2)}. Please return immediately.`,
-          link: `/transactions/${txn.id}`,
+          message: overdueMessage,
+          link: `/requests?transactionId=${encodeURIComponent(txn.id)}`,
         },
+      });
+      await sendPushToUser(txn.userId, {
+        title: 'Book Overdue',
+        body: overdueMessage,
+        url: `/requests?transactionId=${encodeURIComponent(txn.id)}`,
+        tag: `overdue-${txn.id}`,
       });
     }
 

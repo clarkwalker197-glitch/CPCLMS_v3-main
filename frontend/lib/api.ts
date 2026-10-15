@@ -4,6 +4,8 @@
 // - Provides typed request/response methods
 // ============================================================
 
+import { reportNetworkStatus } from './network-status';
+
 function resolveApiBaseUrl(): string {
   const envValue = process.env.NEXT_PUBLIC_API_URL?.trim();
   if (envValue) return envValue.replace(/\/+$/, '');
@@ -13,7 +15,12 @@ function resolveApiBaseUrl(): string {
     if (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0') {
       return 'http://localhost:4000/api';
     }
-    return '/api';
+
+    if (process.env.NODE_ENV === 'production') {
+      console.warn('[API] NEXT_PUBLIC_API_URL is not configured. Ensure the backend is reachable at the current origin or set NEXT_PUBLIC_API_URL for production.');
+    }
+
+    return `${window.location.origin}/api`;
   }
 
   return 'http://localhost:4000/api';
@@ -62,6 +69,8 @@ export interface ApiResponse<T = unknown> {
   error?: string;
   rateLimited?: boolean;
   retryAfterMs?: number;
+  statusCode?: number;
+  networkError?: boolean;
   meta?: {
     page: number;
     limit: number;
@@ -77,6 +86,8 @@ export interface AuthTokens {
 
 class ApiClient {
   private baseUrl: string;
+  private refreshAuthFailure = false;
+  private refreshInFlight: Promise<boolean> | null = null;
 
   // In-flight request deduplication map (keyed by method + endpoint + body)
   private inflight = new Map<string, Promise<ApiResponse<any>>>();
@@ -95,31 +106,77 @@ class ApiClient {
 
   private getToken(): string | null {
     if (typeof window === 'undefined') return null;
-    return localStorage.getItem('accessToken');
+    return sessionStorage.getItem('accessToken') || localStorage.getItem('accessToken');
   }
 
-  private getRefreshToken(): string | null {
-    if (typeof window === 'undefined') return null;
-    return localStorage.getItem('refreshToken');
+  private shouldRememberSession(): boolean {
+    if (typeof window === 'undefined') return true;
+    return localStorage.getItem('rememberMe') !== 'false'
+      && sessionStorage.getItem('rememberMe') !== 'false';
   }
 
-  private setTokens(accessToken: string, refreshToken?: string): void {
-    localStorage.setItem('accessToken', accessToken);
+  private setTokens(accessToken: string, refreshToken?: string, rememberMe = this.shouldRememberSession()): void {
+    localStorage.removeItem('accessToken');
+    sessionStorage.removeItem('accessToken');
+    localStorage.removeItem('rememberMe');
+    sessionStorage.removeItem('rememberMe');
+    const storage = rememberMe ? localStorage : sessionStorage;
+    storage.setItem('accessToken', accessToken);
+    storage.setItem('rememberMe', String(rememberMe));
     if (refreshToken) {
-      localStorage.setItem('refreshToken', refreshToken);
+      // Keep compatibility with older backend responses, but do not persist the
+      // refresh token in browser storage because it is now exposed as a secure,
+      // httpOnly cookie by the backend.
+      void refreshToken;
     }
   }
 
   clearTokens(): void {
     localStorage.removeItem('accessToken');
+    sessionStorage.removeItem('accessToken');
+    localStorage.removeItem('rememberMe');
+    sessionStorage.removeItem('rememberMe');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
+    sessionStorage.removeItem('user');
+    if (typeof document !== 'undefined') {
+      document.cookie = 'refreshToken=; Max-Age=0; path=/; SameSite=Lax; Secure';
+    }
+  }
+
+  private redirectToLoginForExpiredSession(): void {
+    if (typeof window === 'undefined') return;
+    this.clearTokens();
+    if (window.location.pathname !== '/login') {
+      window.location.replace('/login?reason=session-expired');
+    }
+  }
+
+  private async refreshAfterUnauthorized(): Promise<boolean> {
+    const refreshed = await this.refreshToken();
+    if (!refreshed && this.refreshAuthFailure) {
+      this.redirectToLoginForExpiredSession();
+    }
+    return refreshed;
   }
 
   private async request<T>(
     endpoint: string,
     options: RequestInit = {}
   ): Promise<ApiResponse<T>> {
+    const method = options.method || 'GET';
+    if (
+      method !== 'GET' &&
+      method !== 'HEAD' &&
+      typeof navigator !== 'undefined' &&
+      !navigator.onLine
+    ) {
+      return {
+        success: false,
+        error: 'An internet connection is required for this action.',
+      };
+    }
+
     const token = this.getToken();
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -142,11 +199,10 @@ class ApiClient {
       } as ApiResponse<T>;
     }
 
-    const method = options.method || 'GET';
     const body = options.body ? String(options.body) : '';
     // Deduplicate identical concurrent requests so we never fire the same
     // GET/POST more than once at a time (keyed by method + endpoint + body).
-    const cacheKey = `${method}:${endpoint}:${body}`;
+    const cacheKey = `${method}:${endpoint}:${body}:${headers['Idempotency-Key'] || ''}`;
     if (this.inflight.has(cacheKey)) {
       return this.inflight.get(cacheKey) as Promise<ApiResponse<T>>;
     }
@@ -165,8 +221,10 @@ class ApiClient {
     try {
       const response = await fetch(`${this.baseUrl}${endpoint}`, {
         ...options,
+        credentials: 'include',
         headers,
       });
+      reportNetworkStatus(true);
 
       // 429 — rate limited. Record a cooldown so the UI can show a message
       // and we suppress repeated identical calls for a short window.
@@ -183,6 +241,7 @@ class ApiClient {
           success: false,
           rateLimited: true,
           retryAfterMs: ApiClient.RATE_LIMIT_COOLDOWN_MS,
+          statusCode: response.status,
           error: data.error || 'Too many requests, please try again later.',
         } as ApiResponse<T>;
       }
@@ -194,39 +253,58 @@ class ApiClient {
         data = { success: false, error: 'Unexpected server response' } as ApiResponse<T>;
       }
 
+      if (response.status === 401 && ![
+        '/auth/login',
+        '/auth/register',
+        '/auth/google',
+        '/auth/refresh',
+      ].includes(endpoint)) {
+        const requestToken = headers['Authorization']?.slice('Bearer '.length) ?? null;
+        let currentToken = this.getToken();
+        let shouldRetry = currentToken !== null && currentToken !== requestToken;
+
+        if (!shouldRetry) {
+          shouldRetry = await this.refreshAfterUnauthorized();
+          currentToken = this.getToken();
+        }
+
+        if (shouldRetry && currentToken) {
+          headers['Authorization'] = `Bearer ${currentToken}`;
+          const retryResponse = await fetch(`${this.baseUrl}${endpoint}`, {
+            ...options,
+            credentials: 'include',
+            headers,
+          });
+          reportNetworkStatus(true);
+          let retryData: ApiResponse<T>;
+          try {
+            retryData = await retryResponse.json();
+          } catch {
+            retryData = { success: false, error: 'Unexpected server response' } as ApiResponse<T>;
+          }
+          return retryResponse.ok
+            ? retryData
+            : {
+                ...retryData,
+                success: false,
+                statusCode: retryResponse.status,
+                error: retryData.error || retryResponse.statusText || 'Request failed. Please try again.',
+              };
+        }
+      }
+
       if (!response.ok) {
         return {
           ...data,
           success: false,
+          statusCode: response.status,
           error: data.error || response.statusText || 'Request failed. Please try again.',
         } as ApiResponse<T>;
       }
 
-      // If unauthorized, try refresh token
-      if (response.status === 401 && this.getRefreshToken()) {
-        const refreshed = await this.refreshToken();
-        if (refreshed) {
-          headers['Authorization'] = `Bearer ${this.getToken()}`;
-          const retryResponse = await fetch(`${this.baseUrl}${endpoint}`, {
-            ...options,
-            headers,
-          });
-          try {
-            const retryData = await retryResponse.json();
-            return retryData as ApiResponse<T>;
-          } catch {
-            return { success: false, error: 'Unexpected server response' } as ApiResponse<T>;
-          }
-        }
-        // Refresh failed
-        this.clearTokens();
-        if (typeof window !== 'undefined') {
-          window.location.href = '/login';
-        }
-      }
-
       return data;
     } catch (error) {
+      reportNetworkStatus(false);
       const message = error instanceof Error && error.name === 'TypeError'
         ? 'Unable to reach the server. Please check your connection and try again.'
         : 'Request failed. Please try again.';
@@ -243,6 +321,7 @@ class ApiClient {
       return {
         success: false,
         error: message,
+        networkError: true,
       } as ApiResponse<T>;
     } finally {
       this.inflight.delete(cacheKey);
@@ -250,39 +329,68 @@ class ApiClient {
   }
 
   async refreshToken(): Promise<boolean> {
-    try {
-      const refreshToken = this.getRefreshToken();
-      if (!refreshToken) return false;
+    if (this.refreshInFlight) return this.refreshInFlight;
 
+    this.refreshAuthFailure = false;
+    const refreshPromise = this.performTokenRefresh();
+    this.refreshInFlight = refreshPromise;
+    try {
+      return await refreshPromise;
+    } finally {
+      if (this.refreshInFlight === refreshPromise) this.refreshInFlight = null;
+    }
+  }
+
+  private async performTokenRefresh(): Promise<boolean> {
+    try {
       const response = await fetch(`${this.baseUrl}/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
+        body: JSON.stringify({ rememberMe: this.shouldRememberSession() }),
+        credentials: 'include',
       });
 
+      reportNetworkStatus(true);
+      if (response.status === 401) {
+        this.refreshAuthFailure = true;
+        return false;
+      }
+      if (!response.ok) return false;
       const data = await response.json();
-      if (data.success && data.data) {
+      if (data.success && data.data?.accessToken) {
         this.setTokens(data.data.accessToken, data.data.refreshToken);
         return true;
       }
       return false;
     } catch {
+      reportNetworkStatus(false);
       return false;
     }
   }
 
-  async login(identifier: string, password: string): Promise<ApiResponse<{ user: any; accessToken: string; refreshToken: string }>> {
-    const response = await this.request<{ user: any; accessToken: string; refreshToken: string }>(
-      '/auth/login',
-      {
-        method: 'POST',
-        body: JSON.stringify({ identifier, password }),
-      }
-    );
+  async login(
+    identifier: string,
+    password: string,
+    rememberMe = true,
+  ): Promise<ApiResponse<{ user: any; accessToken: string; refreshToken: string }>> {
+  const response = await this.request<{ user: any; accessToken: string; refreshToken: string }>(
+    '/auth/login',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        identifier,
+        password,
+        rememberMe,
+      }),
+    }
+  );
 
     if (response.success && response.data) {
-      this.setTokens(response.data.accessToken, response.data.refreshToken);
-      localStorage.setItem('user', JSON.stringify(response.data.user));
+      this.setTokens(response.data.accessToken, response.data.refreshToken, rememberMe);
+      const storage = rememberMe ? localStorage : sessionStorage;
+      localStorage.removeItem('user');
+      sessionStorage.removeItem('user');
+      storage.setItem('user', JSON.stringify(response.data.user));
     }
 
     return response;
@@ -294,7 +402,6 @@ async register(data: {
     libraryId: string;
     email: string;
     password: string;
-    role?: string;
     department?: string;
     yearSection?: string;
     phone?: string;
@@ -311,7 +418,10 @@ const response = await this.request<any>('/auth/register', {
 
   async logout(): Promise<void> {
     try {
-      await this.request('/auth/logout', { method: 'POST' });
+      await this.request('/auth/logout', {
+        method: 'POST',
+        credentials: 'include',
+      });
     } catch {
       // Ignore errors
     }
@@ -322,18 +432,65 @@ const response = await this.request<any>('/auth/register', {
     return this.request<T>(endpoint);
   }
 
-  // Multipart upload (e-book file + optional cover image). Bypasses the
+  async download(endpoint: string): Promise<Blob> {
+    const fetchDownload = (token: string | null) => fetch(`${this.baseUrl}${endpoint}`, {
+      credentials: 'include',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    let requestToken = this.getToken();
+    let response = await fetchDownload(requestToken);
+    if (response.status === 401) {
+      const currentToken = this.getToken();
+      if (currentToken && currentToken !== requestToken) {
+        requestToken = currentToken;
+        response = await fetchDownload(requestToken);
+      } else if (await this.refreshAfterUnauthorized()) {
+        requestToken = this.getToken();
+        response = await fetchDownload(requestToken);
+      }
+    }
+    if (response.status === 401) {
+      throw new Error(response.statusText || 'Request unauthorized. Please try again.');
+    }
+    if (!response.ok) {
+      let message = response.statusText || 'Download failed';
+      try {
+        const data = await response.json();
+        if (typeof data.error === 'string') message = data.error;
+      } catch {
+        // Keep the HTTP status message when the server does not return JSON.
+      }
+      throw new Error(message);
+    }
+    return response.blob();
+  }
+
+  // Multipart create (e-book file + optional cover image). Bypasses the
   // JSON request pipeline since FormData needs the browser to set its own
   // Content-Type header (with the multipart boundary) — setting it manually
   // breaks the upload.
   async uploadEBook(formData: FormData): Promise<ApiResponse<any>> {
-    return this.uploadMultipart('/ebooks/upload', formData);
+    return this.uploadMultipart('/ebooks', formData);
   }
 
-  async post<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
+  async updateEBookWithFile(
+    id: string,
+    fields: Record<string, string>,
+    file: File
+  ): Promise<ApiResponse<any>> {
+    const formData = new FormData();
+    Object.entries(fields).forEach(([key, value]) => {
+      if (value !== '') formData.append(key, value);
+    });
+    formData.append('ebookFile', file);
+    return this.uploadMultipart(`/ebooks/${encodeURIComponent(id)}`, formData, 'PUT');
+  }
+
+  async post<T>(endpoint: string, body?: unknown, headers?: Record<string, string>): Promise<ApiResponse<T>> {
     return this.request<T>(endpoint, {
       method: 'POST',
       body: body ? JSON.stringify(body) : undefined,
+      headers,
     });
   }
 
@@ -372,8 +529,11 @@ async put<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
     return this.put('/auth/change-password', { currentPassword, newPassword });
   }
 
-  async updateNotificationPreferences(notificationsEnabled: boolean): Promise<ApiResponse<any>> {
-    return this.put('/auth/notification-preferences', { notificationsEnabled });
+  async updateNotificationPreferences(preferences: {
+    notificationsEnabled?: boolean;
+    systemNotificationsEnabled?: boolean;
+  }): Promise<ApiResponse<any>> {
+    return this.put('/auth/notification-preferences', preferences);
   }
 
   async forgotPassword(identifier: string): Promise<ApiResponse<any>> {
@@ -391,7 +551,7 @@ async put<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
   async googleLogin(credential: string): Promise<ApiResponse<any>> {
     const response = await this.post<{ accessToken: string; refreshToken: string; user: any }>('/auth/google', { credential });
     if (response.success && response.data) {
-      this.setTokens(response.data.accessToken, response.data.refreshToken);
+      this.setTokens(response.data.accessToken, response.data.refreshToken, true);
       localStorage.setItem('user', JSON.stringify(response.data.user));
     }
     return response;
@@ -450,6 +610,9 @@ async put<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
   }
 
   private async uploadMultipart(endpoint: string, formData: FormData, method = 'POST'): Promise<ApiResponse<any>> {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      return { success: false, error: 'An internet connection is required for this action.' };
+    }
     const remainingCooldown = this.rateLimitUntil - Date.now();
     if (remainingCooldown > 0) {
       return {
@@ -460,16 +623,33 @@ async put<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
       };
     }
 
+    let attemptToken: string | null = null;
     const attempt = async (): Promise<{ status: number; data: ApiResponse<any> }> => {
       const token = this.getToken();
+      attemptToken = token;
       const headers: Record<string, string> = {};
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const response = await fetch(`${this.baseUrl}${endpoint}`, {
-        method,
-        headers,
-        body: formData,
-      });
+      let response: Response;
+      try {
+        response = await fetch(`${this.baseUrl}${endpoint}`, {
+          method,
+          credentials: 'include',
+          headers,
+          body: formData,
+        });
+        reportNetworkStatus(true);
+      } catch {
+        reportNetworkStatus(false);
+        return {
+          status: 0,
+          data: {
+            success: false,
+            error: 'Unable to reach the server. Please check your connection and try again.',
+            networkError: true,
+          },
+        };
+      }
 
       let data: ApiResponse<any>;
       try {
@@ -493,17 +673,24 @@ async put<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
       };
     }
 
-    if (status === 401 && this.getRefreshToken()) {
-      const refreshed = await this.refreshToken();
+    if (status === 401) {
+      const currentToken = this.getToken();
+      const tokenWasUpdated = Boolean(currentToken && attemptToken !== currentToken);
+      const refreshed = tokenWasUpdated
+        || await this.refreshAfterUnauthorized();
       if (refreshed) {
         ({ status, data } = await attempt());
-      } else {
-        this.clearTokens();
-        if (typeof window !== 'undefined') window.location.href = '/login';
       }
     }
 
-    return data;
+    return status >= 400
+      ? {
+          ...data,
+          success: false,
+          statusCode: status,
+          error: data.error || 'Request failed. Please try again.',
+        }
+      : data;
   }
 
   async updateBook(id: string, data: Record<string, unknown>): Promise<ApiResponse<any>> {
@@ -523,8 +710,10 @@ async put<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
 async createBorrowRequest(data: {
     bookIds: string[];
     notes?: string;
-  }): Promise<ApiResponse<any>> {
-    return this.post('/transactions/requests', { bookIds: data.bookIds, notes: data.notes });
+  }, idempotencyKey?: string): Promise<ApiResponse<any>> {
+    return this.post('/transactions/requests', { bookIds: data.bookIds, notes: data.notes }, idempotencyKey
+      ? { 'Idempotency-Key': idempotencyKey }
+      : undefined);
   }
 
   async getBorrowRequestBatch(transactionId: string): Promise<ApiResponse<any>> {
@@ -551,6 +740,28 @@ async createBorrowRequest(data: {
   async getReservations(params?: Record<string, string>): Promise<ApiResponse<any[]>> {
     const query = params ? '?' + new URLSearchParams(params).toString() : '';
     return this.get(`/reservations${query}`);
+  }
+
+  async reserveBook(bookId: string, idempotencyKey?: string): Promise<ApiResponse<any>> {
+    return this.post('/reservations', { bookId }, idempotencyKey
+      ? { 'Idempotency-Key': idempotencyKey }
+      : undefined);
+  }
+
+  async cancelReservation(id: string): Promise<ApiResponse<any>> {
+    return this.put(`/reservations/${encodeURIComponent(id)}/cancel`);
+  }
+
+  async approveReservation(id: string): Promise<ApiResponse<any>> {
+    return this.put(`/reservations/${encodeURIComponent(id)}/approve`);
+  }
+
+  async rejectReservation(id: string, reason?: string): Promise<ApiResponse<any>> {
+    return this.put(`/reservations/${encodeURIComponent(id)}/reject`, { reason: reason || 'No reason provided' });
+  }
+
+  async pickupReservation(id: string): Promise<ApiResponse<any>> {
+    return this.put(`/reservations/${encodeURIComponent(id)}/pickup`);
   }
 
   async approveRequest(id: string): Promise<ApiResponse<any>> {
@@ -599,6 +810,24 @@ async payFine(id: string, amount: number): Promise<ApiResponse<any>> {
 
   async markAllNotificationsRead(): Promise<ApiResponse<any>> {
     return this.put('/notifications/mark-all-read');
+  }
+
+  async getPushPublicKey(): Promise<ApiResponse<{ enabled: boolean; publicKey?: string }>> {
+    return this.get('/notifications/push/public-key');
+  }
+
+  async subscribeToPush(subscription: {
+    endpoint: string;
+    keys: { p256dh: string; auth: string };
+  }): Promise<ApiResponse<null>> {
+    return this.post('/notifications/push/subscribe', subscription);
+  }
+
+  async unsubscribeFromPush(endpoint: string): Promise<ApiResponse<null>> {
+    return this.request<null>('/notifications/push/subscribe', {
+      method: 'DELETE',
+      body: JSON.stringify({ endpoint }),
+    });
   }
 
 // Analytics
@@ -671,12 +900,17 @@ async payFine(id: string, amount: number): Promise<ApiResponse<any>> {
   async updateAcquisitionRequest(id: string, data: Record<string, unknown>): Promise<ApiResponse<any>> { return this.patch(`/acquisition-requests/${id}`, data); }
 
   // Policies
-  async getPolicies(): Promise<ApiResponse<any[]>> {
-    return this.get('/policies');
+  async getPolicies<T = any>(): Promise<ApiResponse<T>> {
+    return this.request<T>('/policies', { cache: 'no-store' });
   }
 
-  async updatePolicy(key: string, value: string, description?: string): Promise<ApiResponse<any>> {
-    return this.put('/policies', { key, value, description });
+  async updatePolicy(
+    key: string,
+    value: string,
+    expectedUpdatedAt: string | null,
+    description?: string,
+  ): Promise<ApiResponse<any>> {
+    return this.put('/policies', { key, value, description, expectedUpdatedAt });
   }
 
   // Activity Logs
@@ -708,7 +942,7 @@ async payFine(id: string, amount: number): Promise<ApiResponse<any>> {
     publishYear?: number;
     edition?: string;
     categoryId: string;
-    classificationNumber: string;
+    classificationNumber?: string;
     description?: string;
     coverImage?: string;
     language?: string;
@@ -732,9 +966,50 @@ async payFine(id: string, amount: number): Promise<ApiResponse<any>> {
     const token = this.getToken();
     return `${this.baseUrl}/reports/${type}?format=${format}&token=${token}`;
   }
+
+  async downloadReport(type: string, format: 'pdf' | 'xlsx' = 'pdf'): Promise<void> {
+    const endpoint = `/reports/${encodeURIComponent(type)}?format=${format}`;
+    const request = (token: string | null) => fetch(`${this.baseUrl}${endpoint}`, {
+      credentials: 'include',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    let requestToken = this.getToken();
+    let response = await request(requestToken);
+
+    if (response.status === 401) {
+      const currentToken = this.getToken();
+      if (currentToken && currentToken !== requestToken) {
+        requestToken = currentToken;
+        response = await request(requestToken);
+      } else if (await this.refreshAfterUnauthorized()) {
+        requestToken = this.getToken();
+        response = await request(requestToken);
+      }
+    }
+
+    if (response.status === 401) {
+      throw new Error(response.statusText || 'Request unauthorized. Please try again.');
+    }
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || response.statusText || 'Report download failed.');
+    }
+
+    const blob = await response.blob();
+    const disposition = response.headers.get('Content-Disposition');
+    const filename = disposition?.match(/filename="?([^";]+)"?/i)?.[1] || `cpc-library-${type}.${format}`;
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
 }
 
 export const api = new ApiClient(API_BASE_URL);
 
 export default api;
-

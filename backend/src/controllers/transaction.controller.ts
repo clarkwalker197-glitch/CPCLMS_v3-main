@@ -7,6 +7,16 @@ import { transactionService } from '../services';
 import { asyncHandler } from '../utils/asyncHandler';
 import { sendSuccess } from '../utils/helpers';
 import { AuthenticatedRequest } from '../types';
+import { BadRequestError } from '../utils/errors';
+
+function getIdempotencyKey(req: Request): string | undefined {
+  const key = req.get('Idempotency-Key');
+  if (!key) return undefined;
+  if (!/^[A-Za-z0-9._:-]{1,64}$/.test(key)) {
+    throw new BadRequestError('Invalid Idempotency-Key header');
+  }
+  return key;
+}
 
 // ============================================================
 // Borrow Requests
@@ -25,6 +35,8 @@ export const createBorrowRequest = asyncHandler(
       userId: req.user!.userId,
       bookIds: normalizedBookIds,
       notes,
+      idempotencyKey: getIdempotencyKey(req),
+      auditContext: { ipAddress: req.ip, userAgent: req.get('user-agent') },
     });
     sendSuccess(res, request, 'Borrow request submitted', 201);
   }
@@ -46,7 +58,8 @@ export const approveRequest = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const result = await transactionService.approveRequest(
       req.params.id,
-      req.user!.userId
+      req.user!.userId,
+      { ipAddress: req.ip, userAgent: req.get('user-agent') }
     );
     sendSuccess(res, result, 'Borrow ID is ready for borrower verification');
   }
@@ -59,7 +72,7 @@ export const rejectRequest = asyncHandler(
       res.status(400).json({ success: false, error: 'Rejection reason is required' });
       return;
     }
-    await transactionService.rejectRequest(req.params.id, req.user!.userId, reason);
+    await transactionService.rejectRequest(req.params.id, req.user!.userId, reason, { ipAddress: req.ip, userAgent: req.get('user-agent') });
     sendSuccess(res, null, 'Borrow request rejected');
   }
 );
@@ -83,7 +96,8 @@ export const approveBorrowRequestBatch = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const result = await transactionService.approveTransactionBatch(
       req.params.batchId,
-      req.user!.userId
+      req.user!.userId,
+      { ipAddress: req.ip, userAgent: req.get('user-agent') }
     );
     sendSuccess(res, result, 'Borrow ID is ready for borrower verification');
   }
@@ -93,7 +107,8 @@ export const verifyBorrowRequest = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const result = await transactionService.verifyBorrowRequest(
       req.body.borrowId,
-      req.user!.userId
+      req.user!.userId,
+      { ipAddress: req.ip, userAgent: req.get('user-agent') }
     );
     sendSuccess(res, result, 'Borrow ID verified; request approved');
   }
@@ -156,10 +171,10 @@ export const getTransaction = asyncHandler(
   }
 );
 
-export const returnBook = asyncHandler(async (req: Request, res: Response) => {
+export const returnBook = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { qrCode } = req.body;
   const identifier = qrCode || req.params.id;
-  const transaction = await transactionService.returnBook(identifier);
+  const transaction = await transactionService.returnBook(identifier, req.user!.userId, { ipAddress: req.ip, userAgent: req.get('user-agent') });
   sendSuccess(res, transaction, 'Book returned successfully');
 });
 
@@ -178,7 +193,12 @@ export const declareMissing = asyncHandler(
 export const payFine = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const { amount } = req.body;
-    const transaction = await transactionService.payFine(req.params.id, amount);
+    const transaction = await transactionService.payFine(
+      req.params.id,
+      amount,
+      req.user!.userId,
+      { ipAddress: req.ip, userAgent: req.get('user-agent') },
+    );
     sendSuccess(res, transaction, 'Fine paid successfully');
   }
 );
@@ -199,7 +219,9 @@ export const reserveBook = asyncHandler(
     const { bookId } = req.body;
     const reservation = await transactionService.reserveBook(
       req.user!.userId,
-      bookId
+      bookId,
+      { ipAddress: req.ip, userAgent: req.get('user-agent') },
+      getIdempotencyKey(req)
     );
     sendSuccess(res, reservation, 'Book reserved successfully', 201);
   }
@@ -207,8 +229,43 @@ export const reserveBook = asyncHandler(
 
 export const cancelReservation = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
-    await transactionService.cancelReservation(req.params.id, req.user!.userId);
+    await transactionService.cancelReservation(req.params.id, req.user!.userId, { ipAddress: req.ip, userAgent: req.get('user-agent') });
     sendSuccess(res, null, 'Reservation cancelled');
+  }
+);
+
+export const approveReservation = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const reservation = await transactionService.approveReservation(
+      req.params.id,
+      req.user!.userId,
+      { ipAddress: req.ip, userAgent: req.get('user-agent') }
+    );
+    sendSuccess(res, reservation, 'Reservation approved');
+  }
+);
+
+export const rejectReservation = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const { reason } = req.body;
+    const reservation = await transactionService.rejectReservation(
+      req.params.id,
+      req.user!.userId,
+      reason || 'No reason provided',
+      { ipAddress: req.ip, userAgent: req.get('user-agent') }
+    );
+    sendSuccess(res, reservation, 'Reservation rejected');
+  }
+);
+
+export const pickupReservation = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const reservation = await transactionService.pickupReservation(
+      req.params.id,
+      req.user!.userId,
+      { ipAddress: req.ip, userAgent: req.get('user-agent') }
+    );
+    sendSuccess(res, reservation, 'Reserved book picked up successfully');
   }
 );
 

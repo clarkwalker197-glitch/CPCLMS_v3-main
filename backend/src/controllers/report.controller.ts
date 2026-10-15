@@ -11,7 +11,7 @@ export const generateReport = asyncHandler(async (req: Request, res: Response) =
   const type = req.params.type as ReportType;
   const format = (req.query.format as ExportFormat) || 'pdf';
 
-  const validTypes: ReportType[] = ['books', 'transactions', 'users', 'overdue', 'reservations'];
+  const validTypes: ReportType[] = ['books', 'transactions', 'users', 'overdue', 'reservations', 'monthly'];
   const validFormats: ExportFormat[] = ['pdf', 'xlsx'];
 
   if (!validTypes.includes(type)) {
@@ -22,10 +22,17 @@ export const generateReport = asyncHandler(async (req: Request, res: Response) =
     sendError(res, `Invalid format. Valid: ${validFormats.join(', ')}`);
     return;
   }
+  if (type === 'monthly' && format !== 'xlsx') {
+    sendError(res, 'Monthly reports are available as Excel workbooks only.');
+    return;
+  }
 
   const buffer = await reportService.generateReport(type, format);
 
-  const filename = `cpc-library-${type}-${new Date().toISOString().split('T')[0]}`;
+  const date = new Date();
+  const filename = type === 'monthly'
+    ? `cpc-library-monthly-report-${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+    : `cpc-library-${type}-${date.toISOString().split('T')[0]}`;
   const contentType = format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
   const extension = format === 'pdf' ? 'pdf' : 'xlsx';
 

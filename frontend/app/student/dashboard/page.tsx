@@ -3,9 +3,8 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
 import ProtectedRoute from "@/components/ProtectedRoute";
-import NotificationBell from "@/components/NotificationBell";
-import UserAvatar from "@/components/UserAvatar";
 import Sidebar from "@/components/Sidebar";
+import HeaderUserActions from "@/components/HeaderUserActions";
 import ResponsiveTable from "@/components/ResponsiveTable";
 import { StatCard } from "@/components/StatCard";
 import BorrowHistoryCard from "@/components/BorrowHistoryCard";
@@ -22,10 +21,14 @@ const statusBadge: Record<string, string> = {
   ACTIVE: "bg-blue-500/15 text-blue-400 ring-blue-500/30",
   RETURNED: "bg-emerald-500/15 text-emerald-400 ring-emerald-500/30",
   OVERDUE: "bg-red-500/15 text-red-400 ring-red-500/30",
+  MISSING: "bg-amber-500/15 text-amber-300 ring-amber-500/30",
   PENDING: "bg-amber-500/15 text-amber-400 ring-amber-500/30",
   APPROVED: "bg-emerald-500/15 text-emerald-400 ring-emerald-500/30",
   REJECTED: "bg-red-500/15 text-red-400 ring-red-500/30",
   CANCELLED: "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30",
+};
+const statusLabel: Record<string, string> = {
+  MISSING: "Missing",
 };
 
 export default function StudentDashboardPage() {
@@ -34,51 +37,86 @@ export default function StudentDashboardPage() {
   const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
   const [dueSoon, setDueSoon] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showingCached, setShowingCached] = useState(false);
 
   useEffect(() => {
+    const userId = user?.id || "";
+    if (!userId) return;
     async function load() {
       try {
-        const [cachedTransactions, cachedRequests] = await Promise.all([
-          offlineDb.transactions.orderBy("updatedAt").reverse().limit(5).toArray(),
-          offlineDb.borrowRequests.orderBy("updatedAt").reverse().toArray(),
+        const [cachedTransactions, allCachedRequests, cachedDashboard] = await Promise.all([
+          offlineDb.transactions.where("userId").equals(userId).reverse().limit(5).toArray(),
+          offlineDb.borrowRequests.where("userId").equals(userId).toArray(),
+          offlineDb.dashboard.get(userId),
         ]);
+        const cachedRequests = allCachedRequests.filter((request: any) =>
+          !request._pending && !String(request.id).startsWith("local-borrow-")
+        );
         if (cachedTransactions.length) setRecentTransactions(cachedTransactions);
+        if (cachedDashboard?.snapshot) {
+          const cachedStats = cachedDashboard.snapshot as any;
+          setStats(cachedStats);
+          setDueSoon(cachedStats.dueSoon || []);
+          setShowingCached(true);
+        }
         if (cachedTransactions.length || cachedRequests.length) {
-          setStats({
-            myBorrowed: cachedTransactions.filter((transaction) => ["ACTIVE", "OVERDUE"].includes(String(transaction.status))).length,
-            myPendingRequests: cachedRequests.filter((request) => request.status === "PENDING").length,
-            myFines: cachedTransactions.reduce((total, transaction) => total + (!transaction.finePaid && !transaction.fineWaived && !transaction.returnDate && ["ACTIVE", "OVERDUE"].includes(String(transaction.status)) && Number(transaction.fineAmount || 0) > 0 ? Number(transaction.fineAmount || 0) : 0), 0),
-          });
+          if (!cachedDashboard?.snapshot) {
+            setStats({
+              myBorrowed: cachedTransactions.filter((transaction) => ["ACTIVE", "OVERDUE"].includes(String(transaction.status))).length,
+              myPendingRequests: cachedRequests.filter((request) => request.status === "PENDING").length,
+              myFines: cachedTransactions.reduce((total, transaction) => total + (!transaction.finePaid && Number(transaction.fineAmount || 0) > 0 ? Number(transaction.fineAmount || 0) : 0), 0),
+            });
+          }
           setLoading(false);
         }
 
-const [statsRes, txRes] = await Promise.all([
+        if (!navigator.onLine) {
+          setShowingCached(true);
+          return;
+        }
+
+        const [statsRes, txRes] = await Promise.all([
           api.getMyDashboardStats(),
           api.getTransactions({ limit: "5" }),
         ]);
-        if (statsRes.success) setStats(statsRes.data);
-        if (statsRes.success) setDueSoon(statsRes.data?.dueSoon || []);
+        if (statsRes.success) {
+          setStats(statsRes.data);
+          setDueSoon(statsRes.data?.dueSoon || []);
+          await offlineDb.dashboard.put({
+            id: userId,
+            userId,
+            snapshot: statsRes.data,
+            updatedAt: new Date().toISOString(),
+            syncedAt: Date.now(),
+          });
+          setShowingCached(false);
+        } else if (statsRes.networkError) {
+          setShowingCached(true);
+        }
         if (txRes.success) {
-          const nextTransactions = txRes.data || [];
+          const nextTransactions = (txRes.data || []).map((transaction: any) => ({
+            ...transaction,
+            userId: transaction.userId || userId,
+          }));
           setRecentTransactions(nextTransactions);
           await offlineDb.transactions.bulkPut(nextTransactions);
         }
       } catch {
-        // silent fail for demo
+        setShowingCached(true);
       } finally {
         setLoading(false);
       }
     }
     load();
-  }, []);
+  }, [user?.id]);
 
   const role = user?.role || "STUDENT";
   const isFaculty = role === "FACULTY";
 
 const statsCards = [
-    { title: "Currently Borrowed", value: stats?.myBorrowed ?? "-", icon: BookMarked, accent: "bg-blue-500/15 text-blue-400" },
-    { title: "Pending Requests", value: stats?.myPendingRequests ?? "-", icon: Clock, accent: "bg-amber-500/15 text-amber-400" },
-    { title: "Overdue Fines", value: `₱${stats?.myFines ?? 0}`, icon: Coins, accent: "bg-red-500/15 text-red-400" },
+    { title: "Currently Borrowed", value: stats?.myBorrowed ?? "-", icon: BookMarked, accent: "bg-blue-500/15 text-blue-400", href: "/requests" },
+    { title: "Pending Requests", value: stats?.myPendingRequests ?? "-", icon: Clock, accent: "bg-amber-500/15 text-amber-400", href: "/requests" },
+    { title: "Overdue Fines", value: `₱${stats?.myFines ?? 0}`, icon: Coins, accent: "bg-red-500/15 text-red-400", href: "/requests" },
   ];
 
 const formatDate = (d?: string) =>
@@ -91,7 +129,7 @@ const formatDate = (d?: string) =>
         <Sidebar />
 
         <div className="flex-1 min-w-0">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-8">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-[calc(7rem+min(env(safe-area-inset-bottom),2rem))] lg:pb-8">
             {/* Header */}
             <div className="flex items-center justify-between gap-4 mb-8">
               <div>
@@ -104,22 +142,15 @@ const formatDate = (d?: string) =>
                     {isFaculty ? "Faculty" : "Student"}
                   </span>
                 </p>
+                {showingCached && (
+                  <p className="mt-2 text-xs text-amber-300">Showing last synchronized dashboard data.</p>
+                )}
               </div>
-              <div className="flex items-center gap-2">
-                <NotificationBell />
-
-                <Link
-                  href="/profile"
-                  aria-label="Open profile"
-                  className="ml-1 flex h-10 w-10 items-center justify-center rounded-xl shadow-lg shadow-blue-600/30 transition-colors hover:bg-blue-700"
-                >
-                    <UserAvatar firstName={user?.firstName} lastName={user?.lastName} avatar={user?.avatar} className="h-10 w-10" />
-                </Link>
-              </div>
+              <HeaderUserActions />
             </div>
 
             {/* Stats */}
-            <div className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-3">
+            <div className="mobile-stats-grid mb-6 grid grid-cols-2 gap-4 md:grid-cols-3">
               {loading
                 ? Array.from({ length: 3 }).map((_, i) => (
                     <div key={i} className="h-32 rounded-2xl bg-zinc-900 animate-pulse" />
@@ -142,7 +173,7 @@ const formatDate = (d?: string) =>
                     View all
                   </Link>
                 </div>
-                <div className="hidden sm:block overflow-x-auto">
+                <div className="hidden md:block overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="bg-zinc-900 text-left text-xs uppercase tracking-wide text-zinc-500">
@@ -170,7 +201,7 @@ const formatDate = (d?: string) =>
                             <td className="px-6 py-4 text-zinc-400">{formatDate(tx.dueDate)}</td>
                             <td className="px-6 py-4">
                               <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${statusBadge[displayStatus(tx)] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>
-                                {displayStatus(tx)}
+                                {statusLabel[displayStatus(tx)] || displayStatus(tx)}
                               </span>
                             </td>
                           </tr>
@@ -183,7 +214,15 @@ const formatDate = (d?: string) =>
                   recentTransactions.length === 0 ? (
                     <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 px-4 py-10 text-center text-zinc-500">No recent transactions</div>
                   ) : recentTransactions.map((tx: any) => (
-                    <BorrowHistoryCard key={tx.id} transaction={{ ...tx, status: displayStatus(tx) }} formatDate={formatDate} statusBadge={statusBadge} statusLabel={{}} />
+                    <BorrowHistoryCard
+                      key={tx.id}
+                      transaction={{ ...tx, status: displayStatus(tx) }}
+                      formatDate={formatDate}
+                      statusBadge={statusBadge}
+                      statusLabel={statusLabel}
+                      contextLabel="Borrower"
+                      contextValue={[user?.firstName, user?.lastName].filter(Boolean).join(" ")}
+                    />
                   ))
                 } />
               </div>

@@ -4,7 +4,7 @@ import { useState, useRef } from "react";
 import { Dialog, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import api from "@/lib/api";
-import { categoryDisplayName, categoryForClassification, categoryIdForDewey, DEWEY_MAIN_CATEGORIES, mainCategoryForClassification, normalizeClassificationNumber, sanitizeClassificationInput, subcategoriesForMain } from "@/lib/categories";
+import { categoryDisplayName, categoryIdForDewey, DEWEY_MAIN_CATEGORIES, subcategoriesForMain } from "@/lib/categories";
 import { BookOpen, Upload, Link2, FileText, X } from "lucide-react";
 
 interface Category {
@@ -17,13 +17,27 @@ const inputClass =
 const labelClass = "block text-sm font-medium text-zinc-300 mb-1.5";
 
 const ACCEPTED_EBOOK_EXT = [".pdf", ".epub", ".mobi"];
+const ACCEPTED_EBOOK_MIME: Record<string, string[]> = {
+  ".pdf": ["application/pdf"],
+  ".epub": ["application/epub+zip", "application/zip"],
+  ".mobi": ["application/x-mobipocket-ebook"],
+};
 const ACCEPTED_COVER_TYPES = ["image/jpeg", "image/png", "image/webp"];
-const MAX_EBOOK_MB = 150;
+const MAX_EBOOK_MB = 50;
 const MAX_COVER_MB = 5;
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function isValidFileUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
 }
 
 export function AddEBookModal(props: {
@@ -40,12 +54,10 @@ export function AddEBookModal(props: {
     publishYear: "",
     edition: "",
     categoryId: "",
-    classificationNumber: "",
     description: "",
     coverImage: "",
     language: "English",
     fileUrl: "",
-    fileSizeMb: "",
     format: "PDF" as "PDF" | "EPUB" | "MOBI",
   };
   const [mode, setMode] = useState<"upload" | "link">("upload");
@@ -61,20 +73,6 @@ export function AddEBookModal(props: {
   const update = (field: keyof typeof form) => (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => setForm((f) => ({ ...f, [field]: e.target.value }));
-
-  const updateClassificationNumber = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = sanitizeClassificationInput(e.target.value);
-    const detected = categoryForClassification(value);
-    const mainCategory = mainCategoryForClassification(value);
-    const categoryId = detected ? categoryIdForDewey(detected, props.categories) : undefined;
-    setMainCategoryCode(mainCategory?.code || "");
-    setForm((current) => ({ ...current, classificationNumber: value, categoryId: categoryId || "" }));
-  };
-
-  const normalizeClassification = () => setForm((current) => ({
-    ...current,
-    classificationNumber: normalizeClassificationNumber(current.classificationNumber) || current.classificationNumber,
-  }));
 
   const reset = () => {
     setForm(emptyForm);
@@ -99,6 +97,11 @@ export function AddEBookModal(props: {
       e.target.value = "";
       return;
     }
+    if (file.type && file.type !== "application/octet-stream" && !ACCEPTED_EBOOK_MIME[ext]?.includes(file.type)) {
+      setError("The selected file type does not match its file extension.");
+      e.target.value = "";
+      return;
+    }
     if (file.size > MAX_EBOOK_MB * 1024 * 1024) {
       setError(`E-book file must be under ${MAX_EBOOK_MB}MB.`);
       e.target.value = "";
@@ -106,6 +109,10 @@ export function AddEBookModal(props: {
     }
     setError("");
     setEbookFile(file);
+    setForm((current) => ({
+      ...current,
+      format: ext === ".epub" ? "EPUB" : ext === ".mobi" ? "MOBI" : "PDF",
+    }));
   };
 
   const onPickCoverFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -129,14 +136,13 @@ export function AddEBookModal(props: {
     e.preventDefault();
     setError("");
 
-    const classificationNumber = normalizeClassificationNumber(form.classificationNumber);
-    if (!form.isbn.trim() || !form.title.trim() || !form.author.trim() || !form.categoryId || !classificationNumber) {
-      setError("ISBN, title, author, category, and a valid Dewey classification number are required.");
+    if (!form.isbn.trim() || !form.title.trim() || !form.author.trim() || !form.categoryId) {
+      setError("ISBN, title, author, and category are required.");
       return;
     }
 
-    if (mode === "link" && !form.fileUrl.trim()) {
-      setError("File URL is required.");
+    if (mode === "link" && !isValidFileUrl(form.fileUrl.trim())) {
+      setError("Enter a valid http or https file URL.");
       return;
     }
     if (mode === "upload" && !ebookFile) {
@@ -156,10 +162,11 @@ export function AddEBookModal(props: {
         if (form.publishYear) fd.append("publishYear", form.publishYear);
         if (form.edition.trim()) fd.append("edition", form.edition.trim());
         fd.append("categoryId", form.categoryId);
-        fd.append("classificationNumber", classificationNumber);
         if (form.description.trim()) fd.append("description", form.description.trim());
         fd.append("language", form.language.trim() || "English");
-        fd.append("file", ebookFile as File);
+        fd.append("format", form.format);
+        if (form.coverImage.trim() && !coverFile) fd.append("coverImage", form.coverImage.trim());
+        fd.append("ebookFile", ebookFile as File);
         if (coverFile) fd.append("coverImage", coverFile);
         res = await api.uploadEBook(fd);
       } else {
@@ -171,12 +178,10 @@ export function AddEBookModal(props: {
           publishYear: form.publishYear ? Number(form.publishYear) : undefined,
           edition: form.edition.trim() || undefined,
           categoryId: form.categoryId,
-          classificationNumber,
           description: form.description.trim() || undefined,
           coverImage: form.coverImage.trim() || undefined,
           language: form.language.trim() || "English",
           fileUrl: form.fileUrl.trim(),
-          fileSize: form.fileSizeMb ? Math.round(Number(form.fileSizeMb) * 1024 * 1024) : undefined,
           format: form.format,
         });
       }
@@ -205,12 +210,14 @@ export function AddEBookModal(props: {
         </DialogTitle>
         <DialogDescription>
           {mode === "upload"
-            ? "Upload the PDF/EPUB/MOBI file directly — it's stored on the server and served back for reading and downloading."
+            ? "Upload a PDF/EPUB/MOBI file (up to 50 MB) to public cloud storage for reading and downloading."
             : "Paste a direct link to an already-hosted file (e.g. Google Drive, S3, Cloudinary)."}
         </DialogDescription>
       </DialogHeader>
 
-      <div className="flex gap-2 mb-4 p-1 bg-zinc-950 border border-zinc-800 rounded-xl">
+      <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pr-1">
+      <div className="flex gap-2 p-1 bg-zinc-950 border border-zinc-800 rounded-xl">
         <button
           type="button"
           onClick={() => {
@@ -240,12 +247,11 @@ export function AddEBookModal(props: {
       </div>
 
       {error && (
-        <div className="p-3 mb-4 bg-red-500/10 border border-red-500/30 rounded-xl text-sm text-red-400">
+        <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-sm text-red-400">
           {error}
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-4 max-h-[65vh] overflow-y-auto pr-1">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className={labelClass}>Title *</label>
@@ -269,7 +275,7 @@ export function AddEBookModal(props: {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
           <div>
             <label className={labelClass}>ISBN *</label>
             <input
@@ -280,35 +286,21 @@ export function AddEBookModal(props: {
               required
             />
           </div>
-          {mode === "link" && (
-            <div>
-              <label className={labelClass}>Format</label>
-              <select className={inputClass} value={form.format} onChange={update("format")}>
-                <option value="PDF">PDF</option>
-                <option value="EPUB">EPUB</option>
-                <option value="MOBI">MOBI</option>
-              </select>
-            </div>
-          )}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className={labelClass}>Classification Number *</label>
-            <input className={inputClass} value={form.classificationNumber} onChange={updateClassificationNumber} onBlur={normalizeClassification} inputMode="decimal" maxLength={9} placeholder="e.g., 812.54" required />
-          </div>
-          <div>
-            <label className={labelClass}>Category *</label>
+        <div>
+          <label className={labelClass}>Category *</label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <select className={inputClass} value={mainCategoryCode} onChange={(e) => {
               setMainCategoryCode(e.target.value);
               setForm((current) => ({ ...current, categoryId: "" }));
-            }} required>
+            }} aria-label="Main category" required>
               <option value="">Select a main category</option>
               {DEWEY_MAIN_CATEGORIES.map((category) => (
                 <option key={category.code} value={category.code}>{category.name} ({category.range})</option>
               ))}
             </select>
-            <select className={`${inputClass} mt-2`} value={form.categoryId} onChange={update("categoryId")} disabled={!mainCategoryCode} required>
+            <select className={inputClass} value={form.categoryId} onChange={update("categoryId")} disabled={!mainCategoryCode} aria-label="Subcategory" required>
               <option value="">Select a subcategory</option>
               {subcategoriesForMain(mainCategoryCode).map((category) => {
                 const categoryId = categoryIdForDewey(category, props.categories);
@@ -335,14 +327,20 @@ export function AddEBookModal(props: {
           </div>
         </div>
 
-        {mode === "link" && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className={labelClass}>Edition</label>
-              <input className={inputClass} value={form.edition} onChange={update("edition")} />
-            </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className={labelClass}>Format</label>
+            <select className={inputClass} value={form.format} onChange={update("format")}>
+              <option value="PDF">PDF</option>
+              <option value="EPUB">EPUB</option>
+              <option value="MOBI">MOBI</option>
+            </select>
           </div>
-        )}
+          <div>
+            <label className={labelClass}>Edition</label>
+            <input className={inputClass} value={form.edition} onChange={update("edition")} />
+          </div>
+        </div>
 
         {mode === "upload" ? (
           <>
@@ -434,6 +432,7 @@ export function AddEBookModal(props: {
               <label className={labelClass}>File URL *</label>
               <input
                 className={inputClass}
+                type="url"
                 value={form.fileUrl}
                 onChange={update("fileUrl")}
                 placeholder="https://.../book.pdf"
@@ -441,27 +440,14 @@ export function AddEBookModal(props: {
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className={labelClass}>Cover Image URL</label>
-                <input
-                  className={inputClass}
-                  value={form.coverImage}
-                  onChange={update("coverImage")}
-                  placeholder="https://.../cover.jpg"
-                />
-              </div>
-              <div>
-                <label className={labelClass}>File Size (MB)</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  className={inputClass}
-                  value={form.fileSizeMb}
-                  onChange={update("fileSizeMb")}
-                  placeholder="e.g., 4.2"
-                />
-              </div>
+            <div>
+              <label className={labelClass}>Cover Image URL</label>
+              <input
+                className={inputClass}
+                value={form.coverImage}
+                onChange={update("coverImage")}
+                placeholder="https://.../cover.jpg"
+              />
             </div>
           </>
         )}
@@ -484,7 +470,8 @@ export function AddEBookModal(props: {
           />
         </div>
 
-        <div className="flex gap-3 pt-2">
+      </div>
+        <div className="flex shrink-0 gap-3 border-t border-zinc-800 pt-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <Button
             type="button"
             onClick={handleClose}

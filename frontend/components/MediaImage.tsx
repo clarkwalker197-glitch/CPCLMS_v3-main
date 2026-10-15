@@ -20,6 +20,14 @@ export default function MediaImage({
 
   return (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={resolveMediaUrl(src)} alt={alt} className={className} onError={() => setFailedSrc(src)} />
+    <img
+      src={resolveMediaUrl(src)}
+      alt={alt}
+      className={className}
+      loading="lazy"
+      decoding="async"
+      sizes="(max-width: 768px) 50vw, (max-width: 1280px) 33vw, 25vw"
+      onError={() => setFailedSrc(src)}
+    />
   );
 }

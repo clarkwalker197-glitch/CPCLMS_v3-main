@@ -6,7 +6,6 @@ import { Bell, CheckCheck, BellOff } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import api from "@/lib/api";
 import { offlineDb } from "@/lib/offline-db";
-import { enqueueMutation } from "@/lib/offline-sync";
 
 interface NotificationItem {
   id: string;
@@ -47,15 +46,26 @@ export default function NotificationBell() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [showingCached, setShowingCached] = useState(false);
+  const [actionError, setActionError] = useState("");
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const loadNotifications = useCallback(async () => {
     if (!user) return;
     try {
-      const cached = await offlineDb.notifications.orderBy("createdAt").reverse().limit(20).toArray();
-      if (cached.length) {
-        setNotifications(cached as unknown as NotificationItem[]);
-        setUnreadCount(cached.filter((notification) => !notification.isRead).length);
+      const cached = await offlineDb.notifications.where("userId").equals(user.id).sortBy("createdAt");
+      const visibleCached = cached.filter((notification) => {
+        const isSystemNotification = notification.isSystem === true || notification.type === "FAQ_PUBLISHED";
+        return isSystemNotification
+          ? user.systemNotificationsEnabled !== false
+          : user.notificationsEnabled !== false;
+      });
+      const recentCached = visibleCached.slice(-20).reverse();
+      setNotifications(recentCached as unknown as NotificationItem[]);
+      setUnreadCount(visibleCached.filter((notification) => !notification.isRead).length);
+      if (!navigator.onLine) {
+        setShowingCached(true);
+        return;
       }
       const [listRes, countRes] = await Promise.all([
         api.getNotifications({ limit: "20" }),
@@ -65,7 +75,13 @@ export default function NotificationBell() {
         const payload = listRes.data as any;
         const nextNotifications = payload.notifications || [];
         setNotifications(nextNotifications);
-        await offlineDb.notifications.bulkPut(nextNotifications);
+        await offlineDb.notifications.bulkPut(nextNotifications.map((notification: any) => ({
+          ...notification,
+          userId: user.id,
+        })));
+        setShowingCached(false);
+      } else if (listRes.networkError && recentCached.length) {
+        setShowingCached(true);
       }
       if (countRes.success && countRes.data) {
         setUnreadCount((countRes.data as any).unreadCount ?? 0);
@@ -102,20 +118,18 @@ export default function NotificationBell() {
       await loadNotifications();
       // Mark all as read once the panel is opened
       try {
-        if (!navigator.onLine) {
-          await enqueueMutation({
-            userId: user?.id || "unknown",
-            type: "MARK_ALL_NOTIFICATIONS_READ",
-            payload: {},
-          });
-        } else {
-          await api.markAllNotificationsRead();
+        if (user) {
+          const response = await api.markAllNotificationsRead();
+          if (response.success) {
+            setUnreadCount(0);
+            setNotifications((prev) => prev.map((notification) => ({ ...notification, isRead: true })));
+            setActionError("");
+          } else {
+            setActionError(response.error || "Unable to mark notifications as read.");
+          }
         }
-        await offlineDb.notifications.toCollection().modify({ isRead: true });
-        setUnreadCount(0);
-        setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
       } catch {
-        // Ignore
+        setActionError("Unable to mark notifications as read.");
       }
       setLoading(false);
     }
@@ -125,17 +139,20 @@ export default function NotificationBell() {
     // Optionally mark this notification as read when clicked
     if (!n.isRead) {
       try {
-        if (!navigator.onLine) {
-          await enqueueMutation({ userId: user?.id || "unknown", type: "MARK_NOTIFICATION_READ", payload: { id: n.id } });
-        } else {
-          await api.markNotificationRead(n.id);
+        if (user) {
+          const response = await api.markNotificationRead(n.id);
+          if (response.success) {
+            setNotifications((prev) =>
+              prev.map((item) => (item.id === n.id ? { ...item, isRead: true } : item))
+            );
+            setUnreadCount((count) => Math.max(0, count - 1));
+            setActionError("");
+          } else {
+            setActionError(response.error || "Unable to mark notification as read.");
+          }
         }
-        await offlineDb.notifications.update(n.id, { isRead: true });
-        setNotifications((prev) =>
-          prev.map((item) => (item.id === n.id ? { ...item, isRead: true } : item))
-        );
       } catch {
-        // Ignore
+        setActionError("Unable to mark notification as read.");
       }
     }
 
@@ -152,7 +169,7 @@ export default function NotificationBell() {
       <button
         onClick={handleOpen}
         aria-label="Notifications"
-        className={`relative w-10 h-10 rounded-xl border border-zinc-800 bg-zinc-900 flex items-center justify-center text-zinc-400 hover:text-white hover:border-zinc-700 transition-colors ${
+        className={`relative h-11 w-11 rounded-xl border border-zinc-800 bg-zinc-900 flex items-center justify-center text-zinc-400 hover:text-white hover:border-zinc-700 transition-colors ${
           open ? "text-white border-zinc-700" : ""
         }`}
       >
@@ -175,6 +192,7 @@ export default function NotificationBell() {
             <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-semibold text-white">Notifications</h3>
+                {showingCached && <span className="text-[10px] text-amber-300">Cached</span>}
                 {hasUnread && (
                   <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-red-500/15 text-red-400 ring-1 ring-red-500/30">
                     {unreadCount} new
@@ -184,16 +202,21 @@ export default function NotificationBell() {
               <button
                 onClick={async () => {
                   try {
-                    if (!navigator.onLine) {
-                      await enqueueMutation({ userId: user?.id || "unknown", type: "MARK_ALL_NOTIFICATIONS_READ", payload: {} });
-                    } else {
-                      await api.markAllNotificationsRead();
+                    if (user) {
+                      const response = await api.markAllNotificationsRead();
+                      if (response.success) {
+                        setUnreadCount(0);
+                        setNotifications((previous) => previous.map((notification) => ({
+                          ...notification,
+                          isRead: true,
+                        })));
+                        setActionError("");
+                      } else {
+                        setActionError(response.error || "Unable to mark notifications as read.");
+                      }
                     }
-                    await offlineDb.notifications.toCollection().modify({ isRead: true });
-                    setUnreadCount(0);
-                    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
                   } catch {
-                    // Ignore
+                    setActionError("Unable to mark notifications as read.");
                   }
                 }}
                 className="inline-flex items-center gap-1 text-[11px] font-medium text-zinc-400 hover:text-white transition-colors"
@@ -202,6 +225,7 @@ export default function NotificationBell() {
                 Mark all read
               </button>
             </div>
+            {actionError && <p className="px-4 py-2 text-xs text-red-400">{actionError}</p>}
 
             {/* Notification list */}
             <div className="max-h-[calc(100dvh-11rem)] overflow-y-auto sm:max-h-96">
@@ -288,4 +312,3 @@ export default function NotificationBell() {
     </div>
   );
 }
-

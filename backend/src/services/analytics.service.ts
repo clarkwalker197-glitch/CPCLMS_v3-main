@@ -6,7 +6,7 @@ import { prisma } from '../config';
 import { DEPARTMENTS } from '../constants/departments';
 import { transactionService } from './transaction.service';
 
-type AnalyticsRange = '7d' | '30d' | '90d' | 'semester' | 'all';
+type AnalyticsRange = '7d' | '30d' | '90d' | 'semester' | 'month' | 'all';
 
 function getRangeStart(range: string = 'all'): Date | undefined {
   const selectedRange = range as AnalyticsRange;
@@ -18,6 +18,7 @@ function getRangeStart(range: string = 'all'): Date | undefined {
   else if (selectedRange === '30d') start.setDate(start.getDate() - 30);
   else if (selectedRange === '90d') start.setDate(start.getDate() - 90);
   else if (selectedRange === 'semester') start.setMonth(now.getMonth() < 6 ? 0 : 6, 1);
+  else if (selectedRange === 'month') start.setDate(1);
   else return undefined;
   start.setHours(0, 0, 0, 0);
   return start;
@@ -183,23 +184,23 @@ export class AnalyticsService {
     ]);
 
     // Resolve top book details
-interface TopBookRaw { bookId: string; _count: { bookId: number } }
     interface BookInfo { id: string; title: string; author: string; accessionNo: string }
-    const bookIds = topBooksRaw.map((b: TopBookRaw) => b.bookId);
+    const bookIds = topBooksRaw.flatMap((book) => book.bookId ? [book.bookId] : []);
     const books: BookInfo[] = await prisma.book.findMany({
       where: { id: { in: bookIds } },
       select: { id: true, title: true, author: true, accessionNo: true },
     });
     const bookMap = new Map<string, BookInfo>(books.map((b: BookInfo) => [b.id, b]));
-    const topBooks = topBooksRaw.map((b: TopBookRaw) => {
+    const topBooks = topBooksRaw.flatMap((b) => {
+      if (!b.bookId) return [];
       const book = bookMap.get(b.bookId);
-      return {
+      return [{
         id: b.bookId,
         title: book?.title || 'Unknown',
         author: book?.author || 'Unknown',
         borrowCount: b._count.bookId,
         accessionNo: book?.accessionNo || 'N/A',
-      };
+      }];
     });
 
     // Aggregate overdue by user
@@ -280,7 +281,7 @@ interface TopBookRaw { bookId: string; _count: { bookId: number } }
           where: { userId, status: 'ACTIVE' },
         }),
         prisma.borrowTransaction.findMany({
-          where: { userId, fineAmount: { gt: 0 }, finePaid: false, fineWaived: false },
+          where: { userId, fineAmount: { gt: 0 }, finePaid: false },
           select: { fineAmount: true },
         }),
       ]);
@@ -350,7 +351,7 @@ interface TopBookRaw { bookId: string; _count: { bookId: number } }
    * Get the most borrowed Dewey categories.
    */
   async getMostBorrowedCategories(range: string = 'all', requestedLimit: number = 10) {
-    const validRanges = new Set(['all', '30d', '90d', 'semester']);
+    const validRanges = new Set(['all', '30d', '90d', 'semester', 'month']);
     const selectedRange = validRanges.has(range) ? range : 'all';
     const limit = Math.min(50, Math.max(1, Number.isFinite(requestedLimit) ? Math.floor(requestedLimit) : 10));
     const mainCategories: Record<string, { name: string; slug: string }> = {
@@ -387,6 +388,7 @@ interface TopBookRaw { bookId: string; _count: { bookId: number } }
     });
     const counts = new Map<string, number>();
     for (const transaction of transactions) {
+      if (!transaction.book) continue;
       const category = transaction.book.category;
       if (!category) continue;
       const categoryCode = category.slug.match(/^dewey-(\d{3})$/)?.[1];
@@ -460,21 +462,19 @@ interface TopBookRaw { bookId: string; _count: { bookId: number } }
         fineAmount: { gt: 0 },
         ...(rangeStart ? { borrowDate: { gte: rangeStart } } : {}),
       },
-      select: { fineAmount: true, finePaid: true, fineWaived: true, borrowDate: true },
+      select: { fineAmount: true, finePaid: true, borrowDate: true },
       orderBy: { borrowDate: 'asc' },
     });
-    const monthly = new Map<string, { paid: number; unpaid: number; waived: number }>();
+    const monthly = new Map<string, { paid: number; unpaid: number }>();
     let paid = 0;
     let unpaid = 0;
-    let waived = 0;
     for (const transaction of transactions) {
       const amount = transaction.fineAmount || 0;
       if (transaction.finePaid) paid += amount;
-      else if (transaction.fineWaived) waived += amount;
       else unpaid += amount;
       const month = `${transaction.borrowDate.getFullYear()}-${String(transaction.borrowDate.getMonth() + 1).padStart(2, '0')}`;
-      const entry = monthly.get(month) || { paid: 0, unpaid: 0, waived: 0 };
-      const disposition = transaction.finePaid ? 'paid' : transaction.fineWaived ? 'waived' : 'unpaid';
+      const entry = monthly.get(month) || { paid: 0, unpaid: 0 };
+      const disposition = transaction.finePaid ? 'paid' : 'unpaid';
       entry[disposition] += amount;
       monthly.set(month, entry);
     }
@@ -482,8 +482,7 @@ interface TopBookRaw { bookId: string; _count: { bookId: number } }
       range: normalizeRange(range),
       paid,
       unpaid,
-      waived,
-      total: paid + unpaid + waived,
+      total: paid + unpaid,
       monthly: Array.from(monthly.entries()).map(([month, values]) => ({ month, ...values })),
     };
   }
@@ -502,12 +501,12 @@ interface TopBookRaw { bookId: string; _count: { bookId: number } }
       take: Math.min(10, Math.max(1, limit)),
     });
     const books = await prisma.book.findMany({
-      where: { id: { in: grouped.map((item) => item.bookId) } },
+      where: { id: { in: grouped.flatMap((item) => item.bookId ? [item.bookId] : []) } },
       select: { id: true, title: true, author: true },
     });
     const bookMap = new Map(books.map((book) => [book.id, book]));
     return grouped.map((item) => ({
-      ...(bookMap.get(item.bookId) || { id: item.bookId, title: 'Unknown', author: 'Unknown' }),
+      ...(item.bookId ? bookMap.get(item.bookId) : undefined) || { id: item.bookId || 'deleted', title: 'Deleted book', author: 'Unknown' },
       borrowCount: item._count.bookId,
     }));
   }
@@ -581,7 +580,7 @@ interface TopBookRaw { bookId: string; _count: { bookId: number } }
       take: 10,
     });
     const users = await prisma.user.findMany({
-      where: { id: { in: grouped.map((item) => item.userId) } },
+      where: { id: { in: grouped.flatMap((item) => item.userId ? [item.userId] : []) } },
       select: { id: true, firstName: true, lastName: true, department: true, role: true },
     });
     const userMap = new Map(users.map((user) => [user.id, user]));
@@ -591,7 +590,7 @@ interface TopBookRaw { bookId: string; _count: { bookId: number } }
       activeMembers,
       inactiveMembers,
       topBorrowers: grouped.map((item) => ({
-        ...(userMap.get(item.userId) || { id: item.userId, firstName: 'Unknown', lastName: 'member', department: null, role: null }),
+        ...(item.userId ? userMap.get(item.userId) : undefined) || { id: item.userId || 'deleted', firstName: 'Deleted', lastName: 'member', department: null, role: null },
         borrowCount: item._count.userId,
       })),
     };
@@ -617,6 +616,7 @@ interface TopBookRaw { bookId: string; _count: { bookId: number } }
     });
     const groups = new Map<string, Map<string, { title: string; author: string; borrowCount: number; category: string | null }>>();
     for (const transaction of transactions) {
+      if (!transaction.user || !transaction.book) continue;
       const groupName = transaction.user.department || 'Unassigned';
       const books = groups.get(groupName) || new Map();
       const existing = books.get(transaction.book.id) || {
@@ -644,4 +644,3 @@ interface TopBookRaw { bookId: string; _count: { bookId: number } }
 }
 
 export const analyticsService = new AnalyticsService();
-

@@ -7,12 +7,15 @@ import { useTheme } from "next-themes";
 import api from "@/lib/api";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Sidebar from "@/components/Sidebar";
+import HeaderUserActions from "@/components/HeaderUserActions";
 import EditProfileModal from "@/components/EditProfileModal";
+import PushNotificationSettings from "@/components/PushNotificationSettings";
 import { ModalLayer } from "@/components/ModalLayer";
+import PasswordStrengthIndicator from "@/components/PasswordStrengthIndicator";
+import { analyzePassword } from "@/lib/password-strength";
 import {
   Pencil,
   Lock,
-  Bell,
   Palette,
   ShieldCheck,
   Mail,
@@ -72,14 +75,15 @@ export default function ProfilePage() {
   const { theme, setTheme } = useTheme();
   const [editing, setEditing] = useState(false);
   const [notifications, setNotifications] = useState(user?.notificationsEnabled ?? true);
+  const [systemNotifications, setSystemNotifications] = useState(user?.systemNotificationsEnabled ?? true);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
-  const [notificationSaving, setNotificationSaving] = useState(false);
   const themeRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setNotifications(user?.notificationsEnabled ?? true);
-  }, [user?.notificationsEnabled]);
+    setSystemNotifications(user?.systemNotificationsEnabled ?? true);
+  }, [user?.notificationsEnabled, user?.systemNotificationsEnabled]);
 
   useEffect(() => {
     const closeThemeMenu = (event: MouseEvent) => {
@@ -89,17 +93,13 @@ export default function ProfilePage() {
     return () => document.removeEventListener("mousedown", closeThemeMenu);
   }, []);
 
-  const updateNotifications = async (enabled: boolean) => {
-    const previous = notifications;
-    setNotifications(enabled);
-    setNotificationSaving(true);
-    const response = await api.updateNotificationPreferences(enabled);
-    setNotificationSaving(false);
-    if (!response.success) {
-      setNotifications(previous);
-      return;
-    }
-    await refreshUser();
+  const updateNotificationPreference = async (
+    preference: "notificationsEnabled" | "systemNotificationsEnabled",
+    enabled: boolean,
+  ) => {
+    const response = await api.updateNotificationPreferences({ [preference]: enabled });
+    if (response.success) await refreshUser();
+    return { success: response.success, error: response.error };
   };
 
   const themeLabel = theme === "light" ? "Light" : theme === "dark" ? "Dark" : "System";
@@ -118,13 +118,16 @@ export default function ProfilePage() {
         <Sidebar />
 
         <div className="flex-1 min-w-0">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-8">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-[calc(7rem+min(env(safe-area-inset-bottom),2rem))] lg:pb-8">
             {/* Page Header */}
-            <div className="mb-6">
-              <h1 className="text-2xl font-bold text-white">My Profile</h1>
-              <p className="text-sm text-zinc-400 mt-1">
-                View and manage your account information
-              </p>
+            <div className="mb-6 flex items-center justify-between gap-4">
+              <div>
+                <h1 className="text-2xl font-bold text-white">My Profile</h1>
+                <p className="text-sm text-zinc-400 mt-1">
+                  View and manage your account information
+                </p>
+              </div>
+              <HeaderUserActions />
             </div>
 
             {/* Profile Header Card */}
@@ -234,24 +237,11 @@ export default function ProfilePage() {
                     <ChevronIcon />
                   </button>
 
-{/* Notification Preferences */}
-                  <div
-                    onClick={() => !notificationSaving && updateNotifications(!notifications)}
-                    className="w-full flex items-center gap-3 py-3.5 text-left group cursor-pointer"
-                  >
-                    <div className="w-9 h-9 rounded-xl bg-zinc-800 flex items-center justify-center text-blue-400 shrink-0 group-hover:bg-blue-500/10 transition-colors">
-                      <Bell className="w-4 h-4" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-zinc-100">
-                        Notification Preferences
-                      </p>
-                      <p className="text-xs text-zinc-500">
-                        Borrow due alerts and updates
-                      </p>
-                    </div>
-                    <Toggle checked={notifications} onChange={updateNotifications} disabled={notificationSaving} />
-                  </div>
+                  <PushNotificationSettings
+                    notificationsEnabled={notifications}
+                    systemNotificationsEnabled={systemNotifications}
+                    onPreferenceChange={updateNotificationPreference}
+                  />
 
                   {/* Theme Preference */}
                   <div className="flex items-center gap-3 py-3.5">
@@ -341,37 +331,6 @@ function ChevronIcon() {
   );
 }
 
-function Toggle({
-  checked,
-  onChange,
-  disabled = false,
-}: {
-  checked: boolean;
-  onChange: (v: boolean) => void;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={(event) => {
-        event.stopPropagation();
-        onChange(!checked);
-      }}
-      disabled={disabled}
-      className={`w-11 h-6 rounded-full p-0.5 transition-colors shrink-0 disabled:opacity-50 ${
-        checked ? "bg-blue-600" : "bg-zinc-700"
-      }`}
-      aria-pressed={checked}
-    >
-      <div
-        className={`w-5 h-5 rounded-full bg-white transition-transform ${
-          checked ? "translate-x-5" : "translate-x-0"
-        }`}
-      />
-    </button>
-  );
-}
-
 function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -381,7 +340,9 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (newPassword.length < 8) return setError("New password must be at least 8 characters.");
+    if (!analyzePassword(newPassword).meetsRequirements) {
+      return setError("New password must be at least 8 characters and include at least two of letters, numbers, or symbols.");
+    }
     if (newPassword !== confirmPassword) return setError("New passwords do not match.");
     setSaving(true);
     setError("");
@@ -405,7 +366,10 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
         <form onSubmit={submit} className="space-y-4 p-6">
           {error && <div className="flex gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300"><AlertCircle className="h-4 w-4 shrink-0" />{error}</div>}
           <PasswordField label="Current Password" value={currentPassword} onChange={setCurrentPassword} />
-          <PasswordField label="New Password" value={newPassword} onChange={setNewPassword} />
+          <div>
+            <PasswordField label="New Password" value={newPassword} onChange={setNewPassword} />
+            <PasswordStrengthIndicator password={newPassword} />
+          </div>
           <PasswordField label="Confirm New Password" value={confirmPassword} onChange={setConfirmPassword} />
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={onClose} className="rounded-lg px-4 py-2.5 text-sm text-zinc-300 hover:bg-zinc-800">Cancel</button>

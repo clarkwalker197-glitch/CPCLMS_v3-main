@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import { useDebounce } from "@/lib/useDebounce";
 import Sidebar from "@/components/Sidebar";
+import HeaderUserActions from "@/components/HeaderUserActions";
 import ResponsiveTable from "@/components/ResponsiveTable";
 import UserAvatar from "@/components/UserAvatar";
 import { SortHeader, SortSelect, nextSortOrder, type SortOption } from "@/components/SortControls";
@@ -14,6 +15,7 @@ import { QRDisplayModal } from "@/components/QRDisplayModal";
 import { QRScanner } from "@/components/QRScanner";
 import { ModalLayer } from "@/components/ModalLayer";
 import { formatBorrowId, normalizeBorrowId } from "@/lib/borrow-id";
+import { offlineDb } from "@/lib/offline-db";
 import {
   Search,
   BookOpen,
@@ -33,24 +35,32 @@ const txnStatusBadge: Record<string, string> = {
   ACTIVE: "bg-blue-500/15 text-blue-400 ring-blue-500/30",
   RETURNED: "bg-emerald-500/15 text-emerald-400 ring-emerald-500/30",
   OVERDUE: "bg-red-500/15 text-red-400 ring-red-500/30",
+  MISSING: "bg-amber-500/15 text-amber-300 ring-amber-500/30",
+  PENDING: "bg-amber-500/15 text-amber-400 ring-amber-500/30",
 };
 const txnStatusLabel: Record<string, string> = {
   ACTIVE: "Borrowed",
   RETURNED: "Returned",
   OVERDUE: "Overdue",
+  MISSING: "Missing",
+  PENDING: "Pending",
 };
 
 // ── Request status styling ──
 const reqStatusBadge: Record<string, string> = {
-  PENDING: "bg-amber-500/15 text-amber-400 ring-amber-500/30",
-  APPROVED: "bg-emerald-500/15 text-emerald-400 ring-emerald-500/30",
-  REJECTED: "bg-red-500/15 text-red-400 ring-red-500/30",
+  PENDING: "request-status-badge request-status-pending",
+  APPROVED: "request-status-badge request-status-approved",
+  REJECTED: "request-status-badge request-status-rejected",
 };
 const reqStatusLabel: Record<string, string> = {
   PENDING: "Pending",
   APPROVED: "Approved",
   REJECTED: "Rejected",
 };
+
+function requestStatusText(request: any): string {
+  return reqStatusLabel[request.status] || request.status;
+}
 
 export default function RequestsPage() {
   const { user } = useAuth();
@@ -66,6 +76,7 @@ export default function RequestsPage() {
   const [txnPage, setTxnPage] = useState(1);
   const [txnSort, setTxnSort] = useState("status");
   const [txnSortOrder, setTxnSortOrder] = useState<"asc" | "desc">("asc");
+  const [showingCachedTransactions, setShowingCachedTransactions] = useState(false);
 
   // Librarian-only active borrowed books
   const [activeTxns, setActiveTxns] = useState<any[]>([]);
@@ -75,6 +86,8 @@ export default function RequestsPage() {
   const [activeTxnPage, setActiveTxnPage] = useState(1);
   const [activeTxnSort, setActiveTxnSort] = useState("dueDate");
   const [activeTxnSortOrder, setActiveTxnSortOrder] = useState<"asc" | "desc">("asc");
+  const [returnTarget, setReturnTarget] = useState<any>(null);
+  const [returnError, setReturnError] = useState("");
   const [missingTarget, setMissingTarget] = useState<any>(null);
   const [missingReason, setMissingReason] = useState("");
   const [missingLoading, setMissingLoading] = useState(false);
@@ -92,6 +105,7 @@ export default function RequestsPage() {
 
   const [successMsg, setSuccessMsg] = useState("");
   const [error, setError] = useState("");
+  const [showingCachedRequests, setShowingCachedRequests] = useState(false);
   const [selectedNote, setSelectedNote] = useState<string | null>(null);
 
   // Debounced search/filter values (300ms) to avoid per-keystroke API spam
@@ -110,38 +124,104 @@ export default function RequestsPage() {
   const [rejectLoading, setRejectLoading] = useState(false);
   const [rejectError, setRejectError] = useState("");
 
+  useEffect(() => {
+    const openScanner = () => {
+      setTransactionLookupError("");
+      setScannedBorrowId("");
+      setTransactionScannerOpen(true);
+    };
+    window.addEventListener("cpc:open-qr", openScanner);
+    if (new URLSearchParams(window.location.search).get("mobileScan") === "1") {
+      openScanner();
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+    return () => window.removeEventListener("cpc:open-qr", openScanner);
+  }, []);
+
   const [approvalReceipt, setApprovalReceipt] = useState<any | null>(null);
   const [transactionLookupId, setTransactionLookupId] = useState("");
   const [transactionScannerOpen, setTransactionScannerOpen] = useState(false);
+  const [isMobileLayout, setIsMobileLayout] = useState(false);
+  const [scannedBorrowId, setScannedBorrowId] = useState("");
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 768px)");
+    const updateLayout = () => setIsMobileLayout(media.matches);
+    updateLayout();
+    media.addEventListener("change", updateLayout);
+    return () => media.removeEventListener("change", updateLayout);
+  }, []);
   const [transactionLookupError, setTransactionLookupError] = useState("");
   const [verificationLoading, setVerificationLoading] = useState(false);
 
   const loadTransactions = useCallback(async () => {
     if (isLibrarian) return;
     setTxnLoading(true);
+    const applyCachedTransactions = (cachedTransactions: any[]) => {
+      const search = debouncedTxnSearch.trim().toLocaleLowerCase();
+      const filtered = cachedTransactions
+        .filter((transaction: any) => {
+          const searchable = [
+            transaction.book?.title,
+            transaction.book?.author,
+            transaction.book?.accessionNo,
+          ].some((value) => String(value || "").toLocaleLowerCase().includes(search));
+          return (!search || searchable) &&
+            (!debouncedTxnStatus || transaction.status === debouncedTxnStatus);
+        })
+        .sort((left: any, right: any) => {
+          const leftValue = left[txnSort] ?? "";
+          const rightValue = right[txnSort] ?? "";
+          const comparison = txnSort === "fineAmount"
+            ? Number(leftValue) - Number(rightValue)
+            : String(leftValue).localeCompare(String(rightValue), undefined, { numeric: true });
+          return txnSortOrder === "desc" ? -comparison : comparison;
+        });
+      setTxns(filtered);
+      setTxnTotal(filtered.length);
+      setShowingCachedTransactions(cachedTransactions.length > 0);
+      return cachedTransactions.length > 0;
+    };
     try {
+      const cachedTransactions = user
+        ? await offlineDb.transactions.where("userId").equals(user.id).toArray()
+        : [];
+
+      if (!navigator.onLine) {
+        if (!applyCachedTransactions(cachedTransactions)) setError("No synchronized borrowed books are available offline.");
+        return;
+      }
+
       const params: Record<string, string> = {
-        page: String(txnPage),
-        limit: String(PAGE_SIZE),
+        page: "1",
+        limit: "100",
       };
-      if (debouncedTxnSearch) params.search = debouncedTxnSearch;
-      if (debouncedTxnStatus) params.status = debouncedTxnStatus;
       params.sort = txnSort;
       params.order = txnSortOrder;
 
       const res = await api.get<any>(`/transactions?${new URLSearchParams(params).toString()}`);
       if (res.success) {
-        setTxns((res.data as any[]) || []);
+        const serverTransactions = ((res.data as any[]) || []).map((transaction: any) => ({
+          ...transaction,
+          userId: transaction.userId || user?.id,
+        }));
+        setTxns(serverTransactions);
         setTxnTotal(res.meta?.total ?? ((res.data as any[]) || []).length);
+        if (user) await offlineDb.transactions.bulkPut(serverTransactions);
+        setShowingCachedTransactions(false);
       } else {
-        setError(res.error || "Failed to load borrowed books");
+        if (!applyCachedTransactions(cachedTransactions)) setError(res.error || "Failed to load borrowed books");
       }
     } catch {
-      setError("Failed to load borrowed books");
+      const cachedTransactions = user
+        ? await offlineDb.transactions.where("userId").equals(user.id).toArray()
+        : [];
+      if (!cachedTransactions.length) setError("Failed to load borrowed books");
+      else applyCachedTransactions(cachedTransactions);
     } finally {
       setTxnLoading(false);
     }
-  }, [debouncedTxnSearch, debouncedTxnStatus, isLibrarian, txnPage, txnSort, txnSortOrder]);
+  }, [debouncedTxnSearch, debouncedTxnStatus, isLibrarian, txnPage, txnSort, txnSortOrder, user]);
 
   const loadActiveTransactions = useCallback(async () => {
     if (!isLibrarian) return;
@@ -189,34 +269,83 @@ export default function RequestsPage() {
   const loadRequests = useCallback(async () => {
     setReqLoading(true);
     try {
+      const cachedRecords = user
+        ? (await offlineDb.borrowRequests.where("userId").equals(user.id).toArray())
+          .filter((request: any) => !request._pending && !String(request.id).startsWith("local-borrow-") && (isLibrarian || request.status === "PENDING"))
+        : [];
+      if (cachedRecords.length) {
+        setRecords(cachedRecords);
+        setReqTotal(cachedRecords.length);
+      }
+      if (!navigator.onLine) {
+        setShowingCachedRequests(true);
+        return;
+      }
+
       const params: Record<string, string> = {
-        page: String(reqPage),
-        limit: String(REQUEST_PAGE_SIZE),
+        page: isLibrarian ? String(reqPage) : "1",
+        limit: isLibrarian ? String(REQUEST_PAGE_SIZE) : "100",
       };
-      if (debouncedReqSearch) params.search = debouncedReqSearch;
-      if (debouncedReqStatus) params.status = debouncedReqStatus;
+      if (isLibrarian && debouncedReqSearch) params.search = debouncedReqSearch;
+      if (isLibrarian && debouncedReqStatus) params.status = debouncedReqStatus;
+      if (!isLibrarian) params.status = "PENDING";
       params.sort = reqSort;
       params.order = reqSortOrder;
 
       const res = await api.getBorrowRequests(params);
       if (res.success) {
-        setRecords((res.data as any[]) || []);
-        setReqTotal(res.meta?.total ?? ((res.data as any[]) || []).length);
+        const serverRecords = (res.data as any[]) || [];
+        await offlineDb.borrowRequests.bulkPut(serverRecords.map((request: any) => ({
+          ...request,
+          userId: request.userId || user?.id,
+        })));
+        setRecords(serverRecords);
+        setReqTotal(res.meta?.total ?? serverRecords.length);
+        setShowingCachedRequests(false);
       } else if (res.rateLimited) {
         setError("You're moving too fast. Please wait a moment and try again.");
+      } else if (res.networkError && cachedRecords.length) {
+        setShowingCachedRequests(true);
       } else {
         setError(res.error || "Failed to load borrow requests");
       }
     } catch {
-      setError("Failed to load borrow requests");
+      if (navigator.onLine) setError("Failed to load borrow requests");
+      else setShowingCachedRequests(true);
     } finally {
       setReqLoading(false);
     }
-  }, [debouncedReqSearch, debouncedReqStatus, reqPage, reqSort, reqSortOrder]);
+  }, [debouncedReqSearch, debouncedReqStatus, isLibrarian, reqPage, reqSort, reqSortOrder, user]);
 
   useEffect(() => {
     loadRequests();
   }, [loadRequests]);
+
+  useEffect(() => {
+    const transactionId = approvalReceipt?.transactionId;
+    if (!transactionId) return;
+
+    let cancelled = false;
+    let timeoutId = 0;
+    const checkVerification = async () => {
+      const response = await api.getBorrowRequestBatch(transactionId).catch(() => null);
+      if (!cancelled && response?.success) {
+        setApprovalReceipt(null);
+        setSuccessMsg(`Borrow ID ${formatBorrowId(transactionId)} verified. Books are now active.`);
+        await Promise.all([loadRequests(), loadActiveTransactions()]);
+        setTimeout(() => setSuccessMsg(""), 4000);
+        return;
+      }
+
+      if (!cancelled) timeoutId = window.setTimeout(() => void checkVerification(), 3000);
+    };
+
+    timeoutId = window.setTimeout(() => void checkVerification(), 3000);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [approvalReceipt?.transactionId, loadActiveTransactions, loadRequests]);
 
   useEffect(() => {
     setReqPage(1);
@@ -256,22 +385,29 @@ export default function RequestsPage() {
     setReqPage(1);
   };
 
-  const handleReturn = async (record: any) => {
-    if (!window.confirm(`Return "${record.book?.title || "this book"}"?`)) return;
+  const openReturnModal = (record: any) => {
+    setReturnTarget(record);
+    setReturnError("");
+  };
+
+  const handleReturn = async () => {
+    if (!returnTarget) return;
     if (actionLoadingId) return;
-    setActionLoadingId(record.id);
+    setActionLoadingId(returnTarget.id);
+    setReturnError("");
     try {
-      const res = await api.returnBook(record.id);
+      const res = await api.returnBook(returnTarget.id);
       if (res.success) {
+        setReturnTarget(null);
         setSuccessMsg("Book returned successfully");
         if (isLibrarian) loadActiveTransactions();
         else loadTransactions();
         setTimeout(() => setSuccessMsg(""), 4000);
       } else {
-        setError(res.error || "Failed to return book");
+        setReturnError(res.error || "Failed to return book");
       }
     } catch {
-      setError("Failed to return book");
+      setReturnError("Failed to return book");
     } finally {
       setActionLoadingId(null);
     }
@@ -350,8 +486,10 @@ export default function RequestsPage() {
         return;
       }
       setTransactionScannerOpen(false);
+      setScannedBorrowId("");
       setTransactionLookupId("");
       setSuccessMsg(`Borrow ID ${formatBorrowId(borrowId)} verified. Your request is approved.`);
+      if (window.matchMedia("(max-width: 768px)").matches && "vibrate" in navigator) navigator.vibrate(35);
       await Promise.all([loadRequests(), loadTransactions()]);
       setTimeout(() => setSuccessMsg(""), 5000);
     } catch {
@@ -367,7 +505,17 @@ export default function RequestsPage() {
   };
 
   const handleTransactionScan = async (value: string) => {
-    await verifyBorrowId(value);
+    const borrowId = normalizeBorrowId(value);
+    if (!borrowId) {
+      setTransactionLookupError("Enter or scan a valid Borrow ID, such as BRW-1234-5678.");
+      return;
+    }
+    setTransactionScannerOpen(false);
+    if (!isMobileLayout) {
+      await verifyBorrowId(borrowId);
+      return;
+    }
+    setScannedBorrowId(borrowId);
   };
 
   const handleReject = async () => {
@@ -401,6 +549,41 @@ export default function RequestsPage() {
     d ? new Date(d).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" }) : "—";
 
   const reqTotalPages = Math.max(1, Math.ceil(reqTotal / REQUEST_PAGE_SIZE));
+  const pendingBorrowItems = !isLibrarian
+    ? records.flatMap((request: any) => (request.books || []).map((book: any) => ({
+      id: `pending-${request.id}-${book.requestId || book.id}`,
+      requestId: request.id,
+      requestDate: request.requestDate,
+      borrowDate: request.requestDate,
+      book,
+      user: request.user,
+      status: "PENDING",
+      fineAmount: 0,
+      finePaid: false,
+      _pendingRequest: true,
+    })))
+    : [];
+  const myBooks = [...txns, ...pendingBorrowItems]
+    .filter((transaction: any) => {
+      const searchTerm = txnSearch.trim().toLocaleLowerCase();
+      const matchesSearch = !searchTerm || [
+        transaction.book?.title,
+        transaction.book?.author,
+        transaction.book?.accessionNo,
+      ].some((value) => String(value || "").toLocaleLowerCase().includes(searchTerm));
+      const matchesStatus = !txnStatusFilter || transaction.status === txnStatusFilter;
+      return matchesSearch && matchesStatus;
+    })
+    .sort((left: any, right: any) => {
+      const leftValue = left[txnSort] ?? "";
+      const rightValue = right[txnSort] ?? "";
+      const comparison = txnSort === "fineAmount"
+        ? Number(leftValue) - Number(rightValue)
+        : String(leftValue).localeCompare(String(rightValue), undefined, { numeric: true });
+      return txnSortOrder === "desc" ? -comparison : comparison;
+    });
+  const myBooksTotalPages = Math.max(1, Math.ceil(myBooks.length / PAGE_SIZE));
+  const displayedMyBooks = myBooks.slice((txnPage - 1) * PAGE_SIZE, txnPage * PAGE_SIZE);
 
   const getReqPageNumbers = () => {
     const pages: number[] = [];
@@ -416,7 +599,7 @@ export default function RequestsPage() {
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex">
       <Sidebar />
       <div className="flex-1 min-w-0">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-8">
+        <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-[calc(7rem+min(env(safe-area-inset-bottom),2rem))] lg:pb-8 ${isLibrarian ? "flex flex-col" : ""}`}>
           {successMsg && (
             <div className="p-4 mb-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-sm text-emerald-400">
               {successMsg}
@@ -434,7 +617,13 @@ export default function RequestsPage() {
                           <div>
                             <h1 className="text-2xl font-bold text-white">My Borrowed Books</h1>
                             <p className="text-sm text-zinc-400 mt-1">Your currently borrowed and recently returned books · {txnTotal} record{txnTotal !== 1 ? "s" : ""}</p>
+                            {showingCachedTransactions && (
+                              <p className="mt-2 text-xs text-amber-300">
+                                Offline — showing your last synchronized borrowed books.
+                              </p>
+                            )}
                           </div>
+                          <HeaderUserActions />
                         </div>
 
                         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 mb-4">
@@ -455,50 +644,72 @@ export default function RequestsPage() {
                               className="px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition appearance-none"
                             >
                               <option value="" className="bg-zinc-900 text-white">All Status</option>
+                              <option value="PENDING" className="bg-zinc-900 text-white">Pending</option>
                               <option value="ACTIVE" className="bg-zinc-900 text-white">Borrowed</option>
                               <option value="OVERDUE" className="bg-zinc-900 text-white">Overdue</option>
                               <option value="RETURNED" className="bg-zinc-900 text-white">Returned</option>
+                              <option value="MISSING" className="bg-zinc-900 text-white">Missing</option>
                             </select>
                             <SortSelect options={txnSortOptions} sort={txnSort} order={txnSortOrder} onChange={changeTxnSort} />
                           </div>
                         </div>
 
                         {txnLoading && <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-16 bg-zinc-900 animate-pulse border-b border-zinc-800/40" />)}</div>}
-                        {!txnLoading && txns.length === 0 && (
+                        {!txnLoading && displayedMyBooks.length === 0 && (
                           <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 flex flex-col items-center justify-center py-16 text-center">
                             <BookOpen className="w-12 h-12 text-zinc-600 mb-4" />
                             <p className="text-zinc-300 font-medium">No borrowed books found</p>
                             <p className="text-sm text-zinc-500 mt-1">{txnSearch || txnStatusFilter ? "Try adjusting your search or filters" : "Borrowed books will appear here"}</p>
                           </div>
                         )}
-                        {!txnLoading && txns.length > 0 && (
+                        {!txnLoading && displayedMyBooks.length > 0 && (
                           <>
-                          <div className="hidden sm:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
+                          <div className="hidden md:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
                             <div className="overflow-x-auto">
                               <table className="w-full text-sm">
                                 <thead><tr className="bg-zinc-900 text-left text-xs uppercase tracking-wide text-zinc-500">
-                                  <th className="px-6 py-3 font-medium">Book</th><th className="px-6 py-3 font-medium hidden sm:table-cell">Accession</th><th className="px-6 py-3 font-medium hidden sm:table-cell"><SortHeader field="borrowDate" sort={txnSort} order={txnSortOrder} onSort={(field) => changeTxnSort(field, nextSortOrder(txnSort, txnSortOrder, field))}>Borrow Date</SortHeader></th><th className="px-6 py-3 font-medium hidden md:table-cell"><SortHeader field="dueDate" sort={txnSort} order={txnSortOrder} onSort={(field) => changeTxnSort(field, nextSortOrder(txnSort, txnSortOrder, field))}>Due Date</SortHeader></th><th className="px-6 py-3 font-medium hidden md:table-cell">Return Date</th><th className="px-6 py-3 font-medium"><SortHeader field="status" sort={txnSort} order={txnSortOrder} onSort={(field) => changeTxnSort(field, nextSortOrder(txnSort, txnSortOrder, field))}>Status</SortHeader></th><th className="px-6 py-3 font-medium"><SortHeader field="fineAmount" sort={txnSort} order={txnSortOrder} onSort={(field) => changeTxnSort(field, nextSortOrder(txnSort, txnSortOrder, field))}>Fine</SortHeader></th>
+                                  <th className="px-6 py-3 font-medium">Book</th><th className="px-6 py-3 font-medium hidden sm:table-cell">Accession</th><th className="px-6 py-3 font-medium hidden sm:table-cell"><SortHeader field="borrowDate" sort={txnSort} order={txnSortOrder} onSort={(field) => changeTxnSort(field, nextSortOrder(txnSort, txnSortOrder, field))}>Borrow Date</SortHeader></th><th className="px-6 py-3 font-medium hidden md:table-cell"><SortHeader field="dueDate" sort={txnSort} order={txnSortOrder} onSort={(field) => changeTxnSort(field, nextSortOrder(txnSort, txnSortOrder, field))}>Due Date</SortHeader></th><th className="px-6 py-3 font-medium hidden md:table-cell">Return / Missing Date</th><th className="px-6 py-3 font-medium"><SortHeader field="status" sort={txnSort} order={txnSortOrder} onSort={(field) => changeTxnSort(field, nextSortOrder(txnSort, txnSortOrder, field))}>Status</SortHeader></th><th className="px-6 py-3 font-medium"><SortHeader field="fineAmount" sort={txnSort} order={txnSortOrder} onSort={(field) => changeTxnSort(field, nextSortOrder(txnSort, txnSortOrder, field))}>Fine</SortHeader></th>
                                 </tr></thead>
-                                <tbody>{txns.map((txn: any) => <tr key={txn.id} className="border-t border-zinc-800/60 hover:bg-zinc-800/40 transition-colors">
+                                <tbody>{displayedMyBooks.map((txn: any) => <tr key={txn.id} className="border-t border-zinc-800/60 hover:bg-zinc-800/40 transition-colors">
                                   <td className="px-6 py-4"><p className="text-zinc-100 font-medium">{txn.book?.title || "Unknown"}</p><p className="text-xs text-zinc-500">{txn.book?.author || ""}</p></td>
                                   <td className="px-6 py-4 text-zinc-400 hidden sm:table-cell">{txn.book?.accessionNo || "—"}</td><td className="px-6 py-4 text-zinc-400 hidden sm:table-cell">{formatDate(txn.borrowDate)}</td><td className="px-6 py-4 text-zinc-400 hidden md:table-cell">{formatDate(txn.dueDate)}</td><td className="px-6 py-4 text-zinc-400 hidden md:table-cell">{formatDate(txn.returnDate)}</td>
                                   <td className="px-6 py-4"><span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${txnStatusBadge[txn.status] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>{txnStatusLabel[txn.status] || txn.status}</span></td>
-                                  <td className="px-6 py-4"><span className={`font-medium ${txn.fineWaived ? "text-zinc-400" : txn.finePaid ? "text-emerald-400" : txn.fineAmount > 0 ? "text-amber-400" : "text-zinc-500"}`}>{txn.fineAmount ? `₱${txn.fineAmount.toFixed(2)} · ${txn.fineWaived ? "Waived" : txn.finePaid ? "Paid" : "Unpaid"}` : "—"}</span></td>
+                                  <td className="px-6 py-4"><span className={`font-medium ${txn.finePaid ? "text-emerald-400" : txn.fineAmount > 0 ? "text-amber-400" : "text-zinc-500"}`}>{txn.fineAmount ? `₱${txn.fineAmount.toFixed(2)} · ${txn.finePaid ? "Paid" : "Unpaid"}` : "—"}</span></td>
                                 </tr>)}</tbody>
                               </table>
                             </div>
                           </div>
-                          <div className="space-y-0 pb-[calc(4rem+env(safe-area-inset-bottom))] sm:hidden">
-                            {txns.map((txn: any) => (
+                          <div className="space-y-0 md:hidden">
+                            {displayedMyBooks.map((txn: any) => (
                               <div key={txn.id} className="mb-4 last:mb-0">
-                                <BorrowHistoryCard transaction={txn} formatDate={formatDate} statusBadge={txnStatusBadge} statusLabel={txnStatusLabel} />
+                                <BorrowHistoryCard
+                                  transaction={txn}
+                                  formatDate={formatDate}
+                                  statusBadge={txnStatusBadge}
+                                  statusLabel={txnStatusLabel}
+                                  contextLabel="Borrower"
+                                  contextValue={[user?.firstName, user?.lastName].filter(Boolean).join(" ")}
+                                  onPayFine={!txn._pendingRequest ? async (amount) => {
+                                    const response = await api.payFine(txn.id, amount);
+                                    if (!response.success) throw new Error(response.error || "Unable to record fine payment.");
+                                    setSuccessMsg("Fine paid successfully.");
+                                    await loadTransactions();
+                                  } : undefined}
+                                />
                               </div>
                             ))}
                           </div>
                           </>
                         )}
-                        {!txnLoading && txns.length > 0 && (
-                          <div className="flex items-center justify-between mt-4"><p className="text-sm text-zinc-500">Showing <span className="text-zinc-300">{(txnPage - 1) * PAGE_SIZE + 1}–{Math.min(txnPage * PAGE_SIZE, txnTotal)}</span> of <span className="text-zinc-300">{txnTotal}</span> records</p><div className="flex items-center gap-1"><button onClick={() => setTxnPage((p) => Math.max(1, p - 1))} disabled={txnPage === 1} className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 disabled:opacity-40" aria-label="Previous page"><ChevronLeft className="w-4 h-4" /></button><button onClick={() => setTxnPage((p) => Math.min(Math.max(1, Math.ceil(txnTotal / PAGE_SIZE)), p + 1))} disabled={txnPage >= Math.max(1, Math.ceil(txnTotal / PAGE_SIZE))} className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 disabled:opacity-40" aria-label="Next page"><ChevronRight className="w-4 h-4" /></button></div></div>
+                        {!txnLoading && myBooks.length > 0 && (
+                          <div className="mt-4 flex items-center justify-between gap-3">
+                            <p className="text-sm text-zinc-500">Showing <span className="text-zinc-300">{(txnPage - 1) * PAGE_SIZE + 1}–{Math.min(txnPage * PAGE_SIZE, myBooks.length)}</span> of <span className="text-zinc-300">{myBooks.length}</span> records</p>
+                            <div className="flex items-center gap-1">
+                              <button onClick={() => setTxnPage((page) => Math.max(1, page - 1))} disabled={txnPage === 1} className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 disabled:opacity-40" aria-label="Previous page"><ChevronLeft className="w-4 h-4" /></button>
+                              <span className="px-2 text-xs text-zinc-500">Page {txnPage} of {myBooksTotalPages}</span>
+                              <button onClick={() => setTxnPage((page) => Math.min(myBooksTotalPages, page + 1))} disabled={txnPage >= myBooksTotalPages} className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 disabled:opacity-40" aria-label="Next page"><ChevronRight className="w-4 h-4" /></button>
+                            </div>
+                          </div>
                         )}
                       </div>
                     )}
@@ -506,13 +717,19 @@ export default function RequestsPage() {
                     {/* ===================================================== */}
                     {/* Borrow Requests */}
           {/* ===================================================== */}
-          <div>
+          {isLibrarian && (
+          <div className="order-2">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
               <div>
                 <h2 className="text-2xl font-bold text-white">Borrow Requests</h2>
                 <p className="text-sm text-zinc-400 mt-1">
                   Review and manage borrowing transactions · {reqTotal} total
                 </p>
+                {showingCachedRequests && (
+                  <p className="mt-2 text-xs text-amber-300">
+                    Offline — showing last synchronized requests.
+                  </p>
+                )}
               </div>
             </div>
 
@@ -590,7 +807,7 @@ export default function RequestsPage() {
 
             {!reqLoading && records.length > 0 && (
               <>
-              <div className="hidden sm:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
+              <div className="hidden md:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
@@ -607,7 +824,6 @@ export default function RequestsPage() {
                       {records.map((req: any) => (
                         <tr key={req.id} className="border-t border-zinc-800/60 hover:bg-zinc-800/40 transition-colors">
                           <td className="px-6 py-4">
-                            {isLibrarian && req.transactionId && <p className="mb-1 font-mono text-xs text-blue-300">{formatBorrowId(req.transactionId)}</p>}
                             <div className="space-y-1">
                               {(req.books || []).map((book: any) => (
                                 <div key={book.requestId || book.id}>
@@ -634,8 +850,8 @@ export default function RequestsPage() {
                             ) : "—"}
                           </td>
                           <td className="px-6 py-4">
-                            <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${reqStatusBadge[req.status] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>
-                              {reqStatusLabel[req.status] || req.status}
+                            <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${reqStatusBadge[req.status] || "bg-zinc-500/15 text-zinc-400 ring-1 ring-zinc-500/30"}`}>
+                              {requestStatusText(req)}
                             </span>
                           </td>
                           <td className="px-6 py-4 text-right">
@@ -647,7 +863,7 @@ export default function RequestsPage() {
                                     disabled={actionLoadingId === req.id}
                                     className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
                                   >
-                                    <CheckCircle2 className="w-3.5 h-3.5" /> {actionLoadingId === req.id ? "Generating QR..." : req.transactionId ? "View QR / Borrow ID" : "Approve & Generate QR"}
+                                    <CheckCircle2 className="w-3.5 h-3.5" /> {actionLoadingId === req.id ? "Generating QR..." : req.transactionId ? "View QR / Borrow ID" : "Approve via QR"}
                                   </button>
                                   <button
                                     onClick={() => openRejectModal(req)}
@@ -672,19 +888,18 @@ export default function RequestsPage() {
                 records.map((req: any) => (
                   <article key={req.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-lg shadow-black/10">
                     <div className="border-b border-zinc-800/80 pb-3">
-                      {isLibrarian && req.transactionId && <p className="mb-2 break-all font-mono text-xs text-blue-300">{formatBorrowId(req.transactionId)}</p>}
                       {(req.books || []).map((book: any) => <div key={book.requestId || book.id} className="mb-2 last:mb-0"><p className="font-semibold text-zinc-100 break-words">{book.title || "Unknown"}</p><p className="mt-1 text-sm text-zinc-500">{book.accessionNo || ""}</p></div>)}
                     </div>
                     <div className="grid grid-cols-2 gap-3 py-4 text-sm"><div><p className="text-xs text-zinc-500">Member</p><p className="mt-1 break-words text-zinc-300">{req.user?.firstName} {req.user?.lastName}</p><p className="text-xs text-zinc-500">{req.user?.libraryId || ""}</p></div><div><p className="text-xs text-zinc-500">Request Date</p><p className="mt-1 text-zinc-300">{formatDate(req.requestDate)}</p></div><div className="col-span-2"><p className="text-xs text-zinc-500">Notes</p><p className="mt-1 whitespace-pre-wrap break-words text-zinc-300">{req.notes || "—"}</p></div></div>
                     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-800/80 pt-3">
-                      <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${reqStatusBadge[req.status] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>
-                        {reqStatusLabel[req.status] || req.status}
+                      <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${reqStatusBadge[req.status] || "bg-zinc-500/15 text-zinc-400 ring-1 ring-zinc-500/30"}`}>
+                        {requestStatusText(req)}
                       </span>
                       <div className="flex flex-wrap gap-2">
                         {isLibrarian && req.status === "PENDING" && (
                           <>
                             <button disabled={actionLoadingId === req.id} onClick={() => approveListedBatch(req)} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-50">
-                              {actionLoadingId === req.id ? "Generating QR..." : req.transactionId ? "View QR / Borrow ID" : "Approve & Generate QR"}
+                              {actionLoadingId === req.id ? "Generating QR..." : req.transactionId ? "View QR / Borrow ID" : "Approve via QR"}
                             </button>
                             <button onClick={() => openRejectModal(req)} className="rounded-lg bg-red-500/15 px-3 py-2 text-xs font-medium text-red-400">Reject</button>
                           </>
@@ -740,9 +955,10 @@ export default function RequestsPage() {
               </div>
             )}
           </div>
+          )}
 
           {isLibrarian && (
-            <div className="mt-8">
+            <div className={isLibrarian ? "order-1 mt-8" : "mt-8"}>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
                 <div>
                   <h2 className="text-2xl font-bold text-white">Active Borrowed Books</h2>
@@ -784,7 +1000,7 @@ export default function RequestsPage() {
 
               {!activeTxnLoading && activeTxns.length > 0 && (
                 <>
-                <div className="hidden sm:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
+                <div className="hidden md:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
@@ -792,6 +1008,7 @@ export default function RequestsPage() {
                           <th className="px-6 py-3 font-medium">Book</th>
                           <th className="px-6 py-3 font-medium">Member</th>
                           <th className="px-6 py-3 font-medium hidden sm:table-cell"><SortHeader field="dueDate" sort={activeTxnSort} order={activeTxnSortOrder} onSort={(field) => changeActiveTxnSort(field, nextSortOrder(activeTxnSort, activeTxnSortOrder, field))}>Due Date</SortHeader></th>
+                          <th className="px-6 py-3 font-medium text-right">Fine</th>
                           <th className="px-6 py-3 font-medium text-right">Actions</th>
                         </tr>
                       </thead>
@@ -814,10 +1031,11 @@ export default function RequestsPage() {
                                 {txn.status === "OVERDUE" && <span className="inline-flex items-center rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-400 ring-1 ring-red-500/30">Overdue</span>}
                               </div>
                             </td>
+                            <td className="px-6 py-4 text-right font-medium text-amber-400">₱{Number(txn.fineAmount || 0).toFixed(2)}</td>
                             <td className="px-6 py-4 text-right">
                               <div className="inline-flex items-center justify-end gap-1.5">
                                 <button
-                                  onClick={() => handleReturn(txn)}
+                                  onClick={() => openReturnModal(txn)}
                                   disabled={actionLoadingId !== null}
                                   className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                                 >
@@ -838,32 +1056,25 @@ export default function RequestsPage() {
                     </table>
                   </div>
                 </div>
-                <div className="space-y-4 sm:hidden">
+                <div className="space-y-4 md:hidden">
                   {activeTxns.map((txn: any) => (
-                    <article key={txn.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-lg shadow-black/10">
-                      <div className="border-b border-zinc-800/80 pb-3">
-                        <p className="font-semibold text-zinc-100 break-words">{txn.book?.title || "Unknown"}</p>
-                        <p className="mt-1 text-sm text-zinc-500 break-words">{txn.book?.author || "Unknown author"}</p>
-                      </div>
-                      <div className="grid grid-cols-2 gap-4 py-4 text-sm">
-                        <div><p className="text-xs text-zinc-500">Member</p><div className="mt-1 flex items-center gap-2"><UserAvatar firstName={txn.user?.firstName} lastName={txn.user?.lastName} avatar={txn.user?.avatar} className="h-8 w-8" /><div className="break-words text-zinc-300">{txn.user?.firstName} {txn.user?.lastName}<p className="text-xs text-zinc-500">{txn.user?.libraryId || ""}</p></div></div></div>
-                        <div>
-                          <p className="text-xs text-zinc-500">Due Date</p>
-                          <div className="mt-1 flex flex-wrap items-center gap-2">
-                            <span className="text-zinc-300">{formatDate(txn.dueDate)}</span>
-                            {txn.status === "OVERDUE" && <span className="inline-flex items-center rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-400 ring-1 ring-red-500/30">Overdue</span>}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 border-t border-zinc-800/80 pt-3">
-                        <button onClick={() => handleReturn(txn)} disabled={actionLoadingId !== null} className="inline-flex min-h-10 items-center justify-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40">
-                          <CheckCircle2 className="h-3.5 w-3.5" /> {actionLoadingId === txn.id ? "Returning..." : "Return"}
-                        </button>
-                        <button onClick={() => openMissingModal(txn)} disabled={actionLoadingId !== null} className="inline-flex min-h-10 items-center justify-center gap-1 rounded-lg bg-amber-500/15 px-3 py-2 text-xs font-medium text-amber-400 transition-colors hover:bg-amber-500/25 disabled:cursor-not-allowed disabled:opacity-40">
-                          <AlertTriangle className="h-3.5 w-3.5" /> Missing
-                        </button>
-                      </div>
-                    </article>
+                    <BorrowHistoryCard
+                      key={txn.id}
+                      transaction={txn}
+                      formatDate={formatDate}
+                      statusBadge={txnStatusBadge}
+                      statusLabel={txnStatusLabel}
+                      contextLabel="Member"
+                      contextValue={[txn.user?.firstName, txn.user?.lastName].filter(Boolean).join(" ") || "Unknown member"}
+                      onReturn={() => openReturnModal(txn)}
+                      onMissing={() => openMissingModal(txn)}
+                      onPayFine={async (amount) => {
+                        const response = await api.payFine(txn.id, amount);
+                        if (!response.success) throw new Error(response.error || "Unable to record fine payment.");
+                        setSuccessMsg("Fine paid successfully.");
+                        await loadActiveTransactions();
+                      }}
+                    />
                   ))}
                 </div>
                 </>
@@ -883,6 +1094,33 @@ export default function RequestsPage() {
           )}
         </div>
       </div>
+
+      {returnTarget && (
+        <ModalLayer>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={() => actionLoadingId !== returnTarget.id && setReturnTarget(null)} />
+            <div className="relative z-50 w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl shadow-black/50">
+              <div className="mb-5 flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-500/15 text-blue-400"><CheckCircle2 className="h-5 w-5" /></div>
+                <div>
+                  <h3 className="text-lg font-semibold text-white">Confirm Book Return</h3>
+                  <p className="mt-1 text-sm text-zinc-400">Confirm that this book has been returned. This will close the active borrow record.</p>
+                </div>
+              </div>
+              <div className="mb-5 rounded-xl border border-zinc-800 bg-zinc-950/70 p-4">
+                <p className="font-medium text-zinc-100">{returnTarget.book?.title || "Unknown book"}</p>
+                <p className="mt-1 text-sm text-zinc-400">{[returnTarget.user?.firstName, returnTarget.user?.lastName].filter(Boolean).join(" ") || "Unknown member"}</p>
+                <p className="mt-1 text-xs text-zinc-500">Due {formatDate(returnTarget.dueDate)}</p>
+              </div>
+              {returnError && <div role="alert" className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{returnError}</div>}
+              <div className="flex gap-3">
+                <button type="button" onClick={() => setReturnTarget(null)} disabled={actionLoadingId !== null} className="flex-1 rounded-xl border border-zinc-700 px-4 py-2.5 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40">Cancel</button>
+                <button type="button" onClick={handleReturn} disabled={actionLoadingId !== null} className="flex-1 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-wait disabled:opacity-50">{actionLoadingId === returnTarget.id ? "Returning..." : "Confirm Return"}</button>
+              </div>
+            </div>
+          </div>
+        </ModalLayer>
+      )}
 
       {missingTarget && (
         <ModalLayer>
@@ -996,6 +1234,24 @@ export default function RequestsPage() {
           externalError={transactionLookupError}
           loading={verificationLoading}
         />
+      )}
+
+      {isMobileLayout && scannedBorrowId && (
+        <ModalLayer>
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 backdrop-blur-sm sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby="confirm-borrow-scan-title">
+            <div className="w-full rounded-t-3xl border border-zinc-800 bg-zinc-900 p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:max-w-md sm:rounded-2xl sm:p-6">
+              <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-zinc-700 sm:hidden" />
+              <h2 id="confirm-borrow-scan-title" className="text-lg font-semibold text-white">Confirm scanned Borrow ID</h2>
+              <p className="mt-2 text-sm text-zinc-400">Check the code before confirming your borrow.</p>
+              <p className="mt-4 rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-center font-mono text-lg font-semibold text-zinc-100">{formatBorrowId(scannedBorrowId)}</p>
+              {transactionLookupError && <p role="alert" className="mt-3 text-sm text-red-300">{transactionLookupError}</p>}
+              <div className="mt-5 grid grid-cols-2 gap-3">
+                <button type="button" onClick={() => { setScannedBorrowId(""); setTransactionScannerOpen(true); }} disabled={verificationLoading} className="min-h-11 rounded-xl border border-zinc-700 px-4 py-2.5 text-sm font-medium text-zinc-200 hover:bg-zinc-800 disabled:opacity-50">Scan again</button>
+                <button type="button" onClick={() => void verifyBorrowId(scannedBorrowId)} disabled={verificationLoading} className="min-h-11 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">{verificationLoading ? "Verifying…" : "Confirm"}</button>
+              </div>
+            </div>
+          </div>
+        </ModalLayer>
       )}
 
       {selectedNote !== null && (

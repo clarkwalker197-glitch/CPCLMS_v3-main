@@ -3,9 +3,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
 import api from "@/lib/api";
-import { isValidName, nameValidationMessage, sanitizeNameInput } from "@/lib/name-validation";
+import { sanitizeNameInput } from "@/lib/name-validation";
 import { useDebounce } from "@/lib/useDebounce";
 import Sidebar from "@/components/Sidebar";
+import HeaderUserActions from "@/components/HeaderUserActions";
 import ResponsiveTable from "@/components/ResponsiveTable";
 import UserAvatar from "@/components/UserAvatar";
 import { SortHeader, SortSelect, nextSortOrder, type SortOption } from "@/components/SortControls";
@@ -25,32 +26,37 @@ const PAGE_SIZE = 10;
 type AddMemberFormState = {
   firstName: string;
   lastName: string;
+  suffix: string;
   email: string;
   libraryId: string;
   password: string;
   confirmPassword: string;
   role: "STUDENT" | "FACULTY" | "LIBRARIAN";
   department: string;
-  yearSection: string;
+  year: string;
+  section: string;
   phone: string;
 };
 
 const emptyAddMemberForm: AddMemberFormState = {
   firstName: "",
   lastName: "",
+  suffix: "",
   email: "",
   libraryId: "",
   password: "",
   confirmPassword: "",
   role: "STUDENT",
   department: "",
-  yearSection: "",
+  year: "",
+  section: "",
   phone: "",
 };
 
 export default function MembersPage() {
   const { user } = useAuth();
   const [members, setMembers] = useState<any[]>([]);
+  const [departments, setDepartments] = useState<Array<{ code: string; name: string }>>([]);
   const [finesMap, setFinesMap] = useState<Record<string, number>>({});
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -62,6 +68,8 @@ export default function MembersPage() {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [successMsg, setSuccessMsg] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [memberToDelete, setMemberToDelete] = useState<any>(null);
+  const [deleteError, setDeleteError] = useState("");
   const [showAddMemberModal, setShowAddMemberModal] = useState(false);
   const [memberForm, setMemberForm] = useState<AddMemberFormState>(emptyAddMemberForm);
   const [submittingMember, setSubmittingMember] = useState(false);
@@ -121,26 +129,39 @@ const [usersRes, statsRes] = await Promise.all([
   }, [user, loadData]);
 
   useEffect(() => {
+    api.getDepartments().then((response) => {
+      if (response.success && response.data) setDepartments(response.data);
+    });
+  }, []);
+
+  useEffect(() => {
     setCurrentPage(1);
   }, [debouncedSearch, debouncedStatus]);
 
-const handleDelete = async (member: any) => {
-    if (!window.confirm(`Delete member "${member.firstName} ${member.lastName}"? This action cannot be undone.`)) return;
-    if (deletingId) return; // prevent double-click spam
-    setDeletingId(member.id);
+  const handleDelete = (member: any) => {
+    if (deletingId) return;
+    setDeleteError("");
+    setMemberToDelete(member);
+  };
+
+  const confirmDeleteMember = async () => {
+    if (!memberToDelete || deletingId) return;
+    setDeletingId(memberToDelete.id);
+    setDeleteError("");
     try {
-      const res = await api.delete(`/auth/users/${member.id}`);
+      const res = await api.delete(`/auth/users/${memberToDelete.id}`);
       if (res.success) {
+        setMemberToDelete(null);
         setSuccessMsg("Member deleted successfully");
         loadData();
         setTimeout(() => setSuccessMsg(""), 4000);
       } else if (res.rateLimited) {
-        setError("You're moving too fast. Please wait a moment and try again.");
+        setDeleteError("You're moving too fast. Please wait a moment and try again.");
       } else {
-        setError(res.error || "Failed to delete member");
+        setDeleteError(res.error || "Failed to delete member");
       }
     } catch {
-      setError("Failed to delete member");
+      setDeleteError("Failed to delete member");
     } finally {
       setDeletingId(null);
     }
@@ -151,18 +172,19 @@ const handleDelete = async (member: any) => {
   ) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const value = field === "firstName" || field === "lastName"
       ? sanitizeNameInput(event.target.value)
-      : event.target.value;
-    setMemberForm((current) => ({ ...current, [field]: value }));
+      : field === "libraryId" && memberForm.role === "STUDENT"
+        ? event.target.value.replace(/\D/g, "").slice(0, 8)
+        : field === "email"
+          ? event.target.value.slice(0, 50)
+          : field === "phone"
+            ? event.target.value.replace(/\D/g, "").slice(0, 11)
+        : event.target.value;
+    setMemberForm((current) => ({
+      ...current,
+      [field]: value,
+      ...(field === "role" ? { libraryId: "" } : {}),
+    }));
     setMemberFormError("");
-
-    if (!isValidName(memberForm.firstName.trim())) {
-      setMemberFormError(nameValidationMessage("First name"));
-      return;
-    }
-    if (!isValidName(memberForm.lastName.trim())) {
-      setMemberFormError(nameValidationMessage("Last name"));
-      return;
-    }
   };
 
   const resetAddMemberForm = () => {
@@ -184,8 +206,13 @@ const handleDelete = async (member: any) => {
       return;
     }
 
-    if (memberForm.role === "LIBRARIAN" && !memberForm.libraryId.trim()) {
-      setMemberFormError("ID Number is required for Librarian accounts.");
+    if ((memberForm.role === "LIBRARIAN" || memberForm.role === "FACULTY") && !memberForm.libraryId.trim()) {
+      setMemberFormError(`ID Number is required for ${memberForm.role === "LIBRARIAN" ? "Librarian" : "Faculty"} accounts.`);
+      return;
+    }
+
+    if (memberForm.role === "STUDENT" && !/^\d{8}$/.test(memberForm.libraryId.trim())) {
+      setMemberFormError("Student ID Number must contain exactly 8 digits.");
       return;
     }
 
@@ -194,8 +221,8 @@ const handleDelete = async (member: any) => {
       return;
     }
 
-    if (memberForm.role === "STUDENT" && !memberForm.yearSection.trim()) {
-      setMemberFormError("Year & Section is required for Student accounts.");
+    if (memberForm.role === "STUDENT" && (!memberForm.year || !memberForm.section)) {
+      setMemberFormError("Year and Section are required for Student accounts.");
       return;
     }
 
@@ -204,18 +231,19 @@ const handleDelete = async (member: any) => {
       const payload = {
         firstName: memberForm.firstName.trim(),
         lastName: memberForm.lastName.trim(),
+        suffix: memberForm.suffix.trim() || undefined,
         email: memberForm.email.trim().toLowerCase(),
         libraryId: memberForm.libraryId.trim() || undefined,
         password: memberForm.password,
         role: memberForm.role,
         department: memberForm.department.trim() || undefined,
-        yearSection: memberForm.yearSection.trim() || undefined,
+        yearSection: memberForm.role === "STUDENT" ? `${memberForm.year}-${memberForm.section}` : undefined,
         phone: memberForm.phone.trim() || undefined,
       };
 
-      const res = await api.post<{ firstName?: string; lastName?: string }>("/auth/admin/users", payload);
+      const res = await api.post<{ firstName?: string; lastName?: string; suffix?: string | null }>("/auth/admin/users", payload);
       if (res.success) {
-        const createdName = `${res.data?.firstName || memberForm.firstName} ${res.data?.lastName || memberForm.lastName}`.trim();
+        const createdName = [res.data?.firstName || memberForm.firstName, res.data?.lastName || memberForm.lastName, res.data?.suffix || memberForm.suffix.trim()].filter(Boolean).join(" ");
         setSuccessMsg(createdName ? `User created successfully: ${createdName}` : "User created successfully");
         setShowAddMemberModal(false);
         resetAddMemberForm();
@@ -233,7 +261,7 @@ const handleDelete = async (member: any) => {
     }
   };
 
-  const getFullName = (m: any) => `${m?.firstName || ""} ${m?.lastName || ""}`.trim() || "—";
+  const getFullName = (m: any) => [m?.firstName, m?.lastName, m?.suffix].filter(Boolean).join(" ") || "—";
   const formatDate = (d?: string) =>
     d ? new Date(d).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" }) : "—";
   const formatPhone = (p?: string) => p || "—";
@@ -266,7 +294,7 @@ const handleDelete = async (member: any) => {
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex">
       <Sidebar />
       <div className="flex-1 min-w-0">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-[calc(7rem+min(env(safe-area-inset-bottom),2rem))] lg:pb-8">
           {successMsg && (
             <div className="p-4 mb-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-sm text-emerald-400">
               {successMsg}
@@ -286,18 +314,21 @@ const handleDelete = async (member: any) => {
                 Manage library members ({total} total)
               </p>
             </div>
-            {isLibrarian && (
-              <button
-                onClick={() => {
-                  resetAddMemberForm();
-                  setShowAddMemberModal(true);
-                }}
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl shadow-lg shadow-blue-600/30 transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                Add Member
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              {isLibrarian && (
+                <button
+                  onClick={() => {
+                    resetAddMemberForm();
+                    setShowAddMemberModal(true);
+                  }}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl shadow-lg shadow-blue-600/30 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add Member
+                </button>
+              )}
+              <HeaderUserActions />
+            </div>
           </div>
 
           {/* Toolbar */}
@@ -329,7 +360,7 @@ const handleDelete = async (member: any) => {
 
           {/* Loading */}
           {loading && (
-            <div className="hidden sm:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
+            <div className="hidden md:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
               {Array.from({ length: 8 }).map((_, i) => (
                 <div key={i} className="h-16 bg-zinc-900 animate-pulse border-b border-zinc-800/40" />
               ))}
@@ -368,8 +399,9 @@ const handleDelete = async (member: any) => {
               </div>
             )}
 
-            <form onSubmit={handleAddMember} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <form onSubmit={handleAddMember} className="flex min-h-0 flex-1 flex-col">
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pr-1">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-zinc-300 mb-1.5">First Name *</label>
                   <input
@@ -392,6 +424,15 @@ const handleDelete = async (member: any) => {
                     placeholder="Last name"
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-1.5">Suffix (optional)</label>
+                  <input
+                    value={memberForm.suffix}
+                    onChange={handleAddMemberChange("suffix")}
+                    className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
+                    placeholder="e.g., Jr., III"
+                  />
+                </div>
               </div>
 
               <div>
@@ -399,11 +440,13 @@ const handleDelete = async (member: any) => {
                 <input
                   type="email"
                   required
+                  maxLength={50}
                   value={memberForm.email}
                   onChange={handleAddMemberChange("email")}
                   className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
                   placeholder="member@example.com"
                 />
+                <p className="mt-1 text-xs text-zinc-500">max 50 characters</p>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -422,50 +465,83 @@ const handleDelete = async (member: any) => {
                 <div>
                   <label className="block text-sm font-medium text-zinc-300 mb-1.5">Phone</label>
                   <input
+                    type="tel"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={11}
                     value={memberForm.phone}
                     onChange={handleAddMemberChange("phone")}
                     className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
                     placeholder="09XXXXXXXXX"
                   />
+                  <p className="mt-1 text-xs text-zinc-500">up to 11 digits</p>
                 </div>
               </div>
 
-              {memberForm.role === "LIBRARIAN" && (
-                <div>
-                  <label className="block text-sm font-medium text-zinc-300 mb-1.5">ID Number *</label>
-                  <input
-                    required
-                    value={memberForm.libraryId}
-                    onChange={handleAddMemberChange("libraryId")}
-                    className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
-                    placeholder="e.g., LIB-2026-0001"
-                  />
-                </div>
-              )}
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-1.5">ID Number *</label>
+                <input
+                  required
+                  type="text"
+                  inputMode={memberForm.role === "STUDENT" ? "numeric" : undefined}
+                  maxLength={memberForm.role === "STUDENT" ? 8 : undefined}
+                  pattern={memberForm.role === "STUDENT" ? "[0-9]{8}" : undefined}
+                  value={memberForm.libraryId}
+                  onChange={handleAddMemberChange("libraryId")}
+                  className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
+                  placeholder={memberForm.role === "STUDENT" ? "8-digit ID number" : memberForm.role === "LIBRARIAN" ? "e.g., LIB-2026-0001" : "Faculty ID number"}
+                />
+              </div>
 
               {(memberForm.role === "STUDENT" || memberForm.role === "FACULTY") && (
                 <div>
                   <label className="block text-sm font-medium text-zinc-300 mb-1.5">Department *</label>
-                  <input
+                  <select
                     required
                     value={memberForm.department}
                     onChange={handleAddMemberChange("department")}
-                    className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
-                    placeholder="e.g., BSIT"
-                  />
+                    className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
+                  >
+                    <option value="">Select Department</option>
+                    {departments.map((department) => (
+                      <option key={department.code} value={department.code}>
+                        {department.name} ({department.code})
+                      </option>
+                    ))}
+                  </select>
                 </div>
               )}
 
               {memberForm.role === "STUDENT" && (
                 <div>
                   <label className="block text-sm font-medium text-zinc-300 mb-1.5">Year & Section *</label>
-                  <input
-                    required
-                    value={memberForm.yearSection}
-                    onChange={handleAddMemberChange("yearSection")}
-                    className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
-                    placeholder="e.g., 2-A"
-                  />
+                  <div className="grid grid-cols-2 gap-3">
+                    <select
+                      required
+                      aria-label="Year"
+                      value={memberForm.year}
+                      onChange={handleAddMemberChange("year")}
+                      className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-white focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Select Year</option>
+                      <option value="1">1st Year</option>
+                      <option value="2">2nd Year</option>
+                      <option value="3">3rd Year</option>
+                      <option value="4">4th Year</option>
+                    </select>
+                    <select
+                      required
+                      aria-label="Section"
+                      value={memberForm.section}
+                      onChange={handleAddMemberChange("section")}
+                      className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-white focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Select Section</option>
+                      {Array.from({ length: 26 }, (_, index) => String.fromCharCode(65 + index)).map((section) => (
+                        <option key={section} value={section}>{section}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               )}
 
@@ -493,8 +569,9 @@ const handleDelete = async (member: any) => {
                   />
                 </div>
               </div>
+              </div>
 
-              <div className="flex justify-end gap-3 pt-2">
+              <div className="flex shrink-0 justify-end gap-3 pt-4">
                 <button
                   type="button"
                   onClick={() => {
@@ -516,12 +593,57 @@ const handleDelete = async (member: any) => {
             </form>
           </Dialog>
 
+          <Dialog
+            open={Boolean(memberToDelete)}
+            onOpenChange={(open) => {
+              if (!open && deletingId === null) {
+                setMemberToDelete(null);
+                setDeleteError("");
+              }
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Trash2 className="h-5 w-5 text-red-400" />
+                Delete member?
+              </DialogTitle>
+              <DialogDescription>This action cannot be undone.</DialogDescription>
+            </DialogHeader>
+            {memberToDelete && (
+              <div className="mb-5 rounded-xl border border-zinc-700 bg-zinc-950/70 p-4">
+                <p className="font-medium text-zinc-100">{getFullName(memberToDelete)}</p>
+                <p className="mt-1 break-all text-sm text-zinc-400">{memberToDelete.email}</p>
+                {memberToDelete.libraryId && <p className="mt-1 text-xs text-zinc-500">ID: {memberToDelete.libraryId}</p>}
+              </div>
+            )}
+            {deleteError && <div role="alert" className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{deleteError}</div>}
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setMemberToDelete(null)}
+                disabled={deletingId !== null}
+                className="flex-1 rounded-xl border border-zinc-700 px-4 py-2.5 font-medium text-zinc-300 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteMember}
+                disabled={deletingId !== null}
+                className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 font-medium text-white transition-colors hover:bg-red-700 disabled:cursor-wait disabled:opacity-50"
+              >
+                <Trash2 className="h-4 w-4" aria-hidden="true" />
+                {deletingId !== null ? "Deleting..." : "Delete Member"}
+              </button>
+            </div>
+          </Dialog>
+
           {!loading && members.length > 0 && (
             <>
             <div className="mb-3 flex justify-end">
               <SortSelect options={sortOptions} sort={sort} order={sortOrder} onChange={changeSort} />
             </div>
-            <div className="hidden sm:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
+            <div className="hidden md:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>

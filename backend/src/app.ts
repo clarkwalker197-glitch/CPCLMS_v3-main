@@ -3,6 +3,8 @@
 // ============================================================
 
 import express from 'express';
+import fs from 'fs/promises';
+import path from 'path';
 import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
@@ -10,13 +12,53 @@ import { env } from './config/env';
 import routes from './routes';
 import { apiLimiter } from './middlewares/rateLimiter';
 import { errorHandler } from './middlewares/errorHandler';
-import { archiveRetentionService } from './services';
-import { UPLOADS_ROOT } from './middlewares/upload';
+import {
+  archiveRetentionService,
+  notificationService,
+  purgeExpiredActivityLogs,
+  transactionService,
+} from './services';
+import { PROFILES_DIR, UPLOADS_ROOT } from './middlewares/upload';
 
 const app = express();
-const allowedOrigins = Array.isArray(env.FRONTEND_URL)
+const configuredOrigins = (Array.isArray(env.FRONTEND_URL)
   ? env.FRONTEND_URL
-  : [env.FRONTEND_URL];
+  : [env.FRONTEND_URL]).map((origin) => origin.replace(/\/+$/, ''));
+const allowedOrigins = new Set([
+  ...configuredOrigins,
+  'https://cpc-library.online',
+  'https://www.cpc-library.online',
+  'http://localhost:3000',
+  'http://localhost:4000',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:4000',
+  'https://localhost:3000',
+  'https://localhost:4000',
+  'https://127.0.0.1:3000',
+  'https://127.0.0.1:4000',
+]);
+
+const isAllowedOrigin = (origin: string | undefined): boolean => {
+  if (!origin) return true;
+
+  const normalizedOrigin = origin.replace(/\/+$/, '');
+  if (allowedOrigins.has(normalizedOrigin)) return true;
+
+  try {
+    const { hostname, protocol } = new URL(normalizedOrigin);
+    const trustedHostSuffixes = ['.vercel.app', '.netlify.app', '.railway.app', '.fly.dev'];
+    const isKnownPreviewHost = trustedHostSuffixes.some((suffix) => hostname.endsWith(suffix));
+    const isLocalHost = ['localhost', '127.0.0.1', '0.0.0.0'].includes(hostname);
+
+    if (isKnownPreviewHost || (isLocalHost && ['http:', 'https:'].includes(protocol))) {
+      return true;
+    }
+  } catch {
+    // Ignore malformed origins and reject them below.
+  }
+
+  return false;
+};
 
 // ============================================================
 // Security Middleware
@@ -24,16 +66,17 @@ const allowedOrigins = Array.isArray(env.FRONTEND_URL)
 app.use(helmet());
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (isAllowedOrigin(origin)) {
       callback(null, true);
       return;
     }
 
-    callback(new Error('Not allowed by CORS'));
+    callback(null, false);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
+  optionsSuccessStatus: 204,
 }));
 
 // ============================================================
@@ -49,6 +92,34 @@ app.use(cookieParser(env.COOKIE_SECRET));
 // helmet()'s default Cross-Origin-Resource-Policy is 'same-origin', which
 // would block the frontend (a different origin/port) from loading these
 // files via <img>/fetch/PDF.js. Explicitly relax it for this route only.
+const missingProfileImage = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"><rect width="96" height="96" rx="48" fill="#27272a"/><circle cx="48" cy="36" r="17" fill="#71717a"/><path d="M17 84c3-17 15-26 31-26s28 9 31 26" fill="#71717a"/></svg>`;
+app.get('/uploads/profiles/:filename', async (req, res, next) => {
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.setHeader('Cache-Control', 'no-store');
+  const filename = req.params.filename;
+  if (path.basename(filename) !== filename) {
+    res.status(400).end();
+    return;
+  }
+
+  const filePath = path.resolve(PROFILES_DIR, filename);
+  try {
+    const stats = await fs.stat(filePath);
+    if (!stats.isFile()) {
+      res.status(200).type('image/svg+xml').send(missingProfileImage);
+      return;
+    }
+    res.sendFile(filePath, (error) => {
+      if (error) next(error);
+    });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      next(error);
+      return;
+    }
+    res.status(200).type('image/svg+xml').send(missingProfileImage);
+  }
+});
 app.use(
   '/uploads',
   (req, res, next) => {
@@ -158,9 +229,24 @@ function startServer(port: number, maxRetries = 3): void {
 startServer(env.PORT);
 
 const ARCHIVE_RETENTION_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const ACTIVITY_LOG_RETENTION_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const DUE_REMINDER_INTERVAL_MS = 60 * 60 * 1000;
+const OVERDUE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
 
 void archiveRetentionService.purgeExpiredArchives().catch((error) => {
   console.error('Archive retention check failed at startup:', error);
+});
+
+void notificationService.sendDueDateReminders().catch((error) => {
+  console.error('Due-date reminder check failed at startup:', error);
+});
+
+void transactionService.checkOverdueTransactions().catch((error) => {
+  console.error('Overdue transaction check failed at startup:', error);
+});
+
+void purgeExpiredActivityLogs().catch((error) => {
+  console.error('Activity log retention check failed at startup:', error);
 });
 
 setInterval(() => {
@@ -169,5 +255,22 @@ setInterval(() => {
   });
 }, ARCHIVE_RETENTION_INTERVAL_MS);
 
-export default app;
+setInterval(() => {
+  void purgeExpiredActivityLogs().catch((error) => {
+    console.error('Scheduled activity log retention check failed:', error);
+  });
+}, ACTIVITY_LOG_RETENTION_INTERVAL_MS);
 
+setInterval(() => {
+  void notificationService.sendDueDateReminders().catch((error) => {
+    console.error('Scheduled due-date reminder check failed:', error);
+  });
+}, DUE_REMINDER_INTERVAL_MS);
+
+setInterval(() => {
+  void transactionService.checkOverdueTransactions().catch((error) => {
+    console.error('Scheduled overdue transaction check failed:', error);
+  });
+}, OVERDUE_CHECK_INTERVAL_MS);
+
+export default app;

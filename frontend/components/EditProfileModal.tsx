@@ -109,9 +109,9 @@ export default function EditProfileModal({ onClose, onSaved }: EditProfileModalP
 
   return (
     <ModalLayer>
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-labelledby="edit-profile-title">
-      <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-zinc-700 bg-zinc-900 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-zinc-800 px-6 py-5">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-3 sm:p-4" role="dialog" aria-modal="true" aria-labelledby="edit-profile-title">
+      <div className="flex max-h-[min(90dvh,52rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-900 shadow-2xl">
+        <div className="flex shrink-0 items-center justify-between border-b border-zinc-800 px-6 py-5">
           <div>
             <h2 id="edit-profile-title" className="text-lg font-semibold text-white">Edit Profile</h2>
             <p className="mt-1 text-xs text-zinc-500">Update your personal information and profile picture.</p>
@@ -121,7 +121,8 @@ export default function EditProfileModal({ onClose, onSaved }: EditProfileModalP
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4 p-6">
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-6">
           {error && <div className="flex gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300"><AlertCircle className="h-4 w-4 shrink-0" />{error}</div>}
           {success && <div className="flex gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-300"><CheckCircle2 className="h-4 w-4 shrink-0" />Profile updated successfully.</div>}
 
@@ -154,7 +155,8 @@ export default function EditProfileModal({ onClose, onSaved }: EditProfileModalP
           </label>
           {user?.role === "STUDENT" && <Field label="Year & Section" value={yearSection} onChange={setYearSection} required />}
 
-          <div className="flex justify-end gap-3 border-t border-zinc-800 pt-5">
+        </div>
+          <div className="flex shrink-0 justify-end gap-3 border-t border-zinc-800 px-6 pt-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
             <button type="button" onClick={onClose} className="rounded-lg px-4 py-2.5 text-sm font-medium text-zinc-300 hover:bg-zinc-800">Cancel</button>
             <button type="submit" disabled={saving || success} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">
               {saving && <Loader2 className="h-4 w-4 animate-spin" />} {saving ? "Saving..." : "Save Changes"}

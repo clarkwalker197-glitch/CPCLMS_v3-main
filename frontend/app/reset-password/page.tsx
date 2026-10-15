@@ -4,6 +4,8 @@ import { FormEvent, Suspense, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import api from "@/lib/api";
+import PasswordStrengthIndicator from "@/components/PasswordStrengthIndicator";
+import { analyzePassword } from "@/lib/password-strength";
 
 function ResetPasswordForm() {
   const params = useSearchParams();
@@ -18,7 +20,9 @@ function ResetPasswordForm() {
     event.preventDefault();
     setError("");
     if (!token) return setError("This password reset link is invalid or expired.");
-    if (password.length < 8) return setError("Password must be at least 8 characters.");
+    if (!analyzePassword(password).meetsRequirements) {
+      return setError("Password must be at least 8 characters and include at least two of letters, numbers, or symbols.");
+    }
     if (password !== confirmPassword) return setError("Passwords do not match.");
     setSubmitting(true);
     try {
@@ -43,7 +47,7 @@ function ResetPasswordForm() {
         </div>
         {error && <div className="p-3 mb-4 bg-red-500/10 border border-red-500/30 rounded-xl text-sm text-red-400">{error}</div>}
         <form onSubmit={handleSubmit} className="space-y-5">
-          <div><label htmlFor="password" className="block text-sm font-medium text-zinc-300 mb-1.5">New Password</label><input id="password" type="password" required minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} className="w-full px-3 py-3 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
+          <div><label htmlFor="password" className="block text-sm font-medium text-zinc-300 mb-1.5">New Password</label><input id="password" type="password" required minLength={8} value={password} onChange={(event) => setPassword(event.target.value)} className="w-full px-3 py-3 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500" /><PasswordStrengthIndicator password={password} /></div>
           <div><label htmlFor="confirmPassword" className="block text-sm font-medium text-zinc-300 mb-1.5">Confirm New Password</label><input id="confirmPassword" type="password" required minLength={8} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} className="w-full px-3 py-3 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
           <button disabled={submitting} className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl disabled:opacity-50">{submitting ? "Resetting..." : "Reset Password"}</button>
         </form>

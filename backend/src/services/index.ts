@@ -8,5 +8,5 @@ export { analyticsService } from './analytics.service';
 export { reportService } from './report.service';
 export { notificationService } from './notification.service';
 export { communityService } from './community.service';
-
+export { recordActivity, purgeExpiredActivityLogs } from './activity-log.service';
 

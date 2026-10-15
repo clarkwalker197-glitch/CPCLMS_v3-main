@@ -8,6 +8,44 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { sendSuccess } from '../utils/helpers';
 import { AuthenticatedRequest } from '../types';
 import { DEPARTMENTS } from '../constants/departments';
+import { env, REFRESH_TOKEN_TTL_MS } from '../config/env';
+import { UnauthorizedError } from '../utils/errors';
+import {
+  storeProfileImage,
+  tryDeleteNewProfileImage,
+  tryDeleteUnreferencedProfileImage,
+} from '../services/profile-image-storage.service';
+
+const getRefreshTokenFromRequest = (req: Request): string | undefined => {
+  const signedCookieToken = typeof (req as any).signedCookies?.refreshToken === 'string'
+    ? (req as any).signedCookies.refreshToken
+    : undefined;
+  const cookieToken = typeof (req as any).cookies?.refreshToken === 'string'
+    ? (req as any).cookies.refreshToken
+    : undefined;
+  const bodyToken = typeof req.body?.refreshToken === 'string' ? req.body.refreshToken : undefined;
+  return signedCookieToken || cookieToken || bodyToken;
+};
+
+const setRefreshCookie = (res: Response, token: string, expiresAt?: Date): void => {
+  res.cookie('refreshToken', token, {
+    httpOnly: true,
+    secure: env.NODE_ENV === 'production',
+    sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
+    path: '/',
+    signed: true,
+    ...(expiresAt ? { expires: expiresAt } : {}),
+  });
+};
+
+const clearRefreshCookie = (res: Response): void => {
+  res.clearCookie('refreshToken', {
+    httpOnly: true,
+    secure: env.NODE_ENV === 'production',
+    sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
+    path: '/',
+  });
+};
 
 export const getDepartments = asyncHandler(async (_req: Request, res: Response) => {
   sendSuccess(res, DEPARTMENTS);
@@ -17,9 +55,13 @@ export const getDepartments = asyncHandler(async (_req: Request, res: Response) 
  * POST /api/auth/login
  */
 export const login = asyncHandler(async (req: Request, res: Response) => {
-  const { identifier, password } = req.body;
+  const { identifier, password, rememberMe } = req.body;
   const ipAddress = req.ip;
-  const result = await authService.login(identifier, password, ipAddress);
+  const result = await authService.login(identifier, password, ipAddress, req.get('user-agent'));
+  const refreshCookieExpiresAt = rememberMe === false
+    ? undefined
+    : new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
+  setRefreshCookie(res, result.refreshToken, refreshCookieExpiresAt);
   sendSuccess(res, result, 'Login successful');
 });
 
@@ -34,12 +76,13 @@ export const verifyPasswordReset = asyncHandler(async (req: Request, res: Respon
 });
 
 export const googleLogin = asyncHandler(async (req: Request, res: Response) => {
-  const result = await authService.googleLogin(req.body.credential, req.ip);
+  const result = await authService.googleLogin(req.body.credential, req.ip, req.get('user-agent'));
+  setRefreshCookie(res, result.refreshToken, new Date(Date.now() + REFRESH_TOKEN_TTL_MS));
   sendSuccess(res, result, 'Google login successful');
 });
 
 export const resetPassword = asyncHandler(async (req: Request, res: Response) => {
-  const result = await authService.resetPassword(req.body.token, req.body.newPassword);
+  const result = await authService.resetPassword(req.body.token, req.body.newPassword, req.ip, req.get('user-agent'));
   sendSuccess(res, result, result.message);
 });
 
@@ -48,7 +91,8 @@ export const resetPassword = asyncHandler(async (req: Request, res: Response) =>
  */
 export const register = asyncHandler(async (req: Request, res: Response) => {
   const ipAddress = req.ip;
-  const result = await authService.register(req.body, ipAddress);
+  const result = await authService.register(req.body, ipAddress, req.get('user-agent'));
+  setRefreshCookie(res, result.refreshToken, new Date(Date.now() + REFRESH_TOKEN_TTL_MS));
   sendSuccess(res, result, 'Registration successful', 201);
 });
 
@@ -57,7 +101,7 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
  */
 export const createUser = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const ipAddress = req.ip;
-  const user = await authService.createUser(req.user!.userId, req.body, ipAddress);
+  const user = await authService.createUser(req.user!.userId, req.body, ipAddress, req.get('user-agent'));
   sendSuccess(res, user, 'User created successfully', 201);
 });
 
@@ -65,20 +109,29 @@ export const createUser = asyncHandler(async (req: AuthenticatedRequest, res: Re
  * POST /api/auth/refresh
  */
 export const refreshToken = asyncHandler(async (req: Request, res: Response) => {
-  const { refreshToken: token } = req.body;
-  const ipAddress = req.ip;
-  const result = await authService.refreshAccessToken(token, ipAddress);
-  sendSuccess(res, result, 'Token refreshed successfully');
+  const token = getRefreshTokenFromRequest(req);
+  try {
+    const result = await authService.refreshAccessToken(token);
+    const refreshCookieExpiresAt = req.body.rememberMe === false
+      ? undefined
+      : new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
+    setRefreshCookie(res, result.refreshToken, refreshCookieExpiresAt);
+    sendSuccess(res, result, 'Token refreshed successfully');
+  } catch (error) {
+    if (error instanceof UnauthorizedError) clearRefreshCookie(res);
+    throw error;
+  }
 });
 
 /**
  * POST /api/auth/logout
  */
 export const logout = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const { refreshToken: token } = req.body;
+  const token = getRefreshTokenFromRequest(req);
   if (token) {
     await authService.logout(token);
   }
+  clearRefreshCookie(res);
   sendSuccess(res, null, 'Logged out successfully');
 });
 
@@ -87,6 +140,7 @@ export const logout = asyncHandler(async (req: AuthenticatedRequest, res: Respon
  */
 export const logoutAll = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   await authService.logoutAll(req.user!.userId);
+  clearRefreshCookie(res);
   sendSuccess(res, null, 'All sessions logged out successfully');
 });
 
@@ -99,12 +153,33 @@ export const getProfile = asyncHandler(async (req: AuthenticatedRequest, res: Re
 });
 
 export const updateProfile = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const removePicture = req.body.removeProfilePicture === 'true';
+  const isChangingPicture = Boolean(req.file) || removePicture;
+  const currentAvatar = isChangingPicture
+    ? (await authService.getProfile(req.user!.userId)).avatar
+    : undefined;
   const avatar = req.file
-    ? `/uploads/profiles/${req.file.filename}`
-    : req.body.removeProfilePicture === 'true'
+    ? await storeProfileImage(req.file)
+    : removePicture
       ? null
       : undefined;
-  const user = await authService.updateProfile(req.user!.userId, { ...req.body, avatar });
+
+  let user;
+  try {
+    user = await authService.updateProfile(
+      req.user!.userId,
+      { ...req.body, avatar },
+      req.ip,
+      req.get('user-agent')
+    );
+  } catch (error) {
+    if (req.file) await tryDeleteNewProfileImage(avatar);
+    throw error;
+  }
+
+  if (currentAvatar && currentAvatar !== avatar) {
+    await tryDeleteUnreferencedProfileImage(currentAvatar);
+  }
   sendSuccess(res, user, 'Profile updated successfully');
 });
 
@@ -113,14 +188,14 @@ export const updateProfile = asyncHandler(async (req: AuthenticatedRequest, res:
  */
 export const changePassword = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { currentPassword, newPassword } = req.body;
-  await authService.changePassword(req.user!.userId, currentPassword, newPassword);
+  await authService.changePassword(req.user!.userId, currentPassword, newPassword, req.ip, req.get('user-agent'));
   sendSuccess(res, null, 'Password changed successfully');
 });
 
 export const updateNotificationPreferences = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const user = await authService.updateNotificationPreferences(
     req.user!.userId,
-    req.body.notificationsEnabled
+    req.body
   );
   sendSuccess(res, user, 'Notification preferences updated successfully');
 });
@@ -137,7 +212,7 @@ export const listUsers = asyncHandler(async (req: AuthenticatedRequest, res: Res
  * DELETE /api/auth/users/:id  (LIBRARIAN only)
  */
 export const deleteUser = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const user = await authService.deleteUser(req.params.id, req.user!.userId);
+  const user = await authService.deleteUser(req.params.id, req.user!.userId, req.ip, req.get('user-agent'));
   sendSuccess(res, user, 'User deleted successfully');
 });
 
@@ -145,8 +220,7 @@ export const deleteUser = asyncHandler(async (req: AuthenticatedRequest, res: Re
  * PATCH /api/auth/users/:id/toggle-status  (LIBRARIAN only)
  */
 export const toggleUserStatus = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-  const user = await authService.toggleUserStatus(req.params.id, req.user!.userId);
+  const user = await authService.toggleUserStatus(req.params.id, req.user!.userId, req.ip, req.get('user-agent'));
   const status = user.isActive ? 'activated' : 'deactivated';
   sendSuccess(res, user, `User ${status} successfully`);
 });
-

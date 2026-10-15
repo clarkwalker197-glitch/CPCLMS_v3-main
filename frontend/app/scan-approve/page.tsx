@@ -21,6 +21,12 @@ function ScanApproveContent() {
       return () => { active = false; };
     }
 
+    if (!navigator.onLine) {
+      setError("Internet connection required to confirm this transaction.");
+      setStatus("error");
+      return () => { active = false; };
+    }
+
     api.verifyBorrowRequest(borrowId).then((response) => {
       if (!active) return;
       if (response.success) {

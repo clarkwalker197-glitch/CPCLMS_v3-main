@@ -6,6 +6,8 @@ import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import api from '@/lib/api';
 import { isValidName, nameValidationMessage, sanitizeNameInput } from '@/lib/name-validation';
+import PasswordStrengthIndicator from '@/components/PasswordStrengthIndicator';
+import { analyzePassword } from '@/lib/password-strength';
 
 export default function RegisterPage() {
   const { register, isAuthenticated, loading } = useAuth();
@@ -17,8 +19,8 @@ const [formData, setFormData] = useState({
     email: '',
     phone: '',
     department: '',
-    yearSection: '',
-    role: 'STUDENT',
+    year: '',
+    section: '',
     password: '',
     confirmPassword: '',
   });
@@ -27,6 +29,7 @@ const [formData, setFormData] = useState({
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [departments, setDepartments] = useState<Array<{ code: string; name: string }>>([]);
+  const passwordStatus = analyzePassword(formData.password);
 
   useEffect(() => {
     if (!loading && isAuthenticated) {
@@ -65,12 +68,12 @@ const [formData, setFormData] = useState({
       return;
     }
 
-    if (formData.password.length < 8) {
-      setError('Password must be at least 8 characters');
+    if (!passwordStatus.meetsRequirements) {
+      setError('Password must be at least 8 characters and include at least two of letters, numbers, or symbols');
       return;
     }
 
-    if (formData.role === 'STUDENT' && !formData.yearSection.trim()) {
+    if (!formData.year || !formData.section) {
       setError('Year & Section is required for Student accounts');
       return;
     }
@@ -85,8 +88,7 @@ const result = await register({
         email: formData.email.trim(),
         phone: formData.phone.trim(),
         department: formData.department,
-        yearSection: formData.yearSection.trim(),
-        role: formData.role,
+        yearSection: `${formData.year}-${formData.section}`,
         password: formData.password,
       });
 
@@ -117,10 +119,10 @@ if (result.success) {
 
   return (
     <div className="min-h-screen bg-zinc-950 flex flex-col">
-      <div className="flex-1 flex items-center justify-center p-4 sm:p-8">
-        <div className="w-full max-w-6xl grid md:grid-cols-2 gap-6">
+      <div className="flex-1 flex items-start justify-center p-4 sm:p-8 md:items-center">
+        <div className="w-full max-w-6xl grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
 {/* ── Left Card: Dark branding (identical to Login) ─────── */}
-          <div className="auth-brand-panel relative overflow-hidden rounded-3xl bg-gradient-to-b from-[#0f172a] via-blue-950 to-blue-900 text-white p-10 sm:p-12 flex flex-col justify-between shadow-[0_20px_60px_-15px_rgba(37,99,235,0.5)] ring-1 ring-white/10 min-h-[560px]">
+          <div className="auth-brand-panel relative hidden overflow-hidden rounded-3xl bg-gradient-to-b from-[#0f172a] via-blue-950 to-blue-900 p-10 text-white shadow-[0_20px_60px_-15px_rgba(37,99,235,0.5)] ring-1 ring-white/10 md:flex md:min-h-[560px] md:flex-col md:justify-between md:p-12">
             {/* Decorative glow */}
             <div className="absolute -top-32 -right-32 w-96 h-96 bg-blue-500/30 rounded-full blur-3xl" />
             <div className="absolute -bottom-40 -left-20 w-80 h-80 bg-sky-400/20 rounded-full blur-3xl" />
@@ -130,14 +132,18 @@ if (result.success) {
 
             {/* Logo + Institution + Heading */}
             <div className="relative z-10 flex flex-col gap-8">
-              <div className="flex items-center gap-3">
+              <Link
+                href="/"
+                aria-label="Cordova Public College Library Management System home"
+                className="flex items-center gap-3"
+              >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-<img src="/CPClogo.png" alt="Cordova Public College Logo" className="w-12 h-12 object-contain shrink-0" />
+                <img src="/CPClogo.png" alt="Cordova Public College Logo" className="w-12 h-12 object-contain shrink-0" />
                 <div>
                   <p className="auth-brand-school font-bold text-lg leading-tight text-white">Cordova Public College</p>
                   <p className="auth-brand-subtitle text-blue-200 text-sm">Library Management System</p>
                 </div>
-              </div>
+              </Link>
 
               {/* Heading + Subtitle */}
               <div className="max-w-md">
@@ -172,17 +178,20 @@ if (result.success) {
           </div>
 
           {/* ── Right Card: Registration Form ───────────────────── */}
-          <div className="rounded-3xl bg-zinc-900 border border-zinc-800 p-10 sm:p-12 flex flex-col justify-center shadow-2xl shadow-black/40 min-h-[560px]">
+          <div className="rounded-3xl bg-zinc-900 border border-zinc-800 p-5 sm:p-8 md:p-12 flex flex-col justify-center shadow-2xl shadow-black/40 md:min-h-[560px]">
             <div className="w-full max-w-md mx-auto">
 {/* Logo */}
-              <div className="flex flex-col items-center mb-8">
+              <div className="flex flex-col items-center mb-5 sm:mb-8">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/CPClogo.png" alt="Cordova Public College Logo" className="w-20 h-20 object-contain mb-4" />
-                <h2 className="text-3xl font-bold text-white">Create Account</h2>
+                <Link href="/" aria-label="Cordova Public College Library Management System home">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/CPClogo.png" alt="Cordova Public College Logo" className="w-16 h-16 sm:w-20 sm:h-20 object-contain mb-2 sm:mb-4" />
+                </Link>
+                <h2 className="text-2xl sm:text-3xl font-bold text-white">Create Account</h2>
                 <p className="text-zinc-400 mt-2">Join the Library System to get started.</p>
               </div>
 
-              <form onSubmit={handleSubmit} className="space-y-5">
+              <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
                 {error && (
                   <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-sm text-red-400">
                     {error}
@@ -196,7 +205,7 @@ if (result.success) {
                   </label>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="relative">
-                      <input
+                                          <input
                         id="firstName"
                         name="firstName"
                         type="text"
@@ -243,16 +252,18 @@ if (result.success) {
                       type="text"
                       inputMode="numeric"
                       pattern="[0-9]*"
+                      maxLength={8}
                       required
                       value={formData.libraryId}
                       onChange={(e) => {
-                        const digitsOnly = e.target.value.replace(/[^0-9]/g, '');
+                        const digitsOnly = e.target.value.replace(/[^0-9]/g, '').slice(0, 8);
                         setFormData((prev) => ({ ...prev, libraryId: digitsOnly }));
                       }}
                       className={inputClass}
-                      placeholder="Enter your ID Number (e.g., 2025-01234)"
+                      placeholder="Enter your 8-digit ID Number"
                     />
                   </div>
+                  <p className="mt-1.5 text-xs text-zinc-500">8 digits</p>
                 </div>
 
 {/* Email + Phone Number */}
@@ -261,43 +272,51 @@ if (result.success) {
                     Contact Information
                   </label>
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <svg className="w-5 h-5 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                        </svg>
+                    <div>
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                          <svg className="w-5 h-5 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                          </svg>
+                        </div>
+                        <input
+                          id="email"
+                          name="email"
+                          type="email"
+                          maxLength={50}
+                          required
+                          value={formData.email}
+                          onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value.slice(0, 50) }))}
+                          className={inputClass}
+                          placeholder="Email"
+                        />
                       </div>
-                      <input
-                        id="email"
-                        name="email"
-                        type="email"
-                        required
-                        value={formData.email}
-                        onChange={handleChange}
-                        className={inputClass}
-                        placeholder="Email"
-                      />
+                      <p className="mt-1.5 text-xs text-zinc-500">max 50 characters</p>
                     </div>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <svg className="w-5 h-5 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M3 5a2 2 0 012-2h.5a2 2 0 011.856 1.257l.994 2.486a2 2 0 01-.288 2.13l-.9 1.125a.5.5 0 01-.12.144A12.05 12.05 0 0014.88 16.96a.5.5 0 00.144-.12l1.125-.9a2 2 0 012.13-.288l2.486.994A2 2 0 0122 18.5v.5a2 2 0 01-2 2H19a16 16 0 01-16-16V5z" />
-                        </svg>
+                    <div>
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                          <svg className="w-5 h-5 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M3 5a2 2 0 012-2h.5a2 2 0 011.856 1.257l.994 2.486a2 2 0 01-.288 2.13l-.9 1.125a.5.5 0 01-.12.144A12.05 12.05 0 0014.88 16.96a.5.5 0 00.144-.12l1.125-.9a2 2 0 012.13-.288l2.486.994A2 2 0 0122 18.5v.5a2 2 0 01-2 2H19a16 16 0 01-16-16V5z" />
+                          </svg>
+                        </div>
+                        <input
+                          id="phone"
+                          name="phone"
+                          type="text"
+                          inputMode="tel"
+                          pattern="[0-9]*"
+                          maxLength={11}
+                          value={formData.phone}
+                          onChange={(e) => {
+                            const digitsOnly = e.target.value.replace(/[^0-9]/g, '').slice(0, 11);
+                            setFormData((prev) => ({ ...prev, phone: digitsOnly }));
+                          }}
+                          className={inputClass}
+                          placeholder="Phone"
+                        />
                       </div>
-                      <input
-                        id="phone"
-                        name="phone"
-                        type="text"
-                        inputMode="tel"
-                        pattern="[0-9]*"
-                        value={formData.phone}
-                        onChange={(e) => {
-                          const digitsOnly = e.target.value.replace(/[^0-9]/g, '');
-                          setFormData((prev) => ({ ...prev, phone: digitsOnly }));
-                        }}
-                        className={inputClass}
-                        placeholder="Phone"
-                      />
+                      <p className="mt-1.5 text-xs text-zinc-500">11 digits</p>
                     </div>
                   </div>
                 </div>
@@ -335,53 +354,47 @@ if (result.success) {
                   </div>
                 </div>
 
-{/* Year & Section + Role */}
+                {/* Academic Details */}
                 <div>
                   <label className="block text-sm font-medium text-zinc-300 mb-1.5">
                     Academic Details
                   </label>
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <svg className="w-5 h-5 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                      </div>
-                      <input
-                        id="yearSection"
-                        name="yearSection"
-                        type="text"
-                        required={formData.role === 'STUDENT'}
-                        value={formData.yearSection}
-                        onChange={handleChange}
-                        className={inputClass}
-                        placeholder="Year &amp; Section"
-                      />
-                    </div>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <svg className="w-5 h-5 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
-                      </div>
+                    <div>
+                      <label htmlFor="year" className="mb-1.5 block text-xs font-medium text-zinc-400">Year</label>
                       <select
-                        id="role"
-                        name="role"
+                        id="year"
+                        name="year"
                         required
-                        value={formData.role}
+                        value={formData.year}
                         onChange={handleChange}
-                        className="w-full pl-10 pr-3 py-3 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition appearance-none"
+                        className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-3 text-white transition focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
-                        <option value="STUDENT" className="bg-zinc-900 text-white">Student</option>
-                        <option value="FACULTY" className="bg-zinc-900 text-white">Faculty</option>
+                        <option value="">Select Year</option>
+                        <option value="1">1st Year</option>
+                        <option value="2">2nd Year</option>
+                        <option value="3">3rd Year</option>
+                        <option value="4">4th Year</option>
                       </select>
-                      <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                        <svg className="w-4 h-4 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                        </svg>
-                      </div>
+                    </div>
+                    <div>
+                      <label htmlFor="section" className="mb-1.5 block text-xs font-medium text-zinc-400">Section</label>
+                      <select
+                        id="section"
+                        name="section"
+                        required
+                        value={formData.section}
+                        onChange={handleChange}
+                        className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-3 text-white transition focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Select Section</option>
+                        {Array.from({ length: 26 }, (_, index) => String.fromCharCode(65 + index)).map((section) => (
+                          <option key={section} value={section}>{section}</option>
+                        ))}
+                      </select>
                     </div>
                   </div>
+                  <p className="mt-2 text-xs text-zinc-500">Faculty accounts are created by a librarian. Please contact the library.</p>
                 </div>
 
                 {/* Password */}
@@ -403,7 +416,7 @@ if (result.success) {
                       value={formData.password}
                       onChange={handleChange}
                       className="w-full pl-10 pr-14 py-3 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                      placeholder="Min. 8 characters"
+                      placeholder="8+ characters, mixed types"
                     />
                     <button
                       type="button"
@@ -414,6 +427,7 @@ if (result.success) {
                       {showPassword ? 'Hide' : 'Show'}
                     </button>
                   </div>
+                  <PasswordStrengthIndicator password={formData.password} />
                 </div>
 
                 {/* Confirm Password */}
@@ -477,12 +491,6 @@ if (result.success) {
         </div>
       </div>
 
-      {/* Copyright footer */}
-      <div className="pb-6 text-center">
-        <p className="text-xs text-zinc-600">
-          © 2026 Cordova Public College. All rights reserved.
-        </p>
-      </div>
     </div>
   );
 }

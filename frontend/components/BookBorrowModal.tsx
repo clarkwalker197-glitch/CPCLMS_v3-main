@@ -3,14 +3,14 @@
 import { useState } from "react";
 import { Dialog, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { createBorrowRequestLocalFirst } from "@/lib/offline-api";
+import api from "@/lib/api";
 import { BookOpen, ShieldCheck } from "lucide-react";
 
 export function BookBorrowModal(props: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   books: any[];
-  onSuccess: (queued?: boolean) => void;
+  onSuccess: () => void;
 }) {
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
@@ -24,13 +24,12 @@ export function BookBorrowModal(props: {
     setError("");
     setLoading(true);
     try {
-      const userId = JSON.parse(localStorage.getItem("user") || "{}").id || "unknown";
-      const res = await createBorrowRequestLocalFirst(userId, {
+      const res = await api.createBorrowRequest({
         bookIds: props.books.map((b) => b.id),
         notes: notes || undefined,
       });
       if (res.success) {
-        props.onSuccess(Boolean(res.queued));
+        props.onSuccess();
         props.onOpenChange(false);
         setNotes("");
       } else {

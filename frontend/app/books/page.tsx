@@ -6,12 +6,16 @@ import { useAuth } from "@/lib/auth-context";
 import api from "@/lib/api";
 import MediaImage from "@/components/MediaImage";
 import { offlineDb } from "@/lib/offline-db";
+import { searchCachedBooks } from "@/lib/offline-api";
 import { useDebounce } from "@/lib/useDebounce";
 import { BookBorrowModal } from "@/components/BookBorrowModal";
 import { AddBookModal } from "@/components/AddBookModal";
 import { EditBookModal } from "@/components/EditBookModal";
 import MobileBookTypeSelect from "@/components/MobileBookTypeSelect";
+import MobileSearchInput from "@/components/MobileSearchInput";
 import Sidebar from "@/components/Sidebar";
+import HeaderUserActions from "@/components/HeaderUserActions";
+import { useConfirmDialog } from "@/components/ui/ConfirmModal";
 import ResponsiveTable from "@/components/ResponsiveTable";
 import { SortHeader, SortSelect, nextSortOrder, type SortOption } from "@/components/SortControls";
 import { categoryDisplayName, DEWEY_MAIN_CATEGORIES, subcategoriesForMain } from "@/lib/categories";
@@ -21,7 +25,6 @@ import {
   LayoutGrid,
   List,
   Pencil,
-  Trash2,
   BookOpen,
   ChevronLeft,
   ChevronRight,
@@ -33,7 +36,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 
-const PAGE_SIZE = 8;
+const PAGE_SIZE = 20;
 const MAX_BOOKS_PER_TRANSACTION = 3;
 const MAX_LIMIT_MESSAGE = "You can only borrow a maximum of 3 books per transaction.";
 
@@ -43,8 +46,10 @@ const isPhysicalBookAvailable = (book: any) => {
 
 export default function BooksPage() {
   const { user } = useAuth();
+  const { confirm } = useConfirmDialog();
   const router = useRouter();
   const [books, setBooks] = useState<any[]>([]);
+  const [totalBooks, setTotalBooks] = useState(0);
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -63,12 +68,23 @@ export default function BooksPage() {
   const [selectedBook, setSelectedBook] = useState<any | null>(null);
   const [successMsg, setSuccessMsg] = useState("");
   const [togglingStatusId, setTogglingStatusId] = useState<string | null>(null);
+  const [showingCachedCatalog, setShowingCachedCatalog] = useState(false);
+  const [catalogUpdatedAt, setCatalogUpdatedAt] = useState<number | null>(null);
+  const [isDesktop, setIsDesktop] = useState(false);
 
   const isLibrarian = user?.role === "LIBRARIAN";
 
   // Debounced search/filter values (300ms) to avoid per-keystroke API spam
   const debouncedSearch = useDebounce(search, 300);
   const requestSequence = useRef(0);
+
+  useEffect(() => {
+    const media = window.matchMedia("(min-width: 769px)");
+    const updateLayout = () => setIsDesktop(media.matches);
+    updateLayout();
+    media.addEventListener("change", updateLayout);
+    return () => media.removeEventListener("change", updateLayout);
+  }, []);
 
   const loadData = useCallback(async () => {
     const requestId = ++requestSequence.current;
@@ -78,16 +94,35 @@ export default function BooksPage() {
       const cachedBooks = await offlineDb.books.toArray();
       const cachedCategories = await offlineDb.categories.toArray();
       const hasServerFilters = Boolean(debouncedSearch || categoryFilter || mainCategoryFilter || classificationFilter);
-      if (cachedBooks.length && !hasServerFilters) {
-        setBooks(cachedBooks.map((book) => ({ ...book, bookType: "physical" })));
+      const localParams: Record<string, string> = {
+        sort,
+        order: sortOrder,
+      };
+      if (debouncedSearch) localParams.search = debouncedSearch;
+      if (categoryFilter) localParams.categoryId = categoryFilter;
+      else if (mainCategoryFilter) localParams.categoryMain = mainCategoryFilter;
+      if (classificationFilter) localParams.classificationNumber = classificationFilter;
+      if (cachedBooks.length) {
+        const cachedResults = searchCachedBooks(cachedBooks, localParams, cachedCategories).map((book) => ({ ...book, bookType: "physical" }));
+        setBooks(cachedResults);
+        setTotalBooks(cachedResults.length);
         setLoading(false);
       }
+      const cachedSync = await offlineDb.meta.get("booksLastSyncedAt");
+      setCatalogUpdatedAt(typeof cachedSync?.value === "number" ? cachedSync.value : null);
       if (cachedCategories.length) {
         setCategories(cachedCategories.filter((category) => String(category.slug || "").startsWith("dewey-")));
       }
 
+      if (!navigator.onLine) {
+        setShowingCachedCatalog(true);
+        if (!cachedBooks.length) setError("This catalog is not available offline yet. Reconnect to synchronize it.");
+        return;
+      }
+
       const params: Record<string, string> = {};
-      params.limit = "100";
+      params.page = String(currentPage);
+      params.limit = String(PAGE_SIZE);
       params.sort = sort;
       params.order = sortOrder;
       if (debouncedSearch) params.search = debouncedSearch;
@@ -98,16 +133,43 @@ export default function BooksPage() {
       if (requestId !== requestSequence.current) return;
       if (booksRes.success) {
         setBooks((booksRes.data || []).map((book: any) => ({ ...book, bookType: "physical" })));
-        if (!hasServerFilters) await offlineDb.books.bulkPut(booksRes.data || []);
+        setTotalBooks(booksRes.meta?.total ?? (booksRes.data || []).length);
+        await offlineDb.books.bulkPut(booksRes.data || []);
+        if (!hasServerFilters) {
+          const syncedAt = Date.now();
+          await offlineDb.meta.put({ key: "booksLastSyncedAt", value: syncedAt, updatedAt: syncedAt });
+          setCatalogUpdatedAt(syncedAt);
+        }
+        setShowingCachedCatalog(false);
       } else if (booksRes.rateLimited) {
         setError("You're moving too fast. Please wait a moment and try again.");
+      } else if (booksRes.networkError && cachedBooks.length) {
+        setBooks(searchCachedBooks(cachedBooks, localParams, cachedCategories).map((book) => ({ ...book, bookType: "physical" })));
+        setTotalBooks(searchCachedBooks(cachedBooks, localParams, cachedCategories).length);
+        setShowingCachedCatalog(true);
+      } else if (!booksRes.success) {
+        setError(booksRes.error || "Unable to load the catalog.");
       }
     } catch {
-      if (requestId === requestSequence.current) setError("Unable to load the catalog. Connect once to download the catalog.");
+      if (requestId === requestSequence.current) {
+        const cachedBooks = await offlineDb.books.toArray();
+        if (cachedBooks.length) {
+          const cachedCategories = await offlineDb.categories.toArray();
+          const params: Record<string, string> = { sort, order: sortOrder };
+          if (debouncedSearch) params.search = debouncedSearch;
+          if (categoryFilter) params.categoryId = categoryFilter;
+          else if (mainCategoryFilter) params.categoryMain = mainCategoryFilter;
+          if (classificationFilter) params.classificationNumber = classificationFilter;
+          setBooks(searchCachedBooks(cachedBooks, params, cachedCategories).map((book) => ({ ...book, bookType: "physical" })));
+          setShowingCachedCatalog(true);
+        } else {
+          setError("Unable to load the catalog. Connect once to download the catalog.");
+        }
+      }
     } finally {
       if (requestId === requestSequence.current) setLoading(false);
     }
-  }, [categoryFilter, classificationFilter, debouncedSearch, mainCategoryFilter, sort, sortOrder]);
+  }, [categoryFilter, classificationFilter, currentPage, debouncedSearch, mainCategoryFilter, sort, sortOrder]);
 
   const visibleBooks = books;
 
@@ -116,6 +178,7 @@ export default function BooksPage() {
   }, [loadData]);
 
   useEffect(() => {
+    if (!navigator.onLine) return;
     api.getCategories().then(async (response) => {
       if (!response.success || !response.data) return;
       const deweyCategories = response.data.filter((category: any) => category.slug?.startsWith("dewey-"));
@@ -126,7 +189,7 @@ export default function BooksPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearch, categoryFilter, mainCategoryFilter, classificationFilter, visibleBooks.length]);
+  }, [debouncedSearch, categoryFilter, mainCategoryFilter, classificationFilter, sort, sortOrder]);
 
   const inCart = (id: string) => cart.some((b) => b.id === id);
 
@@ -151,6 +214,31 @@ export default function BooksPage() {
     setCart((prev) => [...prev, book]);
   };
 
+  const handleReserveBook = async (book: any) => {
+    if (!user) {
+      router.push('/login');
+      return;
+    }
+    if (user.role === 'LIBRARIAN') {
+      setError('Librarians do not reserve books.');
+      return;
+    }
+
+    try {
+      setError('');
+      const res = await api.reserveBook(book.id);
+      if (res.success) {
+        setSuccessMsg(`Reservation placed for "${book.title}".`);
+        loadData();
+        setTimeout(() => setSuccessMsg(''), 4000);
+        return;
+      }
+      setError(res.error || 'Unable to reserve this book.');
+    } catch {
+      setError('Unable to reserve this book right now.');
+    }
+  };
+
   const handleRemoveFromCart = (id: string) => {
     setCart((prev) => prev.filter((b) => b.id !== id));
   };
@@ -168,35 +256,11 @@ export default function BooksPage() {
     setShowBorrowModal(true);
   };
 
-  const handleBorrowSuccess = (queued = false) => {
-    setSuccessMsg(queued
-      ? "Request saved offline and will be sent when you reconnect."
-      : "Request sent! Waiting for librarian approval.");
+  const handleBorrowSuccess = () => {
+    setSuccessMsg("Request sent! Waiting for librarian approval.");
     setCart([]);
     loadData();
     setTimeout(() => setSuccessMsg(""), 4000);
-  };
-
-  const handleDelete = async (book: any) => {
-    if (!window.confirm(`Archive "${book.title}"? It can be restored later from the Archive.`)) return;
-    if (togglingStatusId) return; // prevent double-click spam
-    setTogglingStatusId(book.id);
-    try {
-      const res = await api.delete(`/books/${book.id}`);
-      if (res.success) {
-        setSuccessMsg("Book archived successfully");
-        loadData();
-        setTimeout(() => setSuccessMsg(""), 4000);
-      } else if (res.rateLimited) {
-        setError("You're moving too fast. Please wait a moment and try again.");
-      } else {
-        setError(res.error || "Failed to delete book");
-      }
-    } catch {
-      setError("Failed to delete book");
-    } finally {
-      setTogglingStatusId(null);
-    }
   };
 
   const handleEdit = (book: any) => {
@@ -205,31 +269,39 @@ export default function BooksPage() {
   };
 
   const handleToggleAvailability = async (book: any) => {
+    if (togglingStatusId) return;
     const newStatus = book.status === 'AVAILABLE' ? 'MAINTENANCE' : 'AVAILABLE';
-    const action = newStatus === 'AVAILABLE' ? 'available' : 'not available';
-    const message = newStatus === 'AVAILABLE'
-      ? `Mark "${book.title}" as available? Students will be able to borrow this book.`
-      : `Mark "${book.title}" as not available? Students will no longer be able to borrow this book.`;
-
-    if (!window.confirm(message)) return;
-    if (togglingStatusId) return; // prevent double-click spam
-    setTogglingStatusId(book.id);
-    try {
-      const res = await api.updateBook(book.id, { status: newStatus });
-      if (res.success) {
-        setSuccessMsg(`Book marked as ${action}`);
-        loadData();
-        setTimeout(() => setSuccessMsg(""), 4000);
-      } else if (res.rateLimited) {
-        setError("You're moving too fast. Please wait a moment and try again.");
-      } else {
-        setError(res.error || "Failed to update book");
-      }
-    } catch {
-      setError("Failed to update book");
-    } finally {
-      setTogglingStatusId(null);
-    }
+    const available = newStatus === 'AVAILABLE';
+    await confirm({
+      title: available ? 'Mark book as available?' : 'Mark book as unavailable?',
+      description: available
+        ? `Students will be able to borrow “${book.title}”.`
+        : `Students will no longer be able to borrow “${book.title}”.`,
+      confirmLabel: available ? 'Mark available' : 'Mark unavailable',
+      variant: available ? 'default' : 'warning',
+      onConfirm: async () => {
+        setTogglingStatusId(book.id);
+        try {
+          const res = await api.updateBook(book.id, { status: newStatus });
+          if (!res.success) {
+            const message = res.rateLimited
+              ? "You're moving too fast. Please wait a moment and try again."
+              : res.error || 'Failed to update book';
+            setError(message);
+            throw new Error(message);
+          }
+          setSuccessMsg(`Book marked as ${available ? 'available' : 'not available'}`);
+          void loadData();
+          setTimeout(() => setSuccessMsg(''), 4000);
+        } catch (caught) {
+          const message = caught instanceof Error ? caught.message : 'Failed to update book';
+          setError(message);
+          throw caught;
+        } finally {
+          setTogglingStatusId(null);
+        }
+      },
+    });
   };
 
   const handleEditSuccess = () => {
@@ -239,15 +311,15 @@ export default function BooksPage() {
     setTimeout(() => setSuccessMsg(""), 4000);
   };
 
-  const totalPages = Math.max(1, Math.ceil(visibleBooks.length / PAGE_SIZE));
-  const paginatedBooks = visibleBooks.slice(
-    (currentPage - 1) * PAGE_SIZE,
-    currentPage * PAGE_SIZE
-  );
+  const totalPages = Math.max(1, Math.ceil(totalBooks / PAGE_SIZE));
+  const paginatedBooks = showingCachedCatalog
+    ? visibleBooks.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+    : visibleBooks;
 
   const getPageNumbers = () => {
     const pages: number[] = [];
-    for (let i = 1; i <= totalPages; i++) pages.push(i);
+    const start = Math.max(1, Math.min(currentPage - 2, totalPages - 4));
+    for (let i = start; i <= Math.min(totalPages, start + 4); i++) pages.push(i);
     return pages;
   };
 
@@ -289,7 +361,7 @@ export default function BooksPage() {
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex">
       <Sidebar />
       <div className="flex-1 min-w-0">
-        <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-[calc(5rem+env(safe-area-inset-bottom))] lg:pb-8 ${!isLibrarian && cart.length > 0 ? "lg:pb-44" : ""}`}>
+        <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-[calc(7rem+min(env(safe-area-inset-bottom),2rem))] lg:pb-8 ${!isLibrarian && cart.length > 0 ? "lg:pb-44" : ""}`}>
           {successMsg && (
             <div className="p-4 mb-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-sm text-emerald-400">
               {successMsg}
@@ -302,35 +374,52 @@ export default function BooksPage() {
           )}
 
           {/* Header */}
-          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className={`flex items-start justify-between gap-4 ${isLibrarian ? "mb-3" : "mb-6"}`}>
             <div>
               <h1 className="text-2xl font-bold text-white">Books Collection</h1>
               <p className="mt-1 text-sm text-zinc-400">Manage your library&apos;s book collection</p>
+              {showingCachedCatalog && (
+                <p className="mt-2 text-xs text-amber-300">
+                  Showing cached catalog
+                  {catalogUpdatedAt ? ` — last synchronized ${new Date(catalogUpdatedAt).toLocaleString()}` : " — synchronization time unavailable"}.
+                </p>
+              )}
             </div>
-            {isLibrarian && (
+            <HeaderUserActions />
+          </div>
+          {isLibrarian && (
+            <div className="mb-6 flex justify-end">
               <button
                 onClick={() => setShowAddModal(true)}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-600/30 transition-colors hover:bg-blue-700 sm:w-auto sm:justify-start"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-600/30 transition-colors hover:bg-blue-700"
               >
                 <Plus className="h-4 w-4" />
                 Add Book
               </button>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* Toolbar */}
-          <div className="mb-6 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3 sm:p-4">
+          <div className="mobile-search-toolbar mb-6 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3 sm:p-4">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-              <div className="relative w-full sm:flex-1">
+              <div className="hidden relative w-full sm:flex-1 md:block">
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
                   <Search className="h-5 w-5 text-zinc-500" />
                 </div>
                 <input
                   type="text"
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={(event) => setSearch(event.target.value)}
                   placeholder="Search by title, author, or Dewey number..."
                   className="min-h-[44px] w-full rounded-xl border border-zinc-700 bg-zinc-950 pl-10 pr-3 text-sm text-white placeholder:text-zinc-500 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div className="w-full md:hidden">
+                <MobileSearchInput
+                  value={search}
+                  onChange={setSearch}
+                  placeholder="Search by title, author, or Dewey number..."
+                  storageKey="cpc-recent-book-searches"
                 />
               </div>
 
@@ -357,6 +446,8 @@ export default function BooksPage() {
               </div>
             </div>
 
+            <details className="mobile-filter-details" open={isDesktop}>
+              <summary>Filters and sort</summary>
             <div className="mt-2 grid grid-cols-2 gap-2 sm:mt-3 sm:flex sm:flex-wrap sm:items-center sm:gap-3">
               <SortSelect options={sortOptions} sort={sort} order={sortOrder} onChange={changeSort} />
               <select
@@ -413,10 +504,11 @@ export default function BooksPage() {
                   <List className="h-4 w-4" />
                 </button>
                 <span className="self-center px-2 text-xs text-zinc-500">
-                  {visibleBooks.length} books
+                  {totalBooks} books
                 </span>
               </div>
             </div>
+            </details>
           </div>
 
           {/* Loading */}
@@ -502,20 +594,30 @@ export default function BooksPage() {
                             </button>
                           </>
                         ) : (
-                          <button
-                            onClick={() => handleAddToCart(book)}
-                            disabled={!isPhysicalBookAvailable(book)}
-                            className={`flex-1 px-1.5 py-2 text-[11px] font-semibold text-white rounded-lg transition-colors sm:px-3 sm:text-sm ${inCart(book.id)
-                                ? "bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-600/20"
-                                : "bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-600/20"
-                              } disabled:opacity-40 disabled:cursor-not-allowed`}
-                          >
-                            {!isPhysicalBookAvailable(book)
-                              ? "Unavailable"
-                              : inCart(book.id)
-                                ? "Remove"
-                                : "Borrow"}
-                          </button>
+                          <>
+                            <button
+                              onClick={() => handleAddToCart(book)}
+                              disabled={!isPhysicalBookAvailable(book)}
+                              className={`flex-1 px-1.5 py-2 text-[11px] font-semibold text-white rounded-lg transition-colors sm:px-3 sm:text-sm ${inCart(book.id)
+                                  ? "bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-600/20"
+                                  : "bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-600/20"
+                                } disabled:opacity-40 disabled:cursor-not-allowed`}
+                            >
+                              {!isPhysicalBookAvailable(book)
+                                ? "Unavailable"
+                                : inCart(book.id)
+                                  ? "Remove"
+                                  : "Borrow"}
+                            </button>
+                            {!isPhysicalBookAvailable(book) && (
+                              <button
+                                onClick={() => handleReserveBook(book)}
+                                className="flex-1 rounded-lg bg-amber-500/15 px-1.5 py-2 text-[11px] font-semibold text-amber-300 transition-colors hover:bg-amber-500/20 sm:px-3 sm:text-sm"
+                              >
+                                Reserve
+                              </button>
+                            )}
+                          </>
                         )}
                       </div>
                     </div>
@@ -528,7 +630,7 @@ export default function BooksPage() {
           {/* LIST VIEW */}
           {!loading && view === "list" && visibleBooks.length > 0 && (
             <>
-              <div className="hidden sm:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
+              <div className="hidden md:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-zinc-900 text-left text-xs uppercase tracking-wide text-zinc-500">
@@ -601,16 +703,26 @@ export default function BooksPage() {
                               </button>
                             </div>
                           ) : (
-                            <button
-                              onClick={() => handleAddToCart(book)}
-                              disabled={!isPhysicalBookAvailable(book)}
-                              className={`px-3 py-1.5 text-white text-xs font-semibold rounded-lg transition-colors ${inCart(book.id)
-                                  ? "bg-emerald-600 hover:bg-emerald-700"
-                                  : "bg-blue-600 hover:bg-blue-700"
-                                } disabled:opacity-40 disabled:cursor-not-allowed`}
-                            >
-                              {!isPhysicalBookAvailable(book) ? "Unavailable" : inCart(book.id) ? "Remove" : "Borrow"}
-                            </button>
+                            <div className="inline-flex items-center gap-2">
+                              <button
+                                onClick={() => handleAddToCart(book)}
+                                disabled={!isPhysicalBookAvailable(book)}
+                                className={`px-3 py-1.5 text-white text-xs font-semibold rounded-lg transition-colors ${inCart(book.id)
+                                    ? "bg-emerald-600 hover:bg-emerald-700"
+                                    : "bg-blue-600 hover:bg-blue-700"
+                                  } disabled:opacity-40 disabled:cursor-not-allowed`}
+                              >
+                                {!isPhysicalBookAvailable(book) ? "Unavailable" : inCart(book.id) ? "Remove" : "Borrow"}
+                              </button>
+                              {!isPhysicalBookAvailable(book) && (
+                                <button
+                                  onClick={() => handleReserveBook(book)}
+                                  className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-500/15 text-amber-300 hover:bg-amber-500/20"
+                                >
+                                  Reserve
+                                </button>
+                              )}
+                            </div>
                           )}
                         </td>
                       </tr>
@@ -635,14 +747,14 @@ export default function BooksPage() {
 
           {/* Pagination */}
           {!loading && visibleBooks.length > 0 && (
-            <div className="flex items-center justify-between mt-6">
-              <p className="text-sm text-zinc-500">
+            <div className="mt-6 flex flex-col items-center justify-between gap-3 sm:flex-row">
+              <p className="text-center text-sm text-zinc-500 sm:text-left">
                 Showing{" "}
                 <span className="text-zinc-300">
                   {(currentPage - 1) * PAGE_SIZE + 1}–
-                  {Math.min(currentPage * PAGE_SIZE, visibleBooks.length)}
+                  {Math.min((currentPage - 1) * PAGE_SIZE + paginatedBooks.length, totalBooks)}
                 </span>{" "}
-                of <span className="text-zinc-300">{visibleBooks.length}</span> books
+                of <span className="text-zinc-300">{totalBooks}</span> books
               </p>
               <div className="flex items-center gap-1">
                 <button

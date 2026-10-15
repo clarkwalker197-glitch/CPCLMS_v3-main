@@ -14,8 +14,11 @@ const router = Router();
 router.use(authenticate);
 
 // ── CRUD ─────────────────────────────────────────────────
-router.post('/', validate(reserveBookSchema), transactionController.reserveBook);
+router.post('/', authorize('STUDENT', 'FACULTY'), validate(reserveBookSchema), transactionController.reserveBook);
 router.get('/', transactionController.listReservations);
+router.put('/:id/approve', authorize('LIBRARIAN'), transactionController.approveReservation);
+router.put('/:id/reject', authorize('LIBRARIAN'), transactionController.rejectReservation);
+router.put('/:id/pickup', transactionController.pickupReservation);
 router.put('/:id/cancel', transactionController.cancelReservation);
 
 export default router;

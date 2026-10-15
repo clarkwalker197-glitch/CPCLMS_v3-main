@@ -19,34 +19,44 @@ Cordova Public College Library Management System. The project contains an Expres
 ```powershell
 cd backend
 npm install
-copy .env.example .env
 ```
 
-Edit `backend/.env` with:
+### Persistent Media Storage
+
+Create a **public Vercel Blob** store. Configure `BLOB_READ_WRITE_TOKEN` in the backend environment for production deployments, including Railway. In Railway, create a Vercel Blob read/write token and add the complete token value directly as the `BLOB_READ_WRITE_TOKEN` service variable; do not include quotes, line breaks, or spaces around the value. Redeploy after changing it. Vercel-hosted backends may instead use Vercel OIDC when `VERCEL_OIDC_TOKEN` and `BLOB_STORE_ID` are available. Never expose Blob credentials through frontend or `NEXT_PUBLIC_*` variables.
+
+Production image uploads do not fall back to local disk: missing Blob credentials return a configuration error, and a failed Blob upload returns an actionable error rather than saving an image to an ephemeral filesystem. Local disk storage is used only for development when no Blob credentials are configured. Local uploads are not suitable for production because they may disappear on restart and are not shared across instances.
+
+Profile pictures and physical-book/e-book covers are held in memory only long enough to validate and send them to Blob. Image upload fields are `profilePicture` and `coverImage`; the size limit is 5 MB. The database stores the returned public HTTPS URL. Pasted external image URLs continue to be stored as supplied. The existing `avatar` and `coverImage` database fields are reused; no schema migration is needed. Replacing an image cleans up its old Blob object only when it is no longer referenced. Archiving retains covers for restore; expired archives clean up unreferenced Blob objects after the database row is deleted.
+
+E-book files can be added or replaced by uploading a PDF, EPUB, or MOBI (maximum 50 MB), or by pasting an existing HTTP(S) link. Uploads use the same public Blob store and `BLOB_READ_WRITE_TOKEN`; the e-book record stores the resulting file URL. Upload data is validated in memory, and the Blob object is removed on a failed save or after an old file is no longer referenced. Local disk storage is used only for development when Blob credentials are absent; production requires Blob credentials. Existing external URLs and legacy `/uploads/ebooks/...` files are preserved unless replaced.
+
+### Web Push Notifications
+
+Web Push is an additional delivery channel for in-app notifications. Generate a VAPID
+key pair from the `backend/` directory:
+
+```powershell
+npx web-push generate-vapid-keys
+```
+
+Set the generated values in the backend environment only:
 
 ```env
-NODE_ENV=development
-PORT=4000
-DATABASE_URL=postgresql://...
-JWT_SECRET=at-least-16-characters
-JWT_EXPIRES_IN=15m
-JWT_REFRESH_SECRET=another-secret-at-least-16
-JWT_REFRESH_EXPIRES_IN=7d
-FRONTEND_URL=http://localhost:3000
-COOKIE_SECRET=change-this-secret
-RATE_LIMIT_ENABLED=false
-EMAIL_USER=yourgmail@gmail.com
-EMAIL_PASS=your_16_digit_gmail_app_password
-BLOB_READ_WRITE_TOKEN=your_vercel_blob_read_write_token
+VAPID_PUBLIC_KEY=your_generated_public_key
+VAPID_PRIVATE_KEY=your_generated_private_key
+VAPID_SUBJECT=https://cpc-library.online
 ```
 
-`EMAIL_PASS` must be a Gmail App Password. Do not use a normal Gmail account password. Keep `.env` private.
+Keep `VAPID_PRIVATE_KEY` secret; do not add it to the frontend or a `NEXT_PUBLIC_*`
+variable. Configure the same key pair for every backend instance and keep it stable
+after users subscribe. Apply the `add_web_push_subscriptions` Prisma migration before
+starting the updated backend. On a secure origin (HTTPS, or localhost for development),
+users can opt in per browser from **Profile → Account Settings → System Notifications**.
+The browser permission prompt is shown only after the user turns that setting on.
+System notifications also require **Notification Preferences** to be enabled.
 
-### Persistent Cover Image Storage
-
-Create a **public Vercel Blob** store. For a local backend or a backend hosted outside Vercel, set `BLOB_READ_WRITE_TOKEN` in `backend/.env` and in the backend host's environment settings. If the backend runs on Vercel and the Blob store is connected to that Vercel project, the SDK uses Vercel OIDC automatically; no token should be added to frontend variables. Never expose Blob credentials through `NEXT_PUBLIC_*` variables.
-
-Physical-book and e-book cover uploads are held in memory only long enough to validate and send them to Blob. The database stores the returned public HTTPS URL. Pasted external image URLs continue to be stored as supplied. The existing `coverImage` database field is reused; no schema migration is needed. Replacing a cover cleans up an old Blob object only when no book or e-book still references it. Archiving retains covers for restore; expired archives clean up unreferenced Blob objects after the database row is deleted.
+Archived users, books, and e-books are automatically purged after 15 days. The backend checks on startup and every 24 hours, so the actual purge can occur up to a day after the retention period. Completed borrowing and audit history is kept with its user/book references detached; expired e-book uploads and unreferenced cover images are also cleaned up. Purging waits while an archived user or book has an active loan, reservation, or pending borrow request.
 
 Existing `/uploads/...` cover paths are not rewritten or assigned invented URLs. External URLs continue to work. Any local-upload cover whose file is missing must be re-uploaded by a librarian; the old row remains unchanged until replaced. The `uploads/` static route remains for existing e-book documents and profile images, but book cover uploads no longer write there.
 
@@ -109,34 +119,52 @@ The seed script creates demo users. Use the credentials documented in `backend/p
 - Manual transaction ID fallback for QR approval
 - Gmail SMTP password-reset verification codes
 - In-app notification badge, dropdown, read state, and deep-link navigation
-- Offline-first catalog, personal records, notifications, and queued borrow requests
+- Offline-capable catalog, personal records, notifications, and pending borrow/reservation requests
 - Reports, analytics, activity logs, and profile management
 
 ## Offline-First Behavior
 
-The frontend uses Dexie over IndexedDB as an optional local cache. After a successful
-online session, the app stores the physical/e-book catalog, categories, current user,
-personal borrow requests and transactions, reservations, and recent notifications.
-Cached records render immediately on later visits while the API refreshes them in the
-background. The server remains authoritative whenever it is reachable.
+The frontend uses Dexie over IndexedDB for the cached physical/e-book catalog,
+categories, a minimal profile, dashboard snapshots, and account-scoped personal
+requests, transactions, reservations, and notifications. The service worker caches
+the application shell and static assets only; it does not cache API responses or
+authentication data. Unavailable navigations use `public/offline.html`.
 
-Borrow requests and notification read actions made while offline are stored in an
-ordered queue. The queue is pushed in creation order when the browser fires an
-`online` event or the app starts with a connection. A small status indicator reports
-offline mode or pending actions. Logging out clears the local database for privacy.
+Borrow requests and reservation intents created offline are explicitly shown as
+**Pending synchronization** and do not change cached availability, queue position,
+or transaction status. On reconnect, the centralized queue submits them to Express.
+The backend validates current state and role/priority rules, and idempotency keys
+deduplicate retries. Transient network/server failures use exponential backoff;
+permanent validation/authentication failures and conflicts remain visible as failed
+items and are not silently retried. Faculty reservation priority remains enforced by
+the backend transaction service.
 
-Offline limitations for this first pass:
+Notification read actions may be queued. Borrow approval, reservation pickup/cancel,
+returns, QR transaction confirmation, librarian mutations, and analytics are
+online-only. E-book metadata may be cached; file downloads still need a connection.
+The persistent connection indicator labels offline and cached state. Logging out
+clears private IndexedDB records, queued mutations, and legacy API/page caches while
+preserving the public catalog cache.
+
+Deployments must apply the new `20261005000000_add_mutation_idempotency` Prisma
+migration before enabling the updated frontend/backend together. Do not reset or
+recreate the production database.
+
+Offline limitations:
 
 - A user must have logged in successfully at least once on that device.
-- QR approval, librarian mutations, new authentication, and e-book file downloads
-	still require a live connection.
+- New authentication, QR confirmation, librarian mutations, returns, and ebook file
+	downloads still require a live connection.
 - IndexedDB can be disabled or cleared by browser policy; the app then falls back to
 	its normal online API behavior.
 
-To test it, run the frontend, log in while online, open the catalog and dashboard,
-then use browser DevTools to switch Network to Offline. Reload those pages and submit
-a borrow request or mark notifications as read. Restore the connection and confirm
-the pending indicator clears and the request appears after synchronization.
+To test it, run the frontend and backend, apply the idempotency migration to a
+non-production test database, then log in while online and open the catalog,
+dashboard, and reservations. Switch browser DevTools to Offline, reload cached
+pages, search the catalog, and create a borrow request and reservation. Confirm both
+show pending synchronization without appearing approved/confirmed. Restore the
+connection and verify that the server response replaces each local intent and that
+repeated queue delivery with the same key does not create duplicates.
 
 ## QR Approval Flow
 

@@ -4,7 +4,9 @@ import "./globals.css";
 import { AuthProvider } from "@/lib/auth-context";
 import { ThemeProvider } from "@/components/theme-provider";
 import { SWSelfHeal } from "@/components/SWSelfHeal";
-import { OfflineIndicator } from "@/components/OfflineIndicator";
+import { PolicyUpdateNotice } from "@/components/PolicyUpdateNotice";
+import { ConfirmDialogProvider } from "@/components/ui/ConfirmModal";
+import SiteFooter from "@/components/SiteFooter";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -16,10 +18,14 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const appName = "Cordova Public College Library System";
+const appDescription =
+  "A modern, library system for Cordova Public College. Manage books, borrow requests, reservations, and more.";
+
 export const metadata: Metadata = {
-  title: "CPC Library | Smart Library Management System",
-  description:
-    "A modern, smart library management system for Colegio de Porta Coeli. Manage books, borrow requests, reservations, and more.",
+  title: appName,
+  applicationName: appName,
+  description: appDescription,
   keywords: [
     "library",
     "management",
@@ -29,7 +35,6 @@ export const metadata: Metadata = {
     "catalog",
   ],
   manifest: "/manifest.json",
-  themeColor: "#059669",
   appleWebApp: {
     capable: true,
     title: "CPC Library",
@@ -43,11 +48,11 @@ export const metadata: Metadata = {
   other: {
     "apple-mobile-web-app-capable": "yes",
     "apple-mobile-web-app-status-bar-style": "default",
-    "apple-mobile-web-app-title": "CPCLMS",
+    "apple-mobile-web-app-title": "CPC Library",
   },
   openGraph: {
-    title: "CPC Library",
-    description: "Smart Library Management System for Colegio de Porta Coeli",
+    title: appName,
+    description: appDescription,
     type: "website",
     locale: "en_PH",
   },
@@ -58,7 +63,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  themeColor: "#059669",
+  themeColor: "#051396",
 };
 
 export default function RootLayout({
@@ -78,14 +83,16 @@ export default function RootLayout({
           defaultTheme="dark"
           disableTransitionOnChange
         >
-          <AuthProvider>
-            <SWSelfHeal />
-            <OfflineIndicator />
-            <main className="flex-1">{children}</main>
-          </AuthProvider>
+          <ConfirmDialogProvider>
+            <AuthProvider>
+              <SWSelfHeal />
+              <PolicyUpdateNotice />
+              <main className="flex-1">{children}</main>
+              <SiteFooter />
+            </AuthProvider>
+          </ConfirmDialogProvider>
         </ThemeProvider>
       </body>
     </html>
   );
 }
-

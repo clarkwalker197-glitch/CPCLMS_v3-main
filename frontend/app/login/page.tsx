@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
@@ -18,6 +18,8 @@ export default function LoginPage() {
   const { login, googleLogin, user, isAuthenticated, loading } = useAuth();
   const router = useRouter();
   const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
+  const googleButtonContainerRef = useRef<HTMLDivElement>(null);
+  const [googleButtonWidth, setGoogleButtonWidth] = useState(0);
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -30,6 +32,18 @@ export default function LoginPage() {
   const sessionExpiredMessage = ['session-expired', 'inactivity'].includes(searchParams.get('reason') || '')
     ? 'Your session expired. Please sign in again.'
     : '';
+
+  useEffect(() => {
+    const container = googleButtonContainerRef.current;
+    if (!container) return;
+
+    const observer = new ResizeObserver(([entry]) => {
+      setGoogleButtonWidth(Math.round(entry.contentRect.width));
+    });
+    observer.observe(container);
+
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!loading && isAuthenticated) {
@@ -264,21 +278,24 @@ export default function LoginPage() {
                     <span className="absolute left-1/2 -top-2.5 -translate-x-1/2 bg-zinc-900 px-3 text-xs text-zinc-500">OR</span>
                   </div>
 
-                  <div className="google-login-button">
-                    <GoogleLogin
-                      onSuccess={async ({ credential }) => {
-                        if (!credential) return setError('Google did not return a valid credential');
-                        setError('');
-                        const result = await googleLogin(credential);
-                        if (result.success) router.push(getPostLoginPath(result.user?.role, returnTo));
-                        else setError(result.error || 'Google login failed');
-                      }}
-                      onError={() => setError('Google login failed. Please try again.')}
-                      theme="filled_black"
-                      size="large"
-                      width="100%"
-                      text="signin_with"
-                    />
+                  <div className="google-login-button" ref={googleButtonContainerRef}>
+                    {googleButtonWidth > 0 && (
+                      <GoogleLogin
+                        onSuccess={async ({ credential }) => {
+                          if (!credential) return setError('Google did not return a valid credential');
+                          setError('');
+                          const result = await googleLogin(credential);
+                          if (result.success) router.push(getPostLoginPath(result.user?.role, returnTo));
+                          else setError(result.error || 'Google login failed');
+                        }}
+                        onError={() => setError('Google login failed. Please try again.')}
+                        theme="filled_black"
+                        size="large"
+                        width={googleButtonWidth}
+                        text="signin_with"
+                        containerProps={{ style: { width: '100%', height: '48px' } }}
+                      />
+                    )}
                   </div>
                 </form>
 

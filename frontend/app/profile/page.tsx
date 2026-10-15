@@ -11,6 +11,8 @@ import HeaderUserActions from "@/components/HeaderUserActions";
 import EditProfileModal from "@/components/EditProfileModal";
 import PushNotificationSettings from "@/components/PushNotificationSettings";
 import { ModalLayer } from "@/components/ModalLayer";
+import PasswordStrengthIndicator from "@/components/PasswordStrengthIndicator";
+import { analyzePassword } from "@/lib/password-strength";
 import {
   Pencil,
   Lock,
@@ -338,7 +340,9 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (newPassword.length < 8) return setError("New password must be at least 8 characters.");
+    if (!analyzePassword(newPassword).meetsRequirements) {
+      return setError("New password must be at least 8 characters and include at least two of letters, numbers, or symbols.");
+    }
     if (newPassword !== confirmPassword) return setError("New passwords do not match.");
     setSaving(true);
     setError("");
@@ -362,7 +366,10 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
         <form onSubmit={submit} className="space-y-4 p-6">
           {error && <div className="flex gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300"><AlertCircle className="h-4 w-4 shrink-0" />{error}</div>}
           <PasswordField label="Current Password" value={currentPassword} onChange={setCurrentPassword} />
-          <PasswordField label="New Password" value={newPassword} onChange={setNewPassword} />
+          <div>
+            <PasswordField label="New Password" value={newPassword} onChange={setNewPassword} />
+            <PasswordStrengthIndicator password={newPassword} />
+          </div>
           <PasswordField label="Confirm New Password" value={confirmPassword} onChange={setConfirmPassword} />
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={onClose} className="rounded-lg px-4 py-2.5 text-sm text-zinc-300 hover:bg-zinc-800">Cancel</button>

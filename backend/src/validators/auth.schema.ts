@@ -142,7 +142,11 @@ export const changePasswordSchema = z.object({
     newPassword: z
       .string()
       .min(8, 'New password must be at least 8 characters')
-      .max(128),
+      .max(128)
+      .refine(
+        (password) => [/[A-Za-z]/.test(password), /\d/.test(password), /[^A-Za-z0-9\s]/.test(password)].filter(Boolean).length >= 2,
+        'New password must include at least two of letters, numbers, or symbols'
+      ),
   }),
 });
 
@@ -184,7 +188,14 @@ export const forgotPasswordSchema = z.object({
 export const resetPasswordSchema = z.object({
   body: z.object({
     token: z.string().min(1, 'Reset token is required'),
-    newPassword: z.string().min(8, 'Password must be at least 8 characters').max(128),
+    newPassword: z
+      .string()
+      .min(8, 'Password must be at least 8 characters')
+      .max(128)
+      .refine(
+        (password) => [/[A-Za-z]/.test(password), /\d/.test(password), /[^A-Za-z0-9\s]/.test(password)].filter(Boolean).length >= 2,
+        'Password must include at least two of letters, numbers, or symbols'
+      ),
   }),
 });
 

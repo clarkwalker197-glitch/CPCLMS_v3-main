@@ -11,6 +11,7 @@ export function BookBorrowModal(props: {
   onOpenChange: (v: boolean) => void;
   books: any[];
   onSuccess: () => void;
+  onError?: (message: string) => void;
 }) {
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
@@ -33,10 +34,14 @@ export function BookBorrowModal(props: {
         props.onOpenChange(false);
         setNotes("");
       } else {
-        setError(res.error || "Failed to submit request. Please try again.");
+        const message = res.error || "Failed to submit request. Please try again.";
+        setError(message);
+        props.onError?.(message);
       }
     } catch (err: any) {
-      setError(err?.message || "Network error. Please try again.");
+      const message = err?.message || "Network error. Please try again.";
+      setError(message);
+      props.onError?.(message);
     } finally {
       setLoading(false);
     }

@@ -1,14 +1,16 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import api from "@/lib/api";
+import type { ApiResponse } from "@/lib/api";
 import MediaImage from "@/components/MediaImage";
 import { offlineDb } from "@/lib/offline-db";
 import { searchCachedBooks } from "@/lib/offline-api";
 import { useDebounce } from "@/lib/useDebounce";
 import { BookBorrowModal } from "@/components/BookBorrowModal";
+import { BookDetailsPanel, type BookDetailsBook } from "@/components/BookDetailsPanel";
 import { AddBookModal } from "@/components/AddBookModal";
 import { EditBookModal } from "@/components/EditBookModal";
 import MobileBookTypeSelect from "@/components/MobileBookTypeSelect";
@@ -40,6 +42,15 @@ const PAGE_SIZE = 20;
 const MAX_BOOKS_PER_TRANSACTION = 3;
 const MAX_LIMIT_MESSAGE = "You can only borrow a maximum of 3 books per transaction.";
 
+type BookRequestOverview = {
+  books?: Array<{ id: string }>;
+};
+
+type ReservationOverview = {
+  bookId?: string;
+  book?: { id: string };
+};
+
 const isPhysicalBookAvailable = (book: any) => {
   return book?.status === 'AVAILABLE' && (book?.availableCopies ?? 0) > 0;
 };
@@ -66,6 +77,13 @@ export default function BooksPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedBook, setSelectedBook] = useState<any | null>(null);
+  const [detailsBook, setDetailsBook] = useState<BookDetailsBook | null>(null);
+  const [requestedBookIds, setRequestedBookIds] = useState<Set<string>>(new Set());
+  const [reservedBookIds, setReservedBookIds] = useState<Set<string>>(new Set());
+  const [actionsLoadedForUserId, setActionsLoadedForUserId] = useState<string | null>(null);
+  const [reservationLoading, setReservationLoading] = useState(false);
+  const [borrowRequestError, setBorrowRequestError] = useState<{ bookIds: Set<string>; message: string } | null>(null);
+  const [detailsError, setDetailsError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
   const [togglingStatusId, setTogglingStatusId] = useState<string | null>(null);
   const [showingCachedCatalog, setShowingCachedCatalog] = useState(false);
@@ -77,6 +95,7 @@ export default function BooksPage() {
   // Debounced search/filter values (300ms) to avoid per-keystroke API spam
   const debouncedSearch = useDebounce(search, 300);
   const requestSequence = useRef(0);
+  const reservationRequestInFlight = useRef(false);
 
   useEffect(() => {
     const media = window.matchMedia("(min-width: 769px)");
@@ -178,6 +197,61 @@ export default function BooksPage() {
   }, [loadData]);
 
   useEffect(() => {
+    if (!user || user.role === "LIBRARIAN" || !navigator.onLine) {
+      return;
+    }
+
+    let active = true;
+    const getAllPages = async <T,>(
+      fetchPage: (page: number) => Promise<ApiResponse<T[]>>
+    ): Promise<T[]> => {
+      const firstResponse = await fetchPage(1);
+      if (!firstResponse.success) throw new Error(firstResponse.error || "Could not load existing requests.");
+      const responses = [firstResponse];
+      const totalPages = firstResponse.meta?.totalPages || 1;
+      if (totalPages > 1) {
+        responses.push(...await Promise.all(
+          Array.from({ length: totalPages - 1 }, (_, index) => fetchPage(index + 2))
+        ));
+      }
+      const failedResponse = responses.find((response) => !response.success);
+      if (failedResponse) throw new Error(failedResponse.error || "Could not load existing requests.");
+      return responses.flatMap((response) => response.data || []);
+    };
+
+    void Promise.all([
+      getAllPages<BookRequestOverview>((page) => api.getBorrowRequests({ status: "PENDING", page: String(page), limit: "100" })),
+      getAllPages<BookRequestOverview>((page) => api.getBorrowRequests({ status: "APPROVED", page: String(page), limit: "100" })),
+      getAllPages<ReservationOverview>((page) => api.getReservations({ status: "ACTIVE", page: String(page), limit: "100" })),
+      getAllPages<ReservationOverview>((page) => api.getReservations({ status: "APPROVED", page: String(page), limit: "100" })),
+    ])
+      .then(([pendingRequests, approvedRequests, activeReservations, approvedReservations]) => {
+        if (!active) return;
+        setActionsLoadedForUserId(user.id);
+        setRequestedBookIds(new Set([...pendingRequests, ...approvedRequests]
+          .flatMap((request) => request.books?.map((book) => book.id) || [])));
+        setReservedBookIds(new Set([...activeReservations, ...approvedReservations]
+          .map((reservation) => reservation.bookId || reservation.book?.id)
+          .filter((id): id is string => typeof id === "string")));
+        setDetailsError("");
+      })
+      .catch((caught: unknown) => {
+        if (active) {
+          setActionsLoadedForUserId(user.id);
+          setRequestedBookIds(new Set());
+          setReservedBookIds(new Set());
+          setDetailsError(caught instanceof Error
+            ? caught.message
+            : "Could not check your existing requests and reservations.");
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [user]);
+
+  useEffect(() => {
     if (!navigator.onLine) return;
     api.getCategories().then(async (response) => {
       if (!response.success || !response.data) return;
@@ -193,49 +267,73 @@ export default function BooksPage() {
 
   const inCart = (id: string) => cart.some((b) => b.id === id);
 
-  const handleAddToCart = (book: any) => {
+  const openBookDetails = (book: BookDetailsBook) => {
+    setDetailsError(borrowRequestError?.bookIds.has(book.id) ? borrowRequestError.message : "");
+    setDetailsBook(book);
+  };
+
+  const handleDetailsBorrow = () => {
+    if (!detailsBook) return;
+    setBorrowRequestError(null);
     if (!user) {
       router.push("/login");
       return;
     }
-    if (!isPhysicalBookAvailable(book)) {
-      setError('This book is currently unavailable.');
+    if (!isPhysicalBookAvailable(detailsBook)) {
+      setDetailsError("This book is currently unavailable.");
       return;
     }
-    if (inCart(book.id)) {
-      setCart((prev) => prev.filter((b) => b.id !== book.id));
+    if (inCart(detailsBook.id)) {
+      setCart((previous) => previous.filter((book) => book.id !== detailsBook.id));
+      setDetailsError("");
+      return;
+    }
+    if (requestedBookIds.has(detailsBook.id)) {
+      setDetailsError("You already have a pending or approved request for this book.");
       return;
     }
     if (cart.length >= MAX_BOOKS_PER_TRANSACTION) {
-      setError(MAX_LIMIT_MESSAGE);
+      setDetailsError(MAX_LIMIT_MESSAGE);
       return;
     }
-    setError("");
-    setCart((prev) => [...prev, book]);
+    setDetailsError("");
+    setCart((previous) => [...previous, detailsBook]);
   };
 
-  const handleReserveBook = async (book: any) => {
+  const handleReserveBook = async (book: BookDetailsBook) => {
     if (!user) {
       router.push('/login');
       return;
     }
     if (user.role === 'LIBRARIAN') {
-      setError('Librarians do not reserve books.');
       return;
     }
+    if (reservationRequestInFlight.current) return;
+    setBorrowRequestError(null);
+    if (reservedBookIds.has(book.id)) return;
+    if (isPhysicalBookAvailable(book)) return;
 
     try {
-      setError('');
+      reservationRequestInFlight.current = true;
+      setDetailsError('');
+      setReservationLoading(true);
       const res = await api.reserveBook(book.id);
       if (res.success) {
+        setActionsLoadedForUserId(user.id);
+        setReservedBookIds((previous) => new Set(previous).add(book.id));
         setSuccessMsg(`Reservation placed for "${book.title}".`);
         loadData();
         setTimeout(() => setSuccessMsg(''), 4000);
         return;
       }
-      setError(res.error || 'Unable to reserve this book.');
-    } catch {
-      setError('Unable to reserve this book right now.');
+      setDetailsError(res.error || 'Unable to reserve this book.');
+    } catch (caught) {
+      setDetailsError(caught instanceof Error
+        ? caught.message
+        : 'Unable to reserve this book right now.');
+    } finally {
+      reservationRequestInFlight.current = false;
+      setReservationLoading(false);
     }
   };
 
@@ -258,6 +356,9 @@ export default function BooksPage() {
 
   const handleBorrowSuccess = () => {
     setSuccessMsg("Request sent! Waiting for librarian approval.");
+    setBorrowRequestError(null);
+    if (user) setActionsLoadedForUserId(user.id);
+    setRequestedBookIds((previous) => new Set([...previous, ...cart.map((book) => book.id)]));
     setCart([]);
     loadData();
     setTimeout(() => setSuccessMsg(""), 4000);
@@ -311,6 +412,14 @@ export default function BooksPage() {
     setTimeout(() => setSuccessMsg(""), 4000);
   };
 
+  const handleBorrowRequestError = (message: string) => {
+    setDetailsError(message);
+    setBorrowRequestError({
+      bookIds: new Set(cart.map((book) => book.id)),
+      message,
+    });
+  };
+
   const totalPages = Math.max(1, Math.ceil(totalBooks / PAGE_SIZE));
   const paginatedBooks = showingCachedCatalog
     ? visibleBooks.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
@@ -328,6 +437,12 @@ export default function BooksPage() {
       <BookOpen className="w-8 h-8 text-blue-300/70" />
     </div>
   );
+
+  const openDetailsFromCard = (event: ReactKeyboardEvent<HTMLElement>, book: any) => {
+    if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) return;
+    event.preventDefault();
+    openBookDetails(book);
+  };
 
   const hasActiveFilters = Boolean(search.trim() || mainCategoryFilter || categoryFilter || classificationFilter);
   const clearFilters = () => {
@@ -537,7 +652,15 @@ export default function BooksPage() {
             <>
               <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {paginatedBooks.map((book: any) => (
-                  <div key={book.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden hover:border-zinc-700 transition-colors">
+                  <div
+                    key={book.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openBookDetails(book)}
+                    onKeyDown={(event) => openDetailsFromCard(event, book)}
+                    aria-label={`View details for ${book.title}`}
+                    className="cursor-pointer rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden hover:border-zinc-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
                     {/* Cover */}
                     <div className="aspect-[3/4] bg-zinc-800 relative">
                       <MediaImage src={book.coverImage} alt={book.title} className="w-full h-full object-cover" fallback={fallbackCover} />
@@ -574,14 +697,14 @@ export default function BooksPage() {
                         {isLibrarian ? (
                           <>
                             <button
-                              onClick={() => handleEdit(book)}
+                              onClick={(event) => { event.stopPropagation(); handleEdit(book); }}
                               className="flex-1 min-w-0 whitespace-nowrap inline-flex items-center justify-center gap-1 rounded-lg bg-zinc-800 px-2 py-2 text-[10px] font-medium text-zinc-200 transition-colors hover:bg-zinc-700 sm:text-xs"
                             >
                               <Pencil className="h-4 w-4 shrink-0" />
                               <span>Edit</span>
                             </button>
                             <button
-                              onClick={() => handleToggleAvailability(book)}
+                              onClick={(event) => { event.stopPropagation(); void handleToggleAvailability(book); }}
                               disabled={togglingStatusId !== null}
                               aria-label={book.status === 'AVAILABLE' ? 'Mark not available' : 'Mark available'}
                               className={`flex-1 min-w-0 whitespace-nowrap inline-flex items-center justify-center gap-1 rounded-lg px-2 py-2 text-[10px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 sm:text-xs ${book.status === 'AVAILABLE'
@@ -594,30 +717,13 @@ export default function BooksPage() {
                             </button>
                           </>
                         ) : (
-                          <>
-                            <button
-                              onClick={() => handleAddToCart(book)}
-                              disabled={!isPhysicalBookAvailable(book)}
-                              className={`flex-1 px-1.5 py-2 text-[11px] font-semibold text-white rounded-lg transition-colors sm:px-3 sm:text-sm ${inCart(book.id)
-                                  ? "bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-600/20"
-                                  : "bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-600/20"
-                                } disabled:opacity-40 disabled:cursor-not-allowed`}
-                            >
-                              {!isPhysicalBookAvailable(book)
-                                ? "Unavailable"
-                                : inCart(book.id)
-                                  ? "Remove"
-                                  : "Borrow"}
-                            </button>
-                            {!isPhysicalBookAvailable(book) && (
-                              <button
-                                onClick={() => handleReserveBook(book)}
-                                className="flex-1 rounded-lg bg-amber-500/15 px-1.5 py-2 text-[11px] font-semibold text-amber-300 transition-colors hover:bg-amber-500/20 sm:px-3 sm:text-sm"
-                              >
-                                Reserve
-                              </button>
-                            )}
-                          </>
+                          <button
+                            type="button"
+                            onClick={(event) => { event.stopPropagation(); openBookDetails(book); }}
+                            className="flex-1 rounded-lg bg-zinc-800 px-3 py-2 text-xs font-semibold text-zinc-200 transition-colors hover:bg-zinc-700"
+                          >
+                            View details
+                          </button>
                         )}
                       </div>
                     </div>
@@ -643,7 +749,13 @@ export default function BooksPage() {
                   </thead>
                   <tbody>
                     {paginatedBooks.map((book: any) => (
-                      <tr key={book.id} className="border-t border-zinc-800/60 hover:bg-zinc-800/40 transition-colors">
+                      <tr
+                        key={book.id}
+                        tabIndex={0}
+                        onClick={() => openBookDetails(book)}
+                        onKeyDown={(event) => openDetailsFromCard(event, book)}
+                        className="cursor-pointer border-t border-zinc-800/60 hover:bg-zinc-800/40 transition-colors focus:outline-none focus:bg-zinc-800/40"
+                      >
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
                             <div className="w-11 h-14 rounded-lg overflow-hidden bg-zinc-800 shrink-0">
@@ -684,14 +796,14 @@ export default function BooksPage() {
                           {isLibrarian ? (
                             <div className="inline-flex items-center gap-1">
                               <button
-                                onClick={() => handleEdit(book)}
+                                onClick={(event) => { event.stopPropagation(); handleEdit(book); }}
                                 className="p-2 rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-white transition-colors"
                                 aria-label="Edit"
                               >
                                 <Pencil className="w-4 h-4" />
                               </button>
                               <button
-                                onClick={() => handleToggleAvailability(book)}
+                                onClick={(event) => { event.stopPropagation(); void handleToggleAvailability(book); }}
                                 disabled={togglingStatusId !== null}
                                 className={`p-2 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${book.status === 'AVAILABLE'
                                     ? 'text-zinc-400 hover:bg-orange-500/10 hover:text-orange-400'
@@ -703,26 +815,13 @@ export default function BooksPage() {
                               </button>
                             </div>
                           ) : (
-                            <div className="inline-flex items-center gap-2">
-                              <button
-                                onClick={() => handleAddToCart(book)}
-                                disabled={!isPhysicalBookAvailable(book)}
-                                className={`px-3 py-1.5 text-white text-xs font-semibold rounded-lg transition-colors ${inCart(book.id)
-                                    ? "bg-emerald-600 hover:bg-emerald-700"
-                                    : "bg-blue-600 hover:bg-blue-700"
-                                  } disabled:opacity-40 disabled:cursor-not-allowed`}
-                              >
-                                {!isPhysicalBookAvailable(book) ? "Unavailable" : inCart(book.id) ? "Remove" : "Borrow"}
-                              </button>
-                              {!isPhysicalBookAvailable(book) && (
-                                <button
-                                  onClick={() => handleReserveBook(book)}
-                                  className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-500/15 text-amber-300 hover:bg-amber-500/20"
-                                >
-                                  Reserve
-                                </button>
-                              )}
-                            </div>
+                            <button
+                              type="button"
+                              onClick={(event) => { event.stopPropagation(); openBookDetails(book); }}
+                              className="rounded-lg bg-zinc-800 px-3 py-1.5 text-xs font-semibold text-zinc-200 hover:bg-zinc-700"
+                            >
+                              View details
+                            </button>
                           )}
                         </td>
                       </tr>
@@ -732,13 +831,21 @@ export default function BooksPage() {
               </div>
               <ResponsiveTable mobile={
                 paginatedBooks.map((book: any) => (
-                  <article key={book.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-lg shadow-black/10">
+                  <article
+                    key={book.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openBookDetails(book)}
+                    onKeyDown={(event) => openDetailsFromCard(event, book)}
+                    aria-label={`View details for ${book.title}`}
+                    className="cursor-pointer rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-lg shadow-black/10 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
                     <div className="flex items-start gap-3 border-b border-zinc-800/80 pb-3">
                       <div className="h-14 w-11 shrink-0 overflow-hidden rounded-lg bg-zinc-800"><MediaImage src={book.coverImage} alt={book.title} className="h-full w-full object-cover" fallback={<ImageIcon className="m-3 h-5 w-5 text-zinc-600" />} /></div>
                       <div className="min-w-0"><p className="font-semibold text-zinc-100 break-words">{book.title}</p><p className="mt-1 text-sm text-zinc-500 break-words">{book.author}</p></div>
                     </div>
                     <div className="grid grid-cols-2 gap-3 py-4 text-sm"><div><p className="text-xs text-zinc-500">Type</p><span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${typeBadge(book)}`}>{typeLabel(book)}</span></div><div><p className="text-xs text-zinc-500">Genre</p><p className="mt-1 text-zinc-300">{book.category?.name || "General"}</p></div><div><p className="text-xs text-zinc-500">Year</p><p className="mt-1 text-zinc-300">{book.publishYear || "—"}</p></div><div><p className="text-xs text-zinc-500">{book.bookType === "ebook" ? "Access" : "Copies"}</p><p className="mt-1 text-zinc-300">{book.bookType === "ebook" ? "Digital reader" : `${book.availableCopies ?? 0}/${book.copies ?? 0} available`}</p></div></div>
-                    <div className="flex items-center justify-between gap-3 border-t border-zinc-800/80 pt-3"><span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${isPhysicalBookAvailable(book) ? "bg-emerald-500/15 text-emerald-400 ring-emerald-500/30" : "bg-red-500/15 text-red-400 ring-red-500/30"}`}>{isPhysicalBookAvailable(book) ? "Available" : "Unavailable"}</span>{isLibrarian ? <div className="flex gap-2"><button onClick={() => handleEdit(book)} className="rounded-lg bg-zinc-800 px-3 py-2 text-xs text-zinc-200">Edit</button><button onClick={() => handleToggleAvailability(book)} className="rounded-lg bg-orange-500/10 px-3 py-2 text-xs text-orange-400">Toggle</button></div> : <button onClick={() => handleAddToCart(book)} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white" disabled={!isPhysicalBookAvailable(book)}>{inCart(book.id) ? "Remove" : "Add to Cart"}</button>}</div>
+                    <div className="flex items-center justify-between gap-3 border-t border-zinc-800/80 pt-3"><span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${isPhysicalBookAvailable(book) ? "bg-emerald-500/15 text-emerald-400 ring-emerald-500/30" : "bg-red-500/15 text-red-400 ring-red-500/30"}`}>{isPhysicalBookAvailable(book) ? "Available" : "Unavailable"}</span>{isLibrarian ? <div className="flex gap-2"><button onClick={(event) => { event.stopPropagation(); handleEdit(book); }} className="rounded-lg bg-zinc-800 px-3 py-2 text-xs text-zinc-200">Edit</button><button onClick={(event) => { event.stopPropagation(); void handleToggleAvailability(book); }} className="rounded-lg bg-orange-500/10 px-3 py-2 text-xs text-orange-400">Toggle</button></div> : <button type="button" onClick={(event) => { event.stopPropagation(); openBookDetails(book); }} className="rounded-lg bg-zinc-800 px-3 py-2 text-xs font-semibold text-zinc-200">View details</button>}</div>
                   </article>
                 ))
               } />
@@ -848,6 +955,30 @@ export default function BooksPage() {
               onOpenChange={setShowBorrowModal}
               books={cart}
               onSuccess={handleBorrowSuccess}
+              onError={handleBorrowRequestError}
+            />
+          )}
+
+          {detailsBook && (
+            <BookDetailsPanel
+              book={detailsBook}
+              isAvailable={isPhysicalBookAvailable(detailsBook)}
+              isLibrarian={isLibrarian}
+              inCart={inCart(detailsBook.id)}
+              alreadyRequested={actionsLoadedForUserId === user?.id && requestedBookIds.has(detailsBook.id)}
+              alreadyReserved={actionsLoadedForUserId === user?.id && reservedBookIds.has(detailsBook.id)}
+              cartLimitReached={cart.length >= MAX_BOOKS_PER_TRANSACTION}
+              loadingExistingActions={Boolean(
+                user &&
+                user.role !== "LIBRARIAN" &&
+                loading &&
+                actionsLoadedForUserId !== user.id
+              )}
+              loadingReservation={reservationLoading}
+              error={detailsError}
+              onClose={() => setDetailsBook(null)}
+              onBorrow={handleDetailsBorrow}
+              onReserve={() => { void handleReserveBook(detailsBook); }}
             />
           )}
 

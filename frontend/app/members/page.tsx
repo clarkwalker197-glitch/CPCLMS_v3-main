@@ -399,7 +399,8 @@ const [usersRes, statsRes] = await Promise.all([
               </div>
             )}
 
-            <form onSubmit={handleAddMember} className="space-y-4">
+            <form onSubmit={handleAddMember} className="flex min-h-0 flex-1 flex-col">
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pr-1">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-zinc-300 mb-1.5">First Name *</label>
@@ -568,8 +569,9 @@ const [usersRes, statsRes] = await Promise.all([
                   />
                 </div>
               </div>
+              </div>
 
-              <div className="flex justify-end gap-3 pt-2">
+              <div className="flex shrink-0 justify-end gap-3 pt-4">
                 <button
                   type="button"
                   onClick={() => {

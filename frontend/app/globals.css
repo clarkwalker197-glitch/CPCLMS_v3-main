@@ -669,20 +669,6 @@ html:not(.light) .auth-brand-panel {
   display: none;
 }
 
-.google-login-button,
-.google-login-button > div,
-.google-login-button iframe {
-  width: 100% !important;
-  max-width: 100% !important;
-  height: 48px !important;
-}
-
-.google-login-button {
-  overflow: hidden;
-  border-radius: 0.75rem;
-  background: #18181b;
-}
-
 @media (max-width: 768px) {
   .auth-brand-panel {
     display: none !important;
@@ -695,6 +681,20 @@ html:not(.light) .auth-brand-panel {
 
   .auth-form > :not([hidden]) ~ :not([hidden]) {
     margin-block-end: 0.875rem !important;
+  }
+
+  .google-login-button,
+  .google-login-button > div,
+  .google-login-button iframe {
+    width: 100% !important;
+    max-width: 100%;
+  }
+
+  .google-login-button {
+    overflow: hidden;
+    border: 1px solid #3f3f46;
+    border-radius: 0.75rem;
+    background: #18181b;
   }
 
   .mobile-qr-overlay {

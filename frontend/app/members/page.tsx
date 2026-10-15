@@ -63,6 +63,7 @@ export default function MembersPage() {
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [roleFilter, setRoleFilter] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [sort, setSort] = useState("name");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
@@ -90,6 +91,7 @@ export default function MembersPage() {
       };
       if (debouncedSearch) params.search = debouncedSearch;
       if (debouncedStatus) params.isActive = debouncedStatus === "active" ? "true" : "false";
+      if (roleFilter) params.role = roleFilter;
       params.sort = sort;
       params.order = sortOrder;
 
@@ -117,7 +119,7 @@ const [usersRes, statsRes] = await Promise.all([
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, debouncedStatus, currentPage, sort, sortOrder]);
+  }, [debouncedSearch, debouncedStatus, roleFilter, currentPage, sort, sortOrder]);
 
   useEffect(() => {
     if (user && user.role !== "LIBRARIAN") {
@@ -136,7 +138,7 @@ const [usersRes, statsRes] = await Promise.all([
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearch, debouncedStatus]);
+  }, [debouncedSearch, debouncedStatus, roleFilter]);
 
   const handleDelete = (member: any) => {
     if (deletingId) return;
@@ -355,6 +357,17 @@ const [usersRes, statsRes] = await Promise.all([
                 <option value="active" className="bg-zinc-900 text-white">Active</option>
                 <option value="inactive" className="bg-zinc-900 text-white">Inactive</option>
               </select>
+              <select
+                value={roleFilter}
+                onChange={(e) => setRoleFilter(e.target.value)}
+                aria-label="Filter members by role"
+                className="px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition appearance-none"
+              >
+                <option value="" className="bg-zinc-900 text-white">All Roles</option>
+                <option value="STUDENT" className="bg-zinc-900 text-white">Student</option>
+                <option value="FACULTY" className="bg-zinc-900 text-white">Faculty</option>
+                <option value="LIBRARIAN" className="bg-zinc-900 text-white">Librarian</option>
+              </select>
             </div>
           </div>
 
@@ -373,7 +386,7 @@ const [usersRes, statsRes] = await Promise.all([
               <Users className="w-12 h-12 text-zinc-600 mb-4" />
               <p className="text-zinc-300 font-medium">No members found</p>
               <p className="text-sm text-zinc-500 mt-1">
-                {search || statusFilter ? "Try adjusting your search or filters" : "Add a member to get started"}
+                {search || statusFilter || roleFilter ? "Try adjusting your search or filters" : "Add a member to get started"}
               </p>
             </div>
           )}

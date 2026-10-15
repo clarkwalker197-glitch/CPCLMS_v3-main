@@ -56,11 +56,21 @@ export const listBorrowRequests = asyncHandler(
 
 export const cancelBorrowRequest = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
-    await transactionService.cancelBorrowRequest(req.params.id, req.user!.userId, {
+    const result = await transactionService.cancelBorrowRequests([req.params.id], req.user!.userId, {
       ipAddress: req.ip,
       userAgent: req.get('user-agent'),
     });
-    sendSuccess(res, null, 'Borrow request cancelled');
+    sendSuccess(res, result, 'Borrow request cancelled');
+  }
+);
+
+export const cancelSelectedBorrowRequests = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const result = await transactionService.cancelBorrowRequests(req.body.ids, req.user!.userId, {
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+    });
+    sendSuccess(res, result, 'Selected borrow requests cancelled');
   }
 );
 
@@ -240,8 +250,18 @@ export const reserveBook = asyncHandler(
 
 export const cancelReservation = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
-    await transactionService.cancelReservation(req.params.id, req.user!.userId, { ipAddress: req.ip, userAgent: req.get('user-agent') });
-    sendSuccess(res, null, 'Reservation cancelled');
+    const result = await transactionService.cancelReservations([req.params.id], req.user!.userId, { ipAddress: req.ip, userAgent: req.get('user-agent') });
+    sendSuccess(res, result, 'Reservation cancelled');
+  }
+);
+
+export const cancelSelectedReservations = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const result = await transactionService.cancelReservations(req.body.ids, req.user!.userId, {
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+    });
+    sendSuccess(res, result, 'Selected reservations cancelled');
   }
 );
 

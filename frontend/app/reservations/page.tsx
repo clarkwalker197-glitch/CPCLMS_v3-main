@@ -13,6 +13,9 @@ export default function ReservationsPage() {
   const [reservations, setReservations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
+  const [selectedReservationIds, setSelectedReservationIds] = useState<Record<string, string>>({});
+  const [cancellingReservations, setCancellingReservations] = useState(false);
   const [showingCached, setShowingCached] = useState(false);
   const [quickActionReservation, setQuickActionReservation] = useState<any | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -20,21 +23,42 @@ export default function ReservationsPage() {
   const isLibrarian = user?.role === "LIBRARIAN";
 
   const loadReservations = async () => {
+    let cached: any[] = [];
     try {
       setLoading(true);
-      const cached = user
+      cached = user
         ? (await offlineDb.reservations.where("userId").equals(user.id).toArray())
           .filter((reservation: any) => !reservation._pending && !String(reservation.id).startsWith("local-reservation-"))
         : [];
-      if (cached.length) setReservations(cached);
       if (!navigator.onLine) {
+        if (cached.length) setReservations(cached);
         setShowingCached(true);
         setLoading(false);
         return;
       }
-      const response = await api.getReservations(isLibrarian ? { status: "ACTIVE" } : undefined);
+      const params = {
+        page: "1",
+        limit: "50",
+        ...(isLibrarian ? { status: "ACTIVE" } : {}),
+      };
+      const response = await api.getReservations(params);
       if (response.success) {
-        const serverRecords = (response.data || []).map((reservation: any) => ({
+        const totalPages = response.meta?.totalPages || 1;
+        const additionalPages = totalPages > 1
+          ? await Promise.all(Array.from({ length: totalPages - 1 }, (_, index) =>
+            api.getReservations({ ...params, page: String(index + 2) })
+          ))
+          : [];
+        const failedPage = additionalPages.find((page) => !page.success);
+        if (failedPage) {
+          setError(failedPage.error || "Unable to load all reservations. Refresh and try again.");
+          return;
+        }
+        const allReservations = [
+          ...(response.data || []),
+          ...additionalPages.flatMap((page) => page.data || []),
+        ];
+        const serverRecords = allReservations.map((reservation: any) => ({
           ...reservation,
           userId: reservation.userId || user?.id,
         }));
@@ -42,12 +66,19 @@ export default function ReservationsPage() {
         setReservations(serverRecords);
         setShowingCached(false);
       } else {
-        if (response.networkError && cached.length) setShowingCached(true);
+        if (response.networkError && cached.length) {
+          setReservations(cached);
+          setShowingCached(true);
+        }
         else setError(response.error || "Unable to load reservations.");
       }
     } catch {
-      if (navigator.onLine) setError("Unable to load reservations.");
-      else setShowingCached(true);
+      if (navigator.onLine) {
+        setError("Unable to load reservations.");
+      } else {
+        if (cached.length) setReservations(cached);
+        setShowingCached(true);
+      }
     } finally {
       setLoading(false);
     }
@@ -59,13 +90,86 @@ export default function ReservationsPage() {
   }, [user, isLibrarian]);
 
   const handleCancel = async (id: string) => {
-    const response = await api.cancelReservation(id);
-    if (response.success) {
-      if (window.matchMedia("(max-width: 768px)").matches && "vibrate" in navigator) navigator.vibrate(25);
-      await loadReservations();
+    const reservation = reservations.find((item) => item.id === id);
+    if (!reservation || !window.confirm(`Cancel the reservation for "${reservation.book?.title || "this book"}"?`)) return;
+    if (!navigator.onLine || showingCached) {
+      setError("Connect to the internet and refresh your reservations before cancelling.");
       return;
     }
-    setError(response.error || "Unable to cancel reservation.");
+    setError("");
+    try {
+      const response = await api.cancelReservation(id);
+      if (!response.success) {
+        const message = response.error || "Unable to cancel reservation.";
+        await loadReservations();
+        setError(message);
+        return;
+      }
+      if (window.matchMedia("(max-width: 768px)").matches && "vibrate" in navigator) navigator.vibrate(25);
+      const cancelled = response.data?.cancelled?.[0];
+      setReservations((current) => current.map((item) => item.id === id ? { ...item, status: "CANCELLED" } : item));
+      setSuccessMsg(`Cancelled reservation: ${cancelled?.title || reservation.book?.title || "Book"}.`);
+      try {
+        await offlineDb.reservations.update(id, { status: "CANCELLED" });
+      } catch {
+        setError("Reservation cancelled, but the offline cache could not be updated. Refresh when online.");
+      }
+      await loadReservations();
+    } catch {
+      await loadReservations();
+      setError("Unable to cancel reservation. Refresh and try again.");
+    }
+  };
+
+  const cancelSelectedReservations = async () => {
+    const selected = Object.entries(selectedReservationIds);
+    if (!selected.length) {
+      setError("Please select at least one item to cancel.");
+      return;
+    }
+    if (selected.length > 50) {
+      setError("You can cancel up to 50 reservations at a time.");
+      return;
+    }
+    if (!navigator.onLine || showingCached) {
+      setError("Connect to the internet and refresh your reservations before cancelling.");
+      return;
+    }
+    const titles = selected.map(([, title]) => title);
+    if (!window.confirm(`Cancel the following reservations?\n\n${titles.join("\n")}`)) return;
+
+    setCancellingReservations(true);
+    setError("");
+    try {
+      const response = await api.cancelSelectedReservations(selected.map(([id]) => id));
+      if (!response.success || !response.data?.cancelled?.length) {
+        const message = response.error || "Unable to cancel the selected reservations. Refresh and try again.";
+        setSelectedReservationIds({});
+        await loadReservations();
+        setError(message);
+        return;
+      }
+      const cancelled = response.data.cancelled;
+      const cancelledIds = new Set(cancelled.map(({ id }) => id));
+      setReservations((current) => current.map((reservation) =>
+        cancelledIds.has(reservation.id) ? { ...reservation, status: "CANCELLED" } : reservation
+      ));
+      setSelectedReservationIds({});
+      setSuccessMsg(`Cancelled reservations: ${cancelled.map(({ title }) => title).join(", ")}.`);
+      if (window.matchMedia("(max-width: 768px)").matches && "vibrate" in navigator) navigator.vibrate(25);
+      try {
+        await Promise.all(Array.from(cancelledIds, (id) => offlineDb.reservations.update(id, { status: "CANCELLED" })));
+      } catch {
+        setError("Reservations cancelled, but the offline cache could not be updated. Refresh when online.");
+      }
+      await loadReservations();
+    } catch {
+      setSelectedReservationIds({});
+      await loadReservations();
+      setError("Unable to cancel the selected reservations. Refresh and try again.");
+    } finally {
+      setCancellingReservations(false);
+    }
   };
 
   const handlePickup = async (id: string) => {
@@ -137,6 +241,28 @@ export default function ReservationsPage() {
               {error}
             </div>
           )}
+          {successMsg && (
+            <div role="status" className="mb-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-300">
+              {successMsg}
+            </div>
+          )}
+          {!isLibrarian && (
+            <div className="mb-4 flex flex-col gap-3 rounded-xl border border-zinc-800 bg-zinc-900/70 p-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-zinc-400">
+                {Object.keys(selectedReservationIds).length
+                  ? `${Object.keys(selectedReservationIds).length} reservation${Object.keys(selectedReservationIds).length === 1 ? "" : "s"} selected`
+                  : "Select one or more active or approved reservations to cancel."}
+              </p>
+              <button
+                type="button"
+                onClick={cancelSelectedReservations}
+                disabled={cancellingReservations}
+                className="inline-flex min-h-10 items-center justify-center rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-300 transition-colors hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {cancellingReservations ? "Cancelling..." : "Cancel Selected Reservations"}
+              </button>
+            </div>
+          )}
 
           {loading ? (
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-6 text-zinc-400">
@@ -157,6 +283,7 @@ export default function ReservationsPage() {
                       <th className="px-4 py-3 font-medium">Member</th>
                       <th className="px-4 py-3 font-medium">Queue</th>
                       <th className="px-4 py-3 font-medium">Status</th>
+                      <th className="px-4 py-3 font-medium">Reservation Date</th>
                       <th className="px-4 py-3 font-medium">Expiry</th>
                       <th className="px-4 py-3 font-medium text-right">Actions</th>
                     </tr>
@@ -170,8 +297,28 @@ export default function ReservationsPage() {
                       return (
                         <tr key={reservation.id} className="border-t border-zinc-800 text-zinc-200">
                           <td className="px-4 py-3">
-                            <div className="font-medium text-white">{reservation.book?.title || "Unknown Book"}</div>
-                            <div className="text-xs text-zinc-400">{reservation.book?.accessionNo || "—"}</div>
+                            <div className="flex items-start gap-2">
+                              {!isLibrarian && isOwner && canPickUp && (
+                                <input
+                                  type="checkbox"
+                                  checked={Boolean(selectedReservationIds[reservation.id])}
+                                  disabled={showingCached || cancellingReservations}
+                                  onChange={(event) => setSelectedReservationIds((current) => {
+                                    const next = { ...current };
+                                    if (event.target.checked) next[reservation.id] = reservation.book?.title || "Unknown book";
+                                    else delete next[reservation.id];
+                                    return next;
+                                  })}
+                                  aria-label={`Select ${reservation.book?.title || "book"} reservation`}
+                                  className="mt-1 h-4 w-4 shrink-0 rounded border-zinc-600 bg-zinc-950 accent-blue-600"
+                                />
+                              )}
+                              <div>
+                                <div className="font-medium text-white">{reservation.book?.title || "Unknown Book"}</div>
+                                <div className="text-xs text-zinc-400">{reservation.book?.author || "Author unavailable"}</div>
+                                <div className="text-xs text-zinc-500">{reservation.book?.accessionNo || "—"}</div>
+                              </div>
+                            </div>
                           </td>
                           <td className="px-4 py-3">
                             {reservation.user ? `${reservation.user.firstName} ${reservation.user.lastName}` : "—"}
@@ -196,6 +343,9 @@ export default function ReservationsPage() {
                             </span>
                           </td>
                           <td className="px-4 py-3 text-zinc-400">
+                            {reservation.reservationDate ? new Date(reservation.reservationDate).toLocaleDateString() : "—"}
+                          </td>
+                          <td className="px-4 py-3 text-zinc-400">
                             {reservation.expiryDate ? new Date(reservation.expiryDate).toLocaleDateString() : "—"}
                           </td>
                           <td className="px-4 py-3 text-right">
@@ -203,7 +353,8 @@ export default function ReservationsPage() {
                               {canPickUp && (isLibrarian || isOwner) && (
                                 <button
                                   onClick={() => handleCancel(reservation.id)}
-                                  className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-300 hover:bg-red-500/15"
+                                  disabled={showingCached || cancellingReservations}
+                                  className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-300 hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                   Cancel
                                 </button>
@@ -259,8 +410,28 @@ export default function ReservationsPage() {
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <h2 className="break-words font-semibold text-white">{reservation.book?.title || "Unknown Book"}</h2>
-                        <p className="mt-1 text-xs text-zinc-400">{reservation.book?.accessionNo || "—"}</p>
+                        <div className="flex items-start gap-2">
+                          {!isLibrarian && isOwner && canPickUp && (
+                            <input
+                              type="checkbox"
+                              checked={Boolean(selectedReservationIds[reservation.id])}
+                              disabled={showingCached || cancellingReservations}
+                              onChange={(event) => setSelectedReservationIds((current) => {
+                                const next = { ...current };
+                                if (event.target.checked) next[reservation.id] = reservation.book?.title || "Unknown book";
+                                else delete next[reservation.id];
+                                return next;
+                              })}
+                              aria-label={`Select ${reservation.book?.title || "book"} reservation`}
+                              className="mt-1 h-4 w-4 shrink-0 rounded border-zinc-600 bg-zinc-950 accent-blue-600"
+                            />
+                          )}
+                          <div className="min-w-0">
+                            <h2 className="break-words font-semibold text-white">{reservation.book?.title || "Unknown Book"}</h2>
+                            <p className="mt-1 text-sm text-zinc-400">{reservation.book?.author || "Author unavailable"}</p>
+                            <p className="mt-1 text-xs text-zinc-500">{reservation.book?.accessionNo || "—"}</p>
+                          </div>
+                        </div>
                       </div>
                       <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${statusClass}`}>{reservation.status}</span>
                     </div>
@@ -271,8 +442,9 @@ export default function ReservationsPage() {
                         <p className="text-xs text-zinc-500">{reservation.user?.role || "—"}</p>
                       </div>
                       <div>
-                        <p className="text-xs text-zinc-500">Queue / Expiry</p>
+                        <p className="text-xs text-zinc-500">Reserved / Expiry</p>
                         <p className="mt-1 text-zinc-300">{reservation.status === "APPROVED" ? "Approved" : `#${reservation.queuePosition ?? 1}`}</p>
+                        <p className="mt-1 text-xs text-zinc-400">{reservation.reservationDate ? new Date(reservation.reservationDate).toLocaleDateString() : "—"}</p>
                         <p className="text-xs text-zinc-400">{reservation.expiryDate ? new Date(reservation.expiryDate).toLocaleDateString() : "—"}</p>
                       </div>
                     </div>
@@ -289,7 +461,7 @@ export default function ReservationsPage() {
                           </button>
                         )}
                         {(isLibrarian && isActive || isOwner && ["ACTIVE", "APPROVED"].includes(reservation.status)) && (
-                          <button onClick={() => handleCancel(reservation.id)} className="min-h-11 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-300 hover:bg-red-500/15">
+                          <button onClick={() => handleCancel(reservation.id)} disabled={showingCached || cancellingReservations} className="min-h-11 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-300 hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-50">
                             Cancel
                           </button>
                         )}

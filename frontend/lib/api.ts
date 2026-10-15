@@ -737,8 +737,12 @@ async createBorrowRequest(data: {
     return this.get(`/transactions/requests/${id}`);
   }
 
-  async cancelBorrowRequest(id: string): Promise<ApiResponse<null>> {
-    return this.put(`/transactions/requests/${encodeURIComponent(id)}/cancel`);
+  async cancelBorrowRequest(id: string): Promise<ApiResponse<{ cancelled: Array<{ id: string; title: string }> }>> {
+    return this.put<{ cancelled: Array<{ id: string; title: string }> }>(`/transactions/requests/${encodeURIComponent(id)}/cancel`, { confirmed: true });
+  }
+
+  async cancelSelectedBorrowRequests(ids: string[]): Promise<ApiResponse<{ cancelled: Array<{ id: string; title: string }> }>> {
+    return this.put('/transactions/requests/cancel-selected', { ids, confirmed: true });
   }
 
   async getReservations(params?: Record<string, string>): Promise<ApiResponse<any[]>> {
@@ -753,7 +757,11 @@ async createBorrowRequest(data: {
   }
 
   async cancelReservation(id: string): Promise<ApiResponse<any>> {
-    return this.put(`/reservations/${encodeURIComponent(id)}/cancel`);
+    return this.put(`/reservations/${encodeURIComponent(id)}/cancel`, { confirmed: true });
+  }
+
+  async cancelSelectedReservations(ids: string[]): Promise<ApiResponse<{ cancelled: Array<{ id: string; title: string }> }>> {
+    return this.put('/reservations/cancel-selected', { ids, confirmed: true });
   }
 
   async approveReservation(id: string): Promise<ApiResponse<any>> {

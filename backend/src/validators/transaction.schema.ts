@@ -74,6 +74,20 @@ export const reserveBookSchema = z.object({
   }),
 });
 
+export const cancelSelectedSchema = z.object({
+  body: z.object({
+    ids: z.array(z.string().min(1)).min(1, 'Please select at least one item to cancel.').max(50),
+    confirmed: z.literal(true),
+  }).refine(({ ids }) => new Set(ids).size === ids.length, {
+    message: 'Duplicate cancellation selections are not allowed.',
+    path: ['ids'],
+  }),
+});
+
+export const confirmCancellationSchema = z.object({
+  body: z.object({ confirmed: z.literal(true) }),
+});
+
 /**
  * Pay fine
  */

@@ -104,6 +104,8 @@ export default function RequestsPage() {
   const [reqPage, setReqPage] = useState(1);
   const [reqSort, setReqSort] = useState("status");
   const [reqSortOrder, setReqSortOrder] = useState<"asc" | "desc">("asc");
+  const [selectedRequestIds, setSelectedRequestIds] = useState<Record<string, string>>({});
+  const [cancellingRequests, setCancellingRequests] = useState(false);
 
   const [successMsg, setSuccessMsg] = useState("");
   const [error, setError] = useState("");
@@ -276,11 +278,11 @@ export default function RequestsPage() {
         ? (await offlineDb.borrowRequests.where("userId").equals(user.id).toArray())
           .filter((request: any) => !request._pending && !String(request.id).startsWith("local-borrow-"))
         : [];
-      if (cachedRecords.length) {
-        setRecords(cachedRecords);
-        setReqTotal(cachedRecords.length);
-      }
       if (!navigator.onLine) {
+        if (cachedRecords.length) {
+          setRecords(cachedRecords);
+          setReqTotal(cachedRecords.length);
+        }
         setShowingCachedRequests(true);
         return;
       }
@@ -307,6 +309,8 @@ export default function RequestsPage() {
       } else if (res.rateLimited) {
         setError("You're moving too fast. Please wait a moment and try again.");
       } else if (res.networkError && cachedRecords.length) {
+        setRecords(cachedRecords);
+        setReqTotal(cachedRecords.length);
         setShowingCachedRequests(true);
       } else {
         setError(res.error || "Failed to load borrow requests");
@@ -467,25 +471,82 @@ export default function RequestsPage() {
     }
   };
 
-  const cancelListedRequest = async (request: { id: string; books?: Array<{ title?: string | null }> }) => {
-    const titles = (request.books || []).map((book) => book.title).filter(Boolean);
-    const description = titles.length ? titles.join(", ") : "this borrow request";
-    if (!window.confirm(`Cancel ${description}?`)) return;
+  const cancelSelectedRequests = async () => {
+    const selected = Object.entries(selectedRequestIds);
+    if (!selected.length) {
+      setError("Please select at least one item to cancel.");
+      return;
+    }
+    if (selected.length > 50) {
+      setError("You can cancel up to 50 requests at a time.");
+      return;
+    }
+    if (!navigator.onLine || showingCachedRequests) {
+      setError("Connect to the internet and refresh your requests before cancelling.");
+      return;
+    }
+    const titles = selected.map(([, title]) => title);
+    if (!window.confirm(`Cancel the following requests?\n\n${titles.join("\n")}`)) return;
 
-    setActionLoadingId(request.id);
+    setCancellingRequests(true);
+    setError("");
     try {
-      const response = await api.cancelBorrowRequest(request.id);
-      if (!response.success) {
-        setError(response.error || "Failed to cancel borrow request");
+      const response = await api.cancelSelectedBorrowRequests(selected.map(([id]) => id));
+      if (!response.success || !response.data?.cancelled?.length) {
+        const message = response.error || "Unable to cancel the selected requests. Refresh and try again.";
+        setSelectedRequestIds({});
+        await loadRequests();
+        setError(message);
         return;
       }
-      setSuccessMsg("Borrow request cancelled");
+      const cancelledIds = new Set(response.data.cancelled.map(({ id }) => id));
+      const cancelledTitles = response.data.cancelled.map(({ title }) => title);
+      setRecords((current) => current.map((request) => {
+        const books = (request.books || []).map((book: { requestId?: string; status?: string; [key: string]: unknown }) =>
+          book.requestId && cancelledIds.has(book.requestId) ? { ...book, status: "CANCELLED" } : book
+        );
+        return {
+          ...request,
+          books,
+          status: books[0]?.status || request.status,
+        };
+      }));
+      setSelectedRequestIds({});
+      setSuccessMsg(`Cancelled borrow requests: ${cancelledTitles.join(", ")}.`);
+      if (user) {
+        try {
+          const cachedRecords = await offlineDb.borrowRequests.where("userId").equals(user.id).toArray();
+          await offlineDb.borrowRequests.bulkPut(cachedRecords.map((request) => {
+            const books = Array.isArray(request.books)
+              ? request.books.map((book) => {
+                if (!book || typeof book !== "object" || !("requestId" in book)) return book;
+                const requestId = book.requestId;
+                return typeof requestId === "string" && cancelledIds.has(requestId)
+                  ? { ...book, status: "CANCELLED" }
+                  : book;
+              })
+              : [];
+            const firstBook = books[0];
+            const firstBookStatus = firstBook && typeof firstBook === "object" && "status" in firstBook &&
+              typeof firstBook.status === "string" ? firstBook.status : request.status;
+            return {
+              ...request,
+              books,
+              status: firstBookStatus,
+            };
+          }));
+        } catch {
+          setError("Requests cancelled, but the offline cache could not be updated. Refresh when online.");
+        }
+      }
       await loadRequests();
-      setTimeout(() => setSuccessMsg(""), 4000);
+      setTimeout(() => setSuccessMsg(""), 6000);
     } catch {
-      setError("Failed to cancel borrow request");
+      setSelectedRequestIds({});
+      await loadRequests();
+      setError("Unable to cancel the selected requests. Refresh and try again.");
     } finally {
-      setActionLoadingId(null);
+      setCancellingRequests(false);
     }
   };
 
@@ -864,6 +925,25 @@ export default function RequestsPage() {
               </div>
             </div>
 
+            {!isLibrarian && (
+              <div className="mb-4 flex flex-col gap-3 rounded-xl border border-zinc-800 bg-zinc-900/70 p-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-zinc-400">
+                  {Object.keys(selectedRequestIds).length
+                    ? `${Object.keys(selectedRequestIds).length} request${Object.keys(selectedRequestIds).length === 1 ? "" : "s"} selected`
+                    : "Select one or more pending requests to cancel."}
+                </p>
+                <button
+                  type="button"
+                  onClick={cancelSelectedRequests}
+                  disabled={cancellingRequests}
+                  className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-300 transition-colors hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <XCircle className="h-4 w-4" />
+                  {cancellingRequests ? "Cancelling..." : "Cancel Selected Requests"}
+                </button>
+              </div>
+            )}
+
             {reqLoading && (
               <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
                 {Array.from({ length: 6 }).map((_, i) => (
@@ -903,9 +983,28 @@ export default function RequestsPage() {
                           <td className="px-6 py-4">
                             <div className="space-y-1">
                               {(req.books || []).map((book: any) => (
-                                <div key={book.requestId || book.id}>
-                                  <p className="text-zinc-100 font-medium">{book.title || "Unknown"}</p>
-                                  <p className="text-xs text-zinc-500">{book.accessionNo || ""}</p>
+                                <div key={book.requestId || book.id} className="flex items-start gap-2">
+                                  {!isLibrarian && (book.status || req.status) === "PENDING" && book.requestId && (
+                                    <input
+                                      type="checkbox"
+                                      checked={Boolean(selectedRequestIds[book.requestId])}
+                                      disabled={showingCachedRequests || cancellingRequests}
+                                      onChange={(event) => setSelectedRequestIds((current) => {
+                                        const next = { ...current };
+                                        if (event.target.checked) next[book.requestId] = book.title || "Unknown book";
+                                        else delete next[book.requestId];
+                                        return next;
+                                      })}
+                                      aria-label={`Select ${book.title || "book"} borrow request`}
+                                      className="mt-1 h-4 w-4 shrink-0 rounded border-zinc-600 bg-zinc-950 accent-blue-600"
+                                    />
+                                  )}
+                                  <div>
+                                    <p className="text-zinc-100 font-medium">{book.title || "Unknown"}</p>
+                                    <p className="text-xs text-zinc-400">{book.author || "Author unavailable"}</p>
+                                    <p className="text-xs text-zinc-500">{book.accessionNo || ""}</p>
+                                    <p className="text-xs text-zinc-500">{formatDate(req.requestDate)} · {requestStatusText({ status: book.status || req.status })}</p>
+                                  </div>
                                 </div>
                               ))}
                             </div>
@@ -950,16 +1049,6 @@ export default function RequestsPage() {
                                   </button>
                                 </>
                               )}
-                              {!isLibrarian && req.status === "PENDING" && (
-                                <button
-                                  onClick={() => cancelListedRequest(req)}
-                                  disabled={actionLoadingId === req.id}
-                                  className="inline-flex items-center gap-1 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1.5 text-xs font-medium text-red-300 transition-colors hover:bg-red-500/15 disabled:opacity-50"
-                                >
-                                  <XCircle className="h-3.5 w-3.5" />
-                                  {actionLoadingId === req.id ? "Cancelling..." : "Cancel"}
-                                </button>
-                              )}
                             </div>
                           </td>
                         </tr>
@@ -972,7 +1061,31 @@ export default function RequestsPage() {
                 records.map((req: any) => (
                   <article key={req.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-lg shadow-black/10">
                     <div className="border-b border-zinc-800/80 pb-3">
-                      {(req.books || []).map((book: any) => <div key={book.requestId || book.id} className="mb-2 last:mb-0"><p className="font-semibold text-zinc-100 break-words">{book.title || "Unknown"}</p><p className="mt-1 text-sm text-zinc-500">{book.accessionNo || ""}</p></div>)}
+                      {(req.books || []).map((book: any) => (
+                        <div key={book.requestId || book.id} className="mb-3 flex items-start gap-2 last:mb-0">
+                          {!isLibrarian && (book.status || req.status) === "PENDING" && book.requestId && (
+                            <input
+                              type="checkbox"
+                              checked={Boolean(selectedRequestIds[book.requestId])}
+                              disabled={showingCachedRequests || cancellingRequests}
+                              onChange={(event) => setSelectedRequestIds((current) => {
+                                const next = { ...current };
+                                if (event.target.checked) next[book.requestId] = book.title || "Unknown book";
+                                else delete next[book.requestId];
+                                return next;
+                              })}
+                              aria-label={`Select ${book.title || "book"} borrow request`}
+                              className="mt-1 h-4 w-4 shrink-0 rounded border-zinc-600 bg-zinc-950 accent-blue-600"
+                            />
+                          )}
+                          <div>
+                            <p className="font-semibold break-words text-zinc-100">{book.title || "Unknown"}</p>
+                            <p className="mt-1 text-sm text-zinc-400">{book.author || "Author unavailable"}</p>
+                            <p className="mt-1 text-xs text-zinc-500">{book.accessionNo || ""}</p>
+                            <p className="mt-1 text-xs text-zinc-500">{formatDate(req.requestDate)} · {requestStatusText({ status: book.status || req.status })}</p>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                     <div className="grid grid-cols-2 gap-3 py-4 text-sm"><div><p className="text-xs text-zinc-500">Member</p><p className="mt-1 break-words text-zinc-300">{req.user?.firstName} {req.user?.lastName}</p><p className="text-xs text-zinc-500">{req.user?.libraryId || ""}</p></div><div><p className="text-xs text-zinc-500">Request Date</p><p className="mt-1 text-zinc-300">{formatDate(req.requestDate)}</p></div><div className="col-span-2"><p className="text-xs text-zinc-500">Notes</p><p className="mt-1 whitespace-pre-wrap break-words text-zinc-300">{req.notes || "—"}</p></div></div>
                     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-800/80 pt-3">
@@ -987,15 +1100,6 @@ export default function RequestsPage() {
                             </button>
                             <button onClick={() => openRejectModal(req)} className="rounded-lg bg-red-500/15 px-3 py-2 text-xs font-medium text-red-400">Reject</button>
                           </>
-                        )}
-                        {!isLibrarian && req.status === "PENDING" && (
-                          <button
-                            disabled={actionLoadingId === req.id}
-                            onClick={() => cancelListedRequest(req)}
-                            className="min-h-10 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-300 disabled:opacity-50"
-                          >
-                            {actionLoadingId === req.id ? "Cancelling..." : "Cancel request"}
-                          </button>
                         )}
                       </div>
                     </div>

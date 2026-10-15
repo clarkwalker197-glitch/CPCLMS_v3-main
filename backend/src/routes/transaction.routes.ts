@@ -14,6 +14,8 @@ import {
   payFineSchema,
   approveByQRCodeSchema,
   verifyBorrowRequestSchema,
+  cancelSelectedSchema,
+  confirmCancellationSchema,
 } from '../validators/transaction.schema';
 
 const router = Router();
@@ -25,10 +27,11 @@ router.use(authenticate);
 router.post('/requests/approve-qr', qrApprovalLimiter, validate(approveByQRCodeSchema), transactionController.approveByQRCode);
 router.post('/requests', validate(createBorrowRequestSchema), transactionController.createBorrowRequest);
 router.get('/requests', transactionController.listBorrowRequests);
+router.put('/requests/cancel-selected', authorize('STUDENT', 'FACULTY'), validate(cancelSelectedSchema), transactionController.cancelSelectedBorrowRequests);
 router.post('/requests/verify', qrApprovalLimiter, validate(verifyBorrowRequestSchema), transactionController.verifyBorrowRequest);
 router.get('/requests/transaction/:transactionId', transactionController.getBorrowRequestBatch);
 router.put('/requests/transaction/:batchId/approve', authorize('LIBRARIAN'), transactionController.approveBorrowRequestBatch);
-router.put('/requests/:id/cancel', transactionController.cancelBorrowRequest);
+router.put('/requests/:id/cancel', validate(confirmCancellationSchema), transactionController.cancelBorrowRequest);
 router.get('/requests/:id', transactionController.getBorrowRequest);
 router.put('/requests/:id/approve', authorize('LIBRARIAN'), transactionController.approveRequest);
 router.put('/requests/:id/reject', authorize('LIBRARIAN'), validate(rejectRequestSchema), transactionController.rejectRequest);

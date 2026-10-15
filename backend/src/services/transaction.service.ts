@@ -159,7 +159,15 @@ export class TransactionService {
     return aId.localeCompare(bId);
   }
 
-  private async recalculateReservationQueueForBook(bookId: string, tx: Prisma.TransactionClient = prisma) {
+  private async recalculateReservationQueueForBook(bookId: string, tx: Prisma.TransactionClient) {
+    await tx.reservation.updateMany({
+      where: {
+        bookId,
+        status: { in: ['ACTIVE', 'APPROVED'] },
+        expiryDate: { lte: new Date() },
+      },
+      data: { status: 'EXPIRED' },
+    });
     const activeReservations = await tx.reservation.findMany({
       where: { bookId, status: 'ACTIVE' },
       include: { user: { select: { role: true } } },
@@ -175,6 +183,12 @@ export class TransactionService {
           data: { queuePosition: index + 1 },
         });
       }
+    }
+  }
+
+  private async lockReservationBooks(bookIds: string[], tx: Prisma.TransactionClient) {
+    for (const bookId of Array.from(new Set(bookIds)).sort()) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${bookId})::bigint)`;
     }
   }
 
@@ -420,56 +434,77 @@ export class TransactionService {
     );
   }
 
-  async cancelBorrowRequest(requestId: string, userId: string, auditContext?: ActivityRequestContext) {
-    const cancelledRequests = await prisma.$transaction(async (tx) => {
-      const request = await tx.borrowRequest.findUnique({
-        where: { id: requestId },
-        select: { id: true, userId: true, requestBatchId: true, transactionId: true },
-      });
-      if (!request) throw new NotFoundError('Borrow request');
-      if (request.userId !== userId) throw new BadRequestError('Not your borrow request');
+  async cancelBorrowRequests(requestIds: string[], userId: string, auditContext?: ActivityRequestContext) {
+    const ids = Array.from(new Set(requestIds));
+    if (!ids.length || ids.length > 50 || ids.length !== requestIds.length) {
+      throw new BadRequestError('Select between 1 and 50 unique borrow requests to cancel');
+    }
 
-      const batchWhere = request.requestBatchId
-        ? { requestBatchId: request.requestBatchId }
-        : request.transactionId
-          ? { transactionId: request.transactionId }
-          : { id: request.id };
-      const requests = await tx.borrowRequest.findMany({
-        where: { ...batchWhere, userId },
-        include: { book: { select: { title: true } } },
-      });
-      if (!requests.length) throw new NotFoundError('Borrow request');
-      if (requests.some((entry) => entry.status !== 'PENDING')) {
-        throw new BadRequestError('Only pending borrow requests can be cancelled');
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const requests = await tx.borrowRequest.findMany({
+          where: { id: { in: ids }, userId },
+          include: { book: { select: { title: true } } },
+        });
+        if (requests.length !== ids.length) {
+          throw new BadRequestError('One or more selected borrow requests do not belong to you or no longer exist');
+        }
+        if (requests.some((request) => request.status !== 'PENDING')) {
+          throw new BadRequestError('Only pending borrow requests can be cancelled. Refresh the list and try again.');
+        }
+
+        const bookIds = requests.flatMap((request) => request.bookId ? [request.bookId] : []);
+        const checkedOut = bookIds.length
+          ? await tx.borrowTransaction.findFirst({
+            where: {
+              userId,
+              bookId: { in: bookIds },
+              status: { in: ['ACTIVE', 'OVERDUE', 'MISSING'] },
+              returnDate: null,
+            },
+            select: { id: true },
+          })
+          : null;
+        if (checkedOut) {
+          throw new BadRequestError('A request for a book currently in your possession cannot be cancelled');
+        }
+
+        const updated = await tx.borrowRequest.updateMany({
+          where: { id: { in: ids }, userId, status: 'PENDING' },
+          data: { status: 'CANCELLED' },
+        });
+        if (updated.count !== ids.length) {
+          throw new ConflictError('One or more requests were processed at the same time. Refresh and try again.');
+        }
+
+        await tx.activityLog.createMany({
+          data: requests.map((request) => ({
+            userId,
+            action: 'CANCEL_BORROW_REQUEST',
+            entity: 'BorrowRequest',
+            entityId: request.id,
+            ipAddress: auditContext?.ipAddress,
+            details: {
+              bookTitle: request.book?.title || 'Deleted book',
+              status: 'Cancelled',
+              ...(auditContext?.userAgent ? { userAgent: auditContext.userAgent } : {}),
+            },
+          })),
+        });
+
+        return {
+          cancelled: requests.map((request) => ({
+            id: request.id,
+            title: request.book?.title || 'Deleted book',
+          })),
+        };
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
+        throw new ConflictError('Your selected requests changed while being cancelled. Refresh the list and try again.');
       }
-
-      const updated = await tx.borrowRequest.updateMany({
-        where: { id: { in: requests.map((entry) => entry.id) }, userId, status: 'PENDING' },
-        data: { status: 'CANCELLED' },
-      });
-      if (updated.count !== requests.length) {
-        throw new BadRequestError('This borrow request has already been processed');
-      }
-      return requests;
-    });
-
-    const batchId = cancelledRequests[0].requestBatchId
-      || cancelledRequests[0].transactionId
-      || requestId;
-    await prisma.activityLog.create({
-      data: {
-        userId,
-        action: 'CANCEL_BORROW_REQUEST',
-        entity: 'BorrowRequest',
-        entityId: batchId,
-        ipAddress: auditContext?.ipAddress,
-        details: {
-          bookTitles: cancelledRequests.map((entry) => entry.book?.title || 'Deleted book'),
-          status: 'Cancelled',
-          ...(auditContext?.userAgent ? { userAgent: auditContext.userAgent } : {}),
-        },
-      },
-    });
+      throw error;
+    }
   }
 
   async approveTransactionBatch(requestBatchId: string, librarianId: string, auditContext?: ActivityRequestContext) {
@@ -480,7 +515,7 @@ export class TransactionService {
         { id: requestBatchId },
       ],
     };
-    const requests = await prisma.borrowRequest.findMany({
+    const batchRequests = await prisma.borrowRequest.findMany({
       where: requestBatchWhere,
       include: {
         book: true,
@@ -488,9 +523,14 @@ export class TransactionService {
       },
       orderBy: { requestDate: 'asc' },
     });
-    if (!requests.length) throw new NotFoundError('Borrow transaction request');
-    if (requests.length > TransactionService.MAX_BOOKS_PER_TRANSACTION) {
+    if (!batchRequests.length) throw new NotFoundError('Borrow transaction request');
+    if (batchRequests.length > TransactionService.MAX_BOOKS_PER_TRANSACTION) {
       throw new BadRequestError('This transaction exceeds the maximum of 3 books');
+    }
+    const requests = batchRequests.filter((request) => request.status === 'PENDING');
+    if (!requests.length) throw new BadRequestError('This transaction has no pending requests to approve');
+    if (batchRequests.some((request) => !['PENDING', 'CANCELLED'].includes(request.status))) {
+      throw new BadRequestError('This transaction has already been processed');
     }
     for (const request of requests) assertLinkedBorrowRecord(request);
     const user = requests[0].user;
@@ -530,11 +570,12 @@ export class TransactionService {
           where: requestBatchWhere,
           select: { status: true, transactionId: true },
         });
-        const currentTransactionId = currentRequests[0]?.transactionId;
+        const currentPending = currentRequests.filter((currentRequest) => currentRequest.status === 'PENDING');
+        const currentTransactionId = currentPending[0]?.transactionId;
         if (
-          currentRequests.length === requests.length &&
+          currentPending.length === requests.length &&
           currentTransactionId &&
-          currentRequests.every((currentRequest) =>
+          currentPending.every((currentRequest) =>
             currentRequest.status === 'PENDING' && currentRequest.transactionId === currentTransactionId
           )
         ) {
@@ -545,7 +586,7 @@ export class TransactionService {
       return allocatedId;
     });
     const stagedRequests = await prisma.borrowRequest.findMany({
-      where: { transactionId },
+      where: { transactionId, status: 'PENDING' },
       include: {
         book: { select: { id: true, title: true, accessionNo: true } },
         user: { select: { id: true, firstName: true, lastName: true, libraryId: true } },
@@ -619,7 +660,7 @@ export class TransactionService {
   ) {
     const transactionId = normalizeBorrowId(borrowId);
     const requests = await prisma.borrowRequest.findMany({
-      where: { transactionId },
+      where: { transactionId, status: 'PENDING' },
       include: {
         book: true,
         user: { select: { id: true, firstName: true, lastName: true, libraryId: true, role: true, maxBorrowDays: true, maxBooksAllowed: true } },
@@ -1176,7 +1217,10 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
     });
     if (!updated.book) throw new BadRequestError('The book was removed before the transaction could be updated');
 
-    await this.recalculateReservationQueueForBook(bookId);
+    await prisma.$transaction(async (tx) => {
+      await this.lockReservationBooks([bookId], tx);
+      await this.recalculateReservationQueueForBook(bookId, tx);
+    });
 
     // Notify all librarians about the returned book
     const borrowerName = `${borrower.firstName} ${borrower.lastName}`;
@@ -1619,7 +1663,7 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
         }
       }
 
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${bookId})::bigint)`;
+      await this.lockReservationBooks([bookId], tx);
       const user = await tx.user.findUnique({
         where: { id: userId },
         select: { id: true, firstName: true, lastName: true, role: true },
@@ -1634,6 +1678,7 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
       if (book.availableCopies > 0 && book.status === 'AVAILABLE') {
         throw new BadRequestError('This book is currently available. Please borrow it instead.');
       }
+      await this.recalculateReservationQueueForBook(bookId, tx);
 
       const existingReservation = await tx.reservation.findFirst({
         where: { userId, bookId, status: { in: ['ACTIVE', 'APPROVED'] } },
@@ -1737,16 +1782,24 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
       throw new BadRequestError('This archived reservation can no longer be approved');
     }
     if (reservation.status !== 'ACTIVE') throw new BadRequestError('Reservation is already resolved.');
+    if (reservation.expiryDate <= new Date()) {
+      await prisma.$transaction(async (tx) => {
+        await this.lockReservationBooks([reservation.bookId!], tx);
+        await this.recalculateReservationQueueForBook(reservation.bookId!, tx);
+      });
+      throw new BadRequestError('This reservation has expired and can no longer be approved.');
+    }
     if (reservation.book.availableCopies < 1) {
       throw new BadRequestError('This reserved book is not available for pickup yet.');
     }
 
     const updated = await prisma.$transaction(async (tx) => {
+      await this.lockReservationBooks([reservation.bookId!], tx);
       const result = await tx.reservation.updateMany({
-        where: { id: reservationId, status: 'ACTIVE' },
+        where: { id: reservationId, status: 'ACTIVE', expiryDate: { gt: new Date() } },
         data: { status: 'APPROVED', notified: true },
       });
-      if (result.count !== 1) throw new BadRequestError('Reservation is already resolved.');
+      if (result.count !== 1) throw new ConflictError('Reservation expired or changed before it could be approved. Refresh and try again.');
       const approved = await tx.reservation.findUniqueOrThrow({
         where: { id: reservationId },
         include: {
@@ -1799,12 +1852,14 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
     if (reservation.status !== 'ACTIVE') throw new BadRequestError('Reservation already processed');
 
     const updated = await prisma.$transaction(async (tx) => {
-      const cancelled = await tx.reservation.update({
-        where: { id: reservationId },
+      await this.lockReservationBooks([bookId], tx);
+      const cancelled = await tx.reservation.updateMany({
+        where: { id: reservationId, status: 'ACTIVE' },
         data: { status: 'CANCELLED' },
       });
+      if (cancelled.count !== 1) throw new ConflictError('Reservation changed before it could be rejected. Refresh and try again.');
       await this.recalculateReservationQueueForBook(bookId, tx);
-      return cancelled;
+      return tx.reservation.findUniqueOrThrow({ where: { id: reservationId } });
     });
 
     await prisma.notification.create({
@@ -1853,6 +1908,13 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
     if (!['ACTIVE', 'APPROVED'].includes(reservation.status)) {
       throw new BadRequestError('This reservation has already been fulfilled or cancelled.');
     }
+    if (reservation.expiryDate <= new Date()) {
+      await prisma.$transaction(async (tx) => {
+        await this.lockReservationBooks([bookId], tx);
+        await this.recalculateReservationQueueForBook(bookId, tx);
+      });
+      throw new BadRequestError('This reservation has expired and can no longer be picked up.');
+    }
 
     const book = await prisma.book.findUnique({ where: { id: reservation.bookId } });
     if (!book) throw new NotFoundError('Book');
@@ -1867,6 +1929,23 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
     );
 
     const transaction = await prisma.$transaction(async (tx) => {
+      await this.lockReservationBooks([bookId], tx);
+      const claimedReservation = await tx.reservation.updateMany({
+        where: {
+          id: reservation.id,
+          userId,
+          status: { in: ['ACTIVE', 'APPROVED'] },
+          expiryDate: { gt: new Date() },
+        },
+        data: {
+          status: 'FULFILLED',
+          notified: true,
+        },
+      });
+      if (claimedReservation.count !== 1) {
+        throw new ConflictError('This reservation expired, was cancelled, or was picked up by another action. Refresh your reservations.');
+      }
+
       const transactionId = await this.generateUniqueTransactionId(tx);
       const created = await tx.borrowTransaction.create({
         data: {
@@ -1884,20 +1963,18 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
         },
       });
 
+      const decremented = await tx.book.updateMany({
+        where: { id: bookId, availableCopies: { gt: 0 }, status: { not: 'LOST' } },
+        data: { availableCopies: { decrement: 1 } },
+      });
+      if (decremented.count !== 1) throw new BadRequestError('This reserved book is no longer available for pickup.');
+      const updatedBook = await tx.book.findUniqueOrThrow({
+        where: { id: bookId },
+        select: { availableCopies: true },
+      });
       await tx.book.update({
         where: { id: bookId },
-        data: {
-          availableCopies: { decrement: 1 },
-          status: book.availableCopies - 1 <= 0 ? 'BORROWED' : 'AVAILABLE',
-        },
-      });
-
-      await tx.reservation.update({
-        where: { id: reservation.id },
-        data: {
-          status: 'FULFILLED',
-          notified: true,
-        },
+        data: { status: updatedBook.availableCopies < 1 ? 'BORROWED' : 'AVAILABLE' },
       });
 
       await this.recalculateReservationQueueForBook(bookId, tx);
@@ -1937,41 +2014,97 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
    * Cancel a reservation
    * - Recalculates queue positions
    */
-  async cancelReservation(reservationId: string, userId: string, auditContext?: ActivityRequestContext) {
-    const reservation = await prisma.reservation.findUnique({
-      where: { id: reservationId },
-      include: { book: { select: { title: true } } },
-    });
-    if (!reservation) throw new NotFoundError('Reservation');
-    if (!reservation.book || !reservation.bookId) {
-      throw new BadRequestError('This archived reservation can no longer be cancelled');
+  async cancelReservations(reservationIds: string[], userId: string, auditContext?: ActivityRequestContext) {
+    const ids = Array.from(new Set(reservationIds));
+    if (!ids.length || ids.length > 50 || ids.length !== reservationIds.length) {
+      throw new BadRequestError('Select between 1 and 50 unique reservations to cancel');
     }
-    const bookId = reservation.bookId;
-    if (reservation.userId !== userId) throw new BadRequestError('Not your reservation');
-    if (!['ACTIVE', 'APPROVED'].includes(reservation.status)) throw new BadRequestError('Reservation already processed');
 
-    await prisma.$transaction(async (tx) => {
-      await tx.reservation.update({
-        where: { id: reservationId },
-        data: { status: 'CANCELLED' },
-      });
-      await this.recalculateReservationQueueForBook(bookId, tx);
-    });
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const reservations = await tx.reservation.findMany({
+          where: { id: { in: ids }, userId },
+          include: { book: { select: { title: true } } },
+        });
+        if (reservations.length !== ids.length) {
+          throw new BadRequestError('One or more selected reservations do not belong to you or no longer exist');
+        }
+        if (reservations.some((reservation) =>
+          !reservation.bookId ||
+          !reservation.book ||
+          !['ACTIVE', 'APPROVED'].includes(reservation.status)
+        )) {
+          throw new BadRequestError('Only active or approved reservations that have not been picked up can be cancelled');
+        }
 
-    await prisma.activityLog.create({
-      data: {
-        userId,
-        action: 'CANCEL_RESERVATION',
-        entity: 'Reservation',
-        entityId: reservationId,
-        ipAddress: auditContext?.ipAddress,
-        details: {
-          bookTitle: reservation.book.title,
-          status: 'Cancelled',
-          ...(auditContext?.userAgent ? { userAgent: auditContext.userAgent } : {}),
-        },
-      },
-    });
+        const bookIds = Array.from(new Set(reservations.map((reservation) => reservation.bookId!)));
+        await this.lockReservationBooks(bookIds, tx);
+        const lockedBooks = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id
+          FROM books
+          WHERE id = ANY(${bookIds})
+          ORDER BY id
+          FOR UPDATE
+        `;
+        if (lockedBooks.length !== bookIds.length) {
+          throw new BadRequestError('One or more selected books no longer exist');
+        }
+        const checkedOut = await tx.borrowTransaction.findFirst({
+          where: {
+            userId,
+            bookId: { in: bookIds },
+            status: { in: ['ACTIVE', 'OVERDUE', 'MISSING'] },
+            returnDate: null,
+          },
+          select: { id: true },
+        });
+        if (checkedOut) {
+          throw new BadRequestError('A reservation for a book currently in your possession cannot be cancelled');
+        }
+
+        const updated = await tx.reservation.updateMany({
+          where: {
+            id: { in: ids },
+            userId,
+            status: { in: ['ACTIVE', 'APPROVED'] },
+          },
+          data: { status: 'CANCELLED' },
+        });
+        if (updated.count !== ids.length) {
+          throw new ConflictError('One or more reservations changed while being cancelled. Refresh and try again.');
+        }
+
+        for (const bookId of bookIds) {
+          await this.recalculateReservationQueueForBook(bookId, tx);
+        }
+        await tx.activityLog.createMany({
+          data: reservations.map((reservation) => ({
+            userId,
+            action: 'CANCEL_RESERVATION',
+            entity: 'Reservation',
+            entityId: reservation.id,
+            ipAddress: auditContext?.ipAddress,
+            details: {
+              bookTitle: reservation.book!.title,
+              status: 'Cancelled',
+              ...(auditContext?.userAgent ? { userAgent: auditContext.userAgent } : {}),
+            },
+          })),
+        });
+
+        return {
+          cancelled: reservations.map((reservation) => ({
+            id: reservation.id,
+            title: reservation.book!.title,
+          })),
+        };
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
+        throw new ConflictError('Your selected reservations changed while being cancelled. Refresh the list and try again.');
+      }
+      throw error;
+    }
   }
 
   /**
@@ -1983,6 +2116,31 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
     if (userId) where.userId = userId;
     if (query.status) where.status = query.status;
     if (query.bookId) where.bookId = query.bookId;
+
+    const expiredReservations = await prisma.reservation.findMany({
+      where: {
+        status: { in: ['ACTIVE', 'APPROVED'] },
+        expiryDate: { lte: new Date() },
+      },
+      select: { id: true, bookId: true },
+    });
+    if (expiredReservations.length) {
+      await prisma.$transaction(async (tx) => {
+        const expiredBookIds = Array.from(new Set(expiredReservations.flatMap(({ bookId }) => bookId ? [bookId] : [])));
+        await this.lockReservationBooks(expiredBookIds, tx);
+        await tx.reservation.updateMany({
+          where: {
+            id: { in: expiredReservations.map(({ id }) => id) },
+            status: { in: ['ACTIVE', 'APPROVED'] },
+            expiryDate: { lte: new Date() },
+          },
+          data: { status: 'EXPIRED' },
+        });
+        for (const bookId of expiredBookIds) {
+          await this.recalculateReservationQueueForBook(bookId, tx);
+        }
+      });
+    }
 
     const [reservations, total] = await Promise.all([
       prisma.reservation.findMany({

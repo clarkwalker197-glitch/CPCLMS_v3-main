@@ -839,7 +839,7 @@ export class TransactionService {
 async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
     const pagination = getPaginationParams(query);
     const { sort, order } = getSortParams(query, ['requestDate', 'status', 'memberName'] as const, 'status', 'asc');
-    const where: any = {};
+    const where: any = { book: { is: {} } };
     if (userId) where.userId = userId;
     if (query.status) {
       const requestedStatus = String(query.status).trim().toUpperCase();
@@ -879,7 +879,11 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
       .filter((id): id is string => Boolean(id))));
     const siblingRows = transactionIds.length
       ? await prisma.borrowRequest.findMany({
-        where: { transactionId: { in: transactionIds }, ...(userId ? { userId } : {}) },
+        where: {
+          transactionId: { in: transactionIds },
+          book: { is: {} },
+          ...(userId ? { userId } : {}),
+        },
         include,
       })
       : [];

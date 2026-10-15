@@ -92,12 +92,50 @@ export class AuthService {
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
     await prisma.passwordResetToken.create({ data: { userId: user.id, tokenHash, expiresAt } });
 
+    const escapedFirstName = user.firstName
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
     const frontendUrl = (Array.isArray(env.FRONTEND_URL) ? env.FRONTEND_URL[0] : env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
     await notificationService.sendEmail({
       to: user.email,
       userId: user.id,
-      subject: 'Your CPC Library password reset code',
-      body: `Hello ${user.firstName},\n\nYour password reset verification code is: ${code}\n\nThis code expires in 1 hour.`,
+      fromName: 'Cordova Public College Library',
+      subject: 'Your One-Time Password (OTP)',
+      body: `Hello ${user.firstName},\n\nYour one-time password is:\n${code}\n\nThis code expires in 1 hour.`,
+      html: `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <script type="application/ld+json">
+{
+  "@context": "http://schema.org",
+  "@type": "EmailMessage",
+  "description": "Your Cordova Public College Library one-time password",
+  "potentialAction": {
+    "@type": "ViewAction",
+    "target": "https://cpc-library.online",
+    "name": "Enter code"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Cordova Public College Library System",
+    "url": "https://cpc-library.online"
+  }
+}
+    </script>
+  </head>
+  <body style="margin:0;padding:24px;background:#f4f4f5;font-family:Arial,sans-serif;color:#18181b">
+    <div style="max-width:480px;margin:0 auto;padding:32px;background:#ffffff;border-radius:12px">
+      <p>Hello ${escapedFirstName},</p>
+      <p>Your Cordova Public College Library one-time password is:</p>
+      <p style="font-size:32px;font-weight:700;letter-spacing:0.35em;text-align:center;margin:24px 0">${code}</p>
+      <p>This code expires in 1 hour.</p>
+    </div>
+  </body>
+</html>`,
     });
 
     return { message: 'A verification code has been sent to your registered email.', email: user.email };

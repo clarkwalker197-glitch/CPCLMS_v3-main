@@ -15,6 +15,8 @@ export default function ForgotPasswordPage() {
   const [resetToken, setResetToken] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -84,11 +86,23 @@ export default function ForgotPasswordPage() {
           <form onSubmit={resetPassword} className="space-y-5">
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-zinc-300 mb-1.5">New Password</label>
+              <div className="relative">
+                <input id="password" type={showPassword ? "text" : "password"} minLength={8} required value={password} onChange={(event) => setPassword(event.target.value)} className="w-full px-3 py-3 pr-16 bg-zinc-950 border border-zinc-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <button type="button" onClick={() => setShowPassword((visible) => !visible)} className="absolute inset-y-0 right-0 px-3 text-sm font-medium text-zinc-400 hover:text-zinc-200" aria-label={showPassword ? "Hide new password" : "Show new password"}>
+                  {showPassword ? "Hide" : "Show"}
+                </button>
+              </div>
               <input id="password" type="password" minLength={8} required value={password} onChange={(event) => setPassword(event.target.value)} className="w-full px-3 py-3 bg-zinc-950 border border-zinc-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
               <PasswordStrengthIndicator password={password} />
             </div>
             <div>
               <label htmlFor="confirmPassword" className="block text-sm font-medium text-zinc-300 mb-1.5">Confirm New Password</label>
+              <div className="relative">
+                <input id="confirmPassword" type={showConfirmPassword ? "text" : "password"} minLength={8} required value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} className="w-full px-3 py-3 pr-16 bg-zinc-950 border border-zinc-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <button type="button" onClick={() => setShowConfirmPassword((visible) => !visible)} className="absolute inset-y-0 right-0 px-3 text-sm font-medium text-zinc-400 hover:text-zinc-200" aria-label={showConfirmPassword ? "Hide confirmation password" : "Show confirmation password"}>
+                  {showConfirmPassword ? "Hide" : "Show"}
+                </button>
+              </div>
               <input id="confirmPassword" type="password" minLength={8} required value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} className="w-full px-3 py-3 bg-zinc-950 border border-zinc-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <button disabled={submitting} className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl disabled:opacity-50">{submitting ? "Saving..." : "Reset Password"}</button>

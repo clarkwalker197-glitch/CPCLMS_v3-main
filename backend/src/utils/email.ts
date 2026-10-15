@@ -5,6 +5,8 @@ export interface OutgoingEmail {
   to: string;
   subject: string;
   text: string;
+  html?: string;
+  fromName?: string;
 }
 
 export async function sendEmail(email: OutgoingEmail): Promise<void> {
@@ -13,6 +15,13 @@ export async function sendEmail(email: OutgoingEmail): Promise<void> {
   }
 
   try {
+    const fromAddress = env.EMAIL_FROM || env.EMAIL_USER;
+    await transporter.sendMail({
+      from: email.fromName ? { name: email.fromName, address: fromAddress } : fromAddress,
+      to: email.to,
+      subject: email.subject,
+      text: email.text,
+      ...(email.html ? { html: email.html } : {}),
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {

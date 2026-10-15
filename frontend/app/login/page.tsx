@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import { GoogleLogin, GoogleOAuthProvider } from '@react-oauth/google';
+import { X } from 'lucide-react';
 import { Eye, EyeOff } from 'lucide-react';
 
 function getPostLoginPath(role?: string, returnTo?: string | null) {
@@ -68,7 +69,7 @@ export default function LoginPage() {
 
   return (
     <GoogleOAuthProvider clientId={googleClientId || 'not-configured'}>
-      <div className="min-h-screen bg-zinc-950 flex flex-col">
+      <div className="relative min-h-screen bg-zinc-950 flex flex-col">
         <div className="flex-1 flex items-center justify-center p-4 sm:p-8">
           <div className="w-full max-w-6xl grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
             {/* ── Left Card: Dark branding ─────────────────────────── */}
@@ -82,6 +83,23 @@ export default function LoginPage() {
 
               {/* Logo + Institution + Heading */}
               <div className="relative z-10 flex flex-col gap-8">
+                <div className="flex items-center justify-between gap-2">
+                  <Link href="/" className="flex w-fit items-center gap-3 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-300">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src="/CPClogo.png" alt="Cordova Public College Logo" className="w-12 h-12 object-contain shrink-0" />
+                    <div>
+                      <p className="auth-brand-school font-bold text-lg leading-tight text-white">Cordova Public College</p>
+                      <p className="auth-brand-subtitle text-blue-200 text-sm">Library Management System</p>
+                    </div>
+                  </Link>
+                  <Link
+                    href="/"
+                    aria-label="Back to landing page"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-zinc-400 transition hover:bg-zinc-800 hover:text-white md:hidden"
+                  >
+                    <X className="h-6 w-6" />
+                  </Link>
+                </div>
                 <Link
                   href="/"
                   aria-label="Cordova Public College Library Management System home"

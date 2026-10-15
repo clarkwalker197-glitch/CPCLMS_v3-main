@@ -181,6 +181,8 @@ QR approval tokens expire after ten minutes. The public approval endpoint is rat
 
 If Forgot Password returns an email configuration error, check that `EMAIL_USER` and `EMAIL_PASS` are present in `backend/.env`. Gmail must have two-step verification enabled and an App Password created for SMTP access.
 
+For the Gmail one-time-code card, configure Railway's `EMAIL_FROM` as an email address on a domain you control, and ensure that domain's SPF, DKIM, and DMARC checks pass. Do not use a random Gmail address for `EMAIL_FROM`; Gmail only displays its "Copy code" card when these sender-authentication checks pass.
+
 ## Validation Commands
 
 ```powershell

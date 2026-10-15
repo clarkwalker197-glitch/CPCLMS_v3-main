@@ -116,7 +116,7 @@ export default function StudentDashboardPage() {
 const statsCards = [
     { title: "Currently Borrowed", value: stats?.myBorrowed ?? "-", icon: BookMarked, accent: "bg-blue-500/15 text-blue-400", href: "/requests" },
     { title: "Pending Requests", value: stats?.myPendingRequests ?? "-", icon: Clock, accent: "bg-amber-500/15 text-amber-400", href: "/requests" },
-    { title: "Overdue Fines", value: `₱${stats?.myFines ?? 0}`, icon: Coins, accent: "bg-red-500/15 text-red-400", href: "/requests" },
+    { title: "Fines", value: `₱${stats?.myFines ?? 0}`, icon: Coins, accent: "bg-red-500/15 text-red-400", href: "/requests" },
   ];
 
 const formatDate = (d?: string) =>

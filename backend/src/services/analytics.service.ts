@@ -129,7 +129,7 @@ export class AnalyticsService {
         },
       }),
       prisma.borrowRequest.count({ where: { status: 'PENDING', user: activeUserWhere } }),
-      prisma.reservation.count({ where: { status: 'ACTIVE', user: activeUserWhere } }),
+      prisma.reservation.count({ where: { status: { in: ['ACTIVE', 'APPROVED'] }, user: activeUserWhere } }),
       prisma.book.count({ where: { ...activeBookWhere, status: 'AVAILABLE' } }),
       prisma.book.count({ where: { ...activeBookWhere, status: 'BORROWED' } }),
       prisma.book.count({ where: { ...activeBookWhere, status: 'MAINTENANCE' } }),
@@ -261,7 +261,7 @@ export class AnalyticsService {
    * - Currently Borrowed: active + overdue (not yet returned)
    * - Pending Requests: borrow requests with PENDING status
    * - Active Reservations: reservations with ACTIVE status
-   * - Overdue Fines: total unpaid fines (in peso)
+   * - Fines: total unpaid fines (in peso)
    */
   async getMyDashboardStats(userId: string) {
     await transactionService.synchronizeOverdueTransactions();
@@ -269,7 +269,7 @@ export class AnalyticsService {
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const dueSoonEnd = new Date(todayStart);
     dueSoonEnd.setDate(dueSoonEnd.getDate() + 4);
-    const [myBorrowed, myPendingRequests, myReservations, overdueTxns] =
+    const [myBorrowed, myPendingRequests, myReservations, unpaidFineTransactions] =
       await Promise.all([
         prisma.borrowTransaction.count({
           where: { userId, status: { in: ['ACTIVE', 'OVERDUE'] } },
@@ -278,7 +278,7 @@ export class AnalyticsService {
           where: { userId, status: 'PENDING' },
         }),
         prisma.reservation.count({
-          where: { userId, status: 'ACTIVE' },
+          where: { userId, status: { in: ['ACTIVE', 'APPROVED'] } },
         }),
         prisma.borrowTransaction.findMany({
           where: { userId, fineAmount: { gt: 0 }, finePaid: false },
@@ -301,7 +301,7 @@ export class AnalyticsService {
       orderBy: { dueDate: 'asc' },
     });
 
-    const myFines = overdueTxns.reduce(
+    const myFines = unpaidFineTransactions.reduce(
       (sum, txn) => sum + (txn.fineAmount || 0),
       0
     );

@@ -1,0 +1,1 @@
+ALTER TYPE "ReservationStatus" ADD VALUE 'APPROVED';

@@ -36,10 +36,8 @@ export const approveRequestSchema = z.object({
 export const approveByQRCodeSchema = z.object({
   body: z.object({
     requestId: z.string().min(1).max(100),
-    token: z.string().max(2048).optional(),
-    approvalCode: z.string().regex(/^(?:\d{8}|BRW-\d{4}-\d{4})$/i, 'Invalid Borrow ID format').optional(),
-  }).refine((body) => Boolean(body.token || body.approvalCode), {
-    message: 'Either token or approvalCode is required',
+    token: z.string().regex(/^[a-f0-9]{64}$/i, 'Invalid QR approval token'),
+    approvalCode: z.string().regex(/^(?:\d{8}|BRW-\d{4}-\d{4})$/i, 'Invalid Borrow ID format'),
   }),
 });
 
@@ -91,4 +89,3 @@ export type ApproveRequestInput = z.infer<typeof approveRequestSchema>['body'];
 export type RejectRequestInput = z.infer<typeof rejectRequestSchema>['body'];
 export type ReturnBookInput = z.infer<typeof returnBookSchema>['body'];
 export type ReserveBookInput = z.infer<typeof reserveBookSchema>['body'];
-

@@ -4,6 +4,7 @@ import { ModalLayer } from "@/components/ModalLayer";
 import { useState, useEffect, useRef, useCallback, useId } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 import { formatBorrowId, normalizeBorrowId } from "@/lib/borrow-id";
+import { parseApprovalInput } from "@/lib/qr-approval";
 
 interface QRScannerProps {
   onScan: (data: string) => Promise<void> | void;
@@ -147,8 +148,13 @@ export function QRScanner({
         (decodedText) => {
           if (!mountedRef.current || scanHandledRef.current) return;
           scanHandledRef.current = true;
-          const borrowId = normalizeBorrowId(decodedText);
-          if (!borrowId) {
+          const isApprovalLink = decodedText.includes("://");
+          const approvalInput = isApprovalLink ? parseApprovalInput(decodedText) : null;
+          const borrowId = normalizeBorrowId(approvalInput?.approvalCode || decodedText);
+          if (
+            !borrowId ||
+            (isApprovalLink && (!approvalInput?.requestId || !approvalInput.token))
+          ) {
             setError("This QR code does not contain a valid Borrow ID.");
             void stopScanner();
             return;
@@ -156,7 +162,7 @@ export function QRScanner({
           setLastResult(formatBorrowId(borrowId));
           if (window.matchMedia("(max-width: 768px)").matches && "vibrate" in navigator) navigator.vibrate(25);
           stopScanner();
-          onScan(borrowId);
+          onScan(isApprovalLink ? decodedText : borrowId);
         },
         () => {
           // Ignore individual frame failures
@@ -234,8 +240,14 @@ export function QRScanner({
             streamRef.current = null;
             videoEl.remove();
             if (mountedRef.current) {
-              const borrowId = normalizeBorrowId(barcodes[0].rawValue);
-              if (!borrowId) {
+              const decodedText = barcodes[0].rawValue;
+              const isApprovalLink = decodedText.includes("://");
+              const approvalInput = isApprovalLink ? parseApprovalInput(decodedText) : null;
+              const borrowId = normalizeBorrowId(approvalInput?.approvalCode || decodedText);
+              if (
+                !borrowId ||
+                (isApprovalLink && (!approvalInput?.requestId || !approvalInput.token))
+              ) {
                 setError("This QR code does not contain a valid Borrow ID.");
                 setScannerEnabled(false);
                 setScanning(false);
@@ -245,7 +257,7 @@ export function QRScanner({
               if (window.matchMedia("(max-width: 768px)").matches && "vibrate" in navigator) navigator.vibrate(25);
               setScannerEnabled(false);
               setScanning(false);
-              onScan(borrowId);
+              onScan(isApprovalLink ? decodedText : borrowId);
             }
           }
         } catch {

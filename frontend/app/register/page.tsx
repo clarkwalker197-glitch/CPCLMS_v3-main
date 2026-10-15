@@ -62,6 +62,10 @@ const [formData, setFormData] = useState({
       setError(nameValidationMessage('Last name'));
       return;
     }
+    if (!/^\d{8}$/.test(formData.libraryId)) {
+      setError('ID Number must contain exactly 8 digits');
+      return;
+    }
 
     if (formData.password !== formData.confirmPassword) {
       setError('Passwords do not match');

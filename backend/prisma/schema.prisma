@@ -46,6 +46,7 @@ enum TransactionStatus {
 
 enum ReservationStatus {
   ACTIVE
+  APPROVED
   FULFILLED
   CANCELLED
   EXPIRED

@@ -57,7 +57,7 @@ export const getDepartments = asyncHandler(async (_req: Request, res: Response) 
 export const login = asyncHandler(async (req: Request, res: Response) => {
   const { identifier, password, rememberMe } = req.body;
   const ipAddress = req.ip;
-  const result = await authService.login(identifier, password, ipAddress, req.get('user-agent'));
+  const result = await authService.login(identifier, password, rememberMe, ipAddress, req.get('user-agent'));
   const refreshCookieExpiresAt = rememberMe === false
     ? undefined
     : new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
@@ -112,11 +112,12 @@ export const refreshToken = asyncHandler(async (req: Request, res: Response) => 
   const token = getRefreshTokenFromRequest(req);
   try {
     const result = await authService.refreshAccessToken(token);
-    const refreshCookieExpiresAt = req.body.rememberMe === false
+    const { rememberedSession, ...response } = result;
+    const refreshCookieExpiresAt = !rememberedSession
       ? undefined
       : new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
     setRefreshCookie(res, result.refreshToken, refreshCookieExpiresAt);
-    sendSuccess(res, result, 'Token refreshed successfully');
+    sendSuccess(res, response, 'Token refreshed successfully');
   } catch (error) {
     if (error instanceof UnauthorizedError) clearRefreshCookie(res);
     throw error;

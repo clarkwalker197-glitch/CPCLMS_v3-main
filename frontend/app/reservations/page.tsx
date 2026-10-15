@@ -32,7 +32,7 @@ export default function ReservationsPage() {
         setLoading(false);
         return;
       }
-      const response = await api.getReservations();
+      const response = await api.getReservations(isLibrarian ? { status: "ACTIVE" } : undefined);
       if (response.success) {
         const serverRecords = (response.data || []).map((reservation: any) => ({
           ...reservation,
@@ -56,7 +56,7 @@ export default function ReservationsPage() {
   useEffect(() => {
     if (!user) return;
     loadReservations();
-  }, [user]);
+  }, [user, isLibrarian]);
 
   const handleCancel = async (id: string) => {
     const response = await api.cancelReservation(id);
@@ -121,7 +121,7 @@ export default function ReservationsPage() {
             <div>
               <h1 className="text-2xl font-bold text-white">Reservations</h1>
               <p className="mt-1 text-sm text-zinc-400">
-                {isLibrarian ? "See every active reservation and prioritize faculty first." : "Track your own reservations and pickup status."}
+                {isLibrarian ? "Review active reservations and prioritize faculty first." : "Track your reservations and pickup status."}
               </p>
               {showingCached && (
                 <p className="mt-2 text-xs text-amber-300">
@@ -165,6 +165,7 @@ export default function ReservationsPage() {
                     {reservations.map((reservation: any) => {
                       const isOwner = user?.id === reservation.userId;
                       const isActive = reservation.status === "ACTIVE";
+                      const canPickUp = ["ACTIVE", "APPROVED"].includes(reservation.status);
                       const statusLabel = reservation.status;
                       return (
                         <tr key={reservation.id} className="border-t border-zinc-800 text-zinc-200">
@@ -177,12 +178,14 @@ export default function ReservationsPage() {
                             <div className="text-xs text-zinc-400">{reservation.user?.role || "—"}</div>
                           </td>
                           <td className="px-4 py-3">
-                            {`#${reservation.queuePosition ?? 1}`}
+                            {reservation.status === "APPROVED" ? "Approved" : `#${reservation.queuePosition ?? 1}`}
                           </td>
                           <td className="px-4 py-3">
                             <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${
                               reservation.status === "ACTIVE"
                                 ? "bg-amber-500/15 text-amber-300"
+                                : reservation.status === "APPROVED"
+                                  ? "bg-blue-500/15 text-blue-300"
                                 : reservation.status === "FULFILLED"
                                   ? "bg-emerald-500/15 text-emerald-300"
                                   : reservation.status === "CANCELLED"
@@ -197,7 +200,7 @@ export default function ReservationsPage() {
                           </td>
                           <td className="px-4 py-3 text-right">
                             <div className="flex justify-end gap-2">
-                              {isActive && (isLibrarian || isOwner) && (
+                              {canPickUp && (isLibrarian || isOwner) && (
                                 <button
                                   onClick={() => handleCancel(reservation.id)}
                                   className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-300 hover:bg-red-500/15"
@@ -205,7 +208,7 @@ export default function ReservationsPage() {
                                   Cancel
                                 </button>
                               )}
-                              {isActive && isOwner && (
+                              {canPickUp && isOwner && (
                                 <button
                                   onClick={() => handlePickup(reservation.id)}
                                   className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700"
@@ -234,8 +237,11 @@ export default function ReservationsPage() {
               {reservations.map((reservation: any) => {
                 const isOwner = user?.id === reservation.userId;
                 const isActive = reservation.status === "ACTIVE";
+                const canPickUp = ["ACTIVE", "APPROVED"].includes(reservation.status);
                 const statusClass = reservation.status === "ACTIVE"
                   ? "bg-amber-500/15 text-amber-300"
+                  : reservation.status === "APPROVED"
+                    ? "bg-blue-500/15 text-blue-300"
                   : reservation.status === "FULFILLED"
                     ? "bg-emerald-500/15 text-emerald-300"
                     : reservation.status === "CANCELLED"
@@ -266,23 +272,23 @@ export default function ReservationsPage() {
                       </div>
                       <div>
                         <p className="text-xs text-zinc-500">Queue / Expiry</p>
-                        <p className="mt-1 text-zinc-300">#{reservation.queuePosition ?? 1}</p>
+                        <p className="mt-1 text-zinc-300">{reservation.status === "APPROVED" ? "Approved" : `#${reservation.queuePosition ?? 1}`}</p>
                         <p className="text-xs text-zinc-400">{reservation.expiryDate ? new Date(reservation.expiryDate).toLocaleDateString() : "—"}</p>
                       </div>
                     </div>
-                    {(isActive && (isLibrarian || isOwner)) && (
+                    {((isActive && isLibrarian) || (canPickUp && isOwner)) && (
                       <div className="mt-4 grid grid-cols-2 gap-2">
                         {isLibrarian && (
-                          <button onClick={() => api.approveReservation(reservation.id)} className="min-h-11 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">
+                          <button onClick={() => void handleApprove(reservation.id)} className="min-h-11 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700">
                             Approve
                           </button>
                         )}
-                        {isOwner && (
+                        {isOwner && ["ACTIVE", "APPROVED"].includes(reservation.status) && (
                           <button onClick={() => handlePickup(reservation.id)} className="min-h-11 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700">
                             Pick up
                           </button>
                         )}
-                        {(isLibrarian || isOwner) && (
+                        {(isLibrarian && isActive || isOwner && ["ACTIVE", "APPROVED"].includes(reservation.status)) && (
                           <button onClick={() => handleCancel(reservation.id)} className="min-h-11 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-300 hover:bg-red-500/15">
                             Cancel
                           </button>
@@ -307,10 +313,10 @@ export default function ReservationsPage() {
                   {isLibrarian && quickActionReservation.status === "ACTIVE" && (
                     <button type="button" onClick={async () => { if (await handleApprove(quickActionReservation.id)) setQuickActionReservation(null); }} className="min-h-11 rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white">Approve</button>
                   )}
-                  {user?.id === quickActionReservation.userId && quickActionReservation.status === "ACTIVE" && (
+                  {user?.id === quickActionReservation.userId && ["ACTIVE", "APPROVED"].includes(quickActionReservation.status) && (
                     <button type="button" onClick={async () => { await handlePickup(quickActionReservation.id); setQuickActionReservation(null); }} className="min-h-11 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white">Pick up</button>
                   )}
-                  {(isLibrarian || user?.id === quickActionReservation.userId) && quickActionReservation.status === "ACTIVE" && (
+                  {(isLibrarian && quickActionReservation.status === "ACTIVE" || user?.id === quickActionReservation.userId && ["ACTIVE", "APPROVED"].includes(quickActionReservation.status)) && (
                     <button type="button" onClick={async () => { await handleCancel(quickActionReservation.id); setQuickActionReservation(null); }} className="min-h-11 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-300">Cancel</button>
                   )}
                   <button type="button" onClick={() => setQuickActionReservation(null)} className="min-h-11 rounded-xl border border-zinc-700 px-3 py-2 text-sm font-medium text-zinc-300">Close</button>

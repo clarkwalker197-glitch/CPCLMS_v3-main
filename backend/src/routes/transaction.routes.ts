@@ -28,6 +28,7 @@ router.get('/requests', transactionController.listBorrowRequests);
 router.post('/requests/verify', qrApprovalLimiter, validate(verifyBorrowRequestSchema), transactionController.verifyBorrowRequest);
 router.get('/requests/transaction/:transactionId', transactionController.getBorrowRequestBatch);
 router.put('/requests/transaction/:batchId/approve', authorize('LIBRARIAN'), transactionController.approveBorrowRequestBatch);
+router.put('/requests/:id/cancel', transactionController.cancelBorrowRequest);
 router.get('/requests/:id', transactionController.getBorrowRequest);
 router.put('/requests/:id/approve', authorize('LIBRARIAN'), transactionController.approveRequest);
 router.put('/requests/:id/reject', authorize('LIBRARIAN'), validate(rejectRequestSchema), transactionController.rejectRequest);
@@ -52,4 +53,3 @@ router.put('/:id/pay-fine', authenticate, validate(payFineSchema), transactionCo
 router.post('/check-overdue', authorize('LIBRARIAN'), transactionController.checkOverdue);
 
 export default router;
-

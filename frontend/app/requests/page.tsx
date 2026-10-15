@@ -15,6 +15,7 @@ import { QRDisplayModal } from "@/components/QRDisplayModal";
 import { QRScanner } from "@/components/QRScanner";
 import { ModalLayer } from "@/components/ModalLayer";
 import { formatBorrowId, normalizeBorrowId } from "@/lib/borrow-id";
+import { parseApprovalInput } from "@/lib/qr-approval";
 import { offlineDb } from "@/lib/offline-db";
 import {
   Search,
@@ -23,7 +24,6 @@ import {
   ChevronRight,
   CheckCircle2,
   XCircle,
-  Coins,
   AlertTriangle,
   QrCode,
 } from "lucide-react";
@@ -51,11 +51,13 @@ const reqStatusBadge: Record<string, string> = {
   PENDING: "request-status-badge request-status-pending",
   APPROVED: "request-status-badge request-status-approved",
   REJECTED: "request-status-badge request-status-rejected",
+  CANCELLED: "bg-zinc-500/15 text-zinc-400 ring-1 ring-zinc-500/30",
 };
 const reqStatusLabel: Record<string, string> = {
   PENDING: "Pending",
   APPROVED: "Approved",
   REJECTED: "Rejected",
+  CANCELLED: "Cancelled",
 };
 
 function requestStatusText(request: any): string {
@@ -143,6 +145,7 @@ export default function RequestsPage() {
   const [transactionScannerOpen, setTransactionScannerOpen] = useState(false);
   const [isMobileLayout, setIsMobileLayout] = useState(false);
   const [scannedBorrowId, setScannedBorrowId] = useState("");
+  const [scannedApproval, setScannedApproval] = useState<{ requestId: string; token: string; approvalCode: string } | null>(null);
 
   useEffect(() => {
     const media = window.matchMedia("(max-width: 768px)");
@@ -230,7 +233,7 @@ export default function RequestsPage() {
       const params: Record<string, string> = {
         page: String(activeTxnPage),
         limit: String(PAGE_SIZE),
-        status: "ACTIVE,OVERDUE",
+        status: "ACTIVE,OVERDUE,MISSING",
       };
       if (debouncedActiveTxnSearch) params.search = debouncedActiveTxnSearch;
       params.sort = activeTxnSort;
@@ -271,7 +274,7 @@ export default function RequestsPage() {
     try {
       const cachedRecords = user
         ? (await offlineDb.borrowRequests.where("userId").equals(user.id).toArray())
-          .filter((request: any) => !request._pending && !String(request.id).startsWith("local-borrow-") && (isLibrarian || request.status === "PENDING"))
+          .filter((request: any) => !request._pending && !String(request.id).startsWith("local-borrow-"))
         : [];
       if (cachedRecords.length) {
         setRecords(cachedRecords);
@@ -283,12 +286,11 @@ export default function RequestsPage() {
       }
 
       const params: Record<string, string> = {
-        page: isLibrarian ? String(reqPage) : "1",
-        limit: isLibrarian ? String(REQUEST_PAGE_SIZE) : "100",
+        page: String(reqPage),
+        limit: String(REQUEST_PAGE_SIZE),
       };
-      if (isLibrarian && debouncedReqSearch) params.search = debouncedReqSearch;
-      if (isLibrarian && debouncedReqStatus) params.status = debouncedReqStatus;
-      if (!isLibrarian) params.status = "PENDING";
+      if (debouncedReqSearch) params.search = debouncedReqSearch;
+      if (debouncedReqStatus) params.status = debouncedReqStatus;
       params.sort = reqSort;
       params.order = reqSortOrder;
 
@@ -465,6 +467,28 @@ export default function RequestsPage() {
     }
   };
 
+  const cancelListedRequest = async (request: { id: string; books?: Array<{ title?: string | null }> }) => {
+    const titles = (request.books || []).map((book) => book.title).filter(Boolean);
+    const description = titles.length ? titles.join(", ") : "this borrow request";
+    if (!window.confirm(`Cancel ${description}?`)) return;
+
+    setActionLoadingId(request.id);
+    try {
+      const response = await api.cancelBorrowRequest(request.id);
+      if (!response.success) {
+        setError(response.error || "Failed to cancel borrow request");
+        return;
+      }
+      setSuccessMsg("Borrow request cancelled");
+      await loadRequests();
+      setTimeout(() => setSuccessMsg(""), 4000);
+    } catch {
+      setError("Failed to cancel borrow request");
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
   const openRejectModal = (request: any) => {
     setRejectTarget(request);
     setRejectReason("");
@@ -499,12 +523,65 @@ export default function RequestsPage() {
     }
   };
 
+  const verifyScannedApproval = async (approval: { requestId: string; token: string; approvalCode: string }) => {
+    setTransactionLookupError("");
+    setVerificationLoading(true);
+    try {
+      const response = await api.approveByQRCode(
+        approval.requestId,
+        approval.token,
+        approval.approvalCode,
+      );
+      if (!response.success) {
+        setTransactionLookupError(response.error || "Could not verify this QR approval.");
+        return;
+      }
+      setTransactionScannerOpen(false);
+      setScannedApproval(null);
+      setScannedBorrowId("");
+      setSuccessMsg(`Borrow ID ${formatBorrowId(approval.approvalCode)} verified. Your request is approved.`);
+      if (window.matchMedia("(max-width: 768px)").matches && "vibrate" in navigator) navigator.vibrate(35);
+      await Promise.all([loadRequests(), loadTransactions()]);
+      setTimeout(() => setSuccessMsg(""), 5000);
+    } catch {
+      setTransactionLookupError("Could not verify this QR approval. Please try again.");
+    } finally {
+      setVerificationLoading(false);
+    }
+  };
+
   const handleTransactionLookup = async (event: React.FormEvent) => {
     event.preventDefault();
     await verifyBorrowId(transactionLookupId);
   };
 
   const handleTransactionScan = async (value: string) => {
+    if (value.includes("://")) {
+      const parsed = parseApprovalInput(value);
+      if (!parsed.approvalCode || !parsed.requestId || !parsed.token) {
+        setTransactionLookupError(parsed.error || "This QR code is invalid or expired.");
+        return;
+      }
+      const approval = {
+        requestId: parsed.requestId,
+        token: parsed.token,
+        approvalCode: parsed.approvalCode,
+      };
+      const borrowId = normalizeBorrowId(parsed.approvalCode);
+      if (!borrowId) {
+        setTransactionLookupError("This QR code does not contain a valid Borrow ID.");
+        return;
+      }
+      setTransactionScannerOpen(false);
+      if (isMobileLayout) {
+        setScannedApproval(approval);
+        setScannedBorrowId(borrowId);
+      } else {
+        await verifyScannedApproval(approval);
+      }
+      return;
+    }
+
     const borrowId = normalizeBorrowId(value);
     if (!borrowId) {
       setTransactionLookupError("Enter or scan a valid Borrow ID, such as BRW-1234-5678.");
@@ -717,13 +794,12 @@ export default function RequestsPage() {
                     {/* ===================================================== */}
                     {/* Borrow Requests */}
           {/* ===================================================== */}
-          {isLibrarian && (
           <div className="order-2">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
               <div>
-                <h2 className="text-2xl font-bold text-white">Borrow Requests</h2>
+                <h2 className="text-2xl font-bold text-white">{isLibrarian ? "Borrow Requests" : "My Book Requests"}</h2>
                 <p className="text-sm text-zinc-400 mt-1">
-                  Review and manage borrowing transactions · {reqTotal} total
+                  {isLibrarian ? "Review and manage borrowing transactions" : "Track and manage your borrowing requests"} · {reqTotal} total
                 </p>
                 {showingCachedRequests && (
                   <p className="mt-2 text-xs text-amber-300">
@@ -782,6 +858,7 @@ export default function RequestsPage() {
                   <option value="PENDING" className="bg-zinc-900 text-white">Pending</option>
                   <option value="APPROVED" className="bg-zinc-900 text-white">Approved</option>
                   <option value="REJECTED" className="bg-zinc-900 text-white">Rejected</option>
+                  <option value="CANCELLED" className="bg-zinc-900 text-white">Cancelled</option>
                 </select>
                 <SortSelect options={requestSortOptions} sort={reqSort} order={reqSortOrder} onChange={changeRequestSort} />
               </div>
@@ -873,8 +950,15 @@ export default function RequestsPage() {
                                   </button>
                                 </>
                               )}
-                              {!isLibrarian && (
-                                <span className="text-xs text-zinc-500">—</span>
+                              {!isLibrarian && req.status === "PENDING" && (
+                                <button
+                                  onClick={() => cancelListedRequest(req)}
+                                  disabled={actionLoadingId === req.id}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1.5 text-xs font-medium text-red-300 transition-colors hover:bg-red-500/15 disabled:opacity-50"
+                                >
+                                  <XCircle className="h-3.5 w-3.5" />
+                                  {actionLoadingId === req.id ? "Cancelling..." : "Cancel"}
+                                </button>
                               )}
                             </div>
                           </td>
@@ -903,6 +987,15 @@ export default function RequestsPage() {
                             </button>
                             <button onClick={() => openRejectModal(req)} className="rounded-lg bg-red-500/15 px-3 py-2 text-xs font-medium text-red-400">Reject</button>
                           </>
+                        )}
+                        {!isLibrarian && req.status === "PENDING" && (
+                          <button
+                            disabled={actionLoadingId === req.id}
+                            onClick={() => cancelListedRequest(req)}
+                            className="min-h-10 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-300 disabled:opacity-50"
+                          >
+                            {actionLoadingId === req.id ? "Cancelling..." : "Cancel request"}
+                          </button>
                         )}
                       </div>
                     </div>
@@ -955,14 +1048,13 @@ export default function RequestsPage() {
               </div>
             )}
           </div>
-          )}
 
           {isLibrarian && (
             <div className={isLibrarian ? "order-1 mt-8" : "mt-8"}>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
                 <div>
-                  <h2 className="text-2xl font-bold text-white">Active Borrowed Books</h2>
-                  <p className="text-sm text-zinc-400 mt-1">Currently borrowed books awaiting return · {activeTxnTotal} active</p>
+                  <h2 className="text-2xl font-bold text-white">Borrowed & Missing Books</h2>
+                  <p className="text-sm text-zinc-400 mt-1">Currently borrowed books and missing-book records · {activeTxnTotal} records</p>
                 </div>
               </div>
 
@@ -993,8 +1085,8 @@ export default function RequestsPage() {
               {!activeTxnLoading && activeTxns.length === 0 && (
                 <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 flex flex-col items-center justify-center py-12 text-center">
                   <BookOpen className="w-12 h-12 text-zinc-600 mb-4" />
-                  <p className="text-zinc-300 font-medium">No active borrowed books found</p>
-                  <p className="text-sm text-zinc-500 mt-1">Returned and missing books leave this list automatically.</p>
+                  <p className="text-zinc-300 font-medium">No borrowed or missing books found</p>
+                  <p className="text-sm text-zinc-500 mt-1">Borrowed and missing-book records will appear here.</p>
                 </div>
               )}
 
@@ -1018,6 +1110,7 @@ export default function RequestsPage() {
                             <td className="px-6 py-4">
                               <p className="text-zinc-100 font-medium">{txn.book?.title || "Unknown"}</p>
                               <p className="text-xs text-zinc-500">{txn.book?.author || ""}</p>
+                              {txn.status === "MISSING" && <span className="mt-1 inline-flex rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-300 ring-1 ring-amber-500/30">Missing</span>}
                             </td>
                             <td className="px-6 py-4 text-zinc-300">
                               <div className="flex items-center gap-2.5">
@@ -1029,11 +1122,22 @@ export default function RequestsPage() {
                               <div className="flex items-center gap-2">
                                 <span>{formatDate(txn.dueDate)}</span>
                                 {txn.status === "OVERDUE" && <span className="inline-flex items-center rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-400 ring-1 ring-red-500/30">Overdue</span>}
+                                {txn.status === "MISSING" && <span className="inline-flex items-center rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-300 ring-1 ring-amber-500/30">Missing</span>}
                               </div>
                             </td>
-                            <td className="px-6 py-4 text-right font-medium text-amber-400">₱{Number(txn.fineAmount || 0).toFixed(2)}</td>
+                            <td className="px-6 py-4 text-right">
+                              <span className={`font-medium ${txn.finePaid ? "text-emerald-400" : "text-amber-400"}`}>
+                                ₱{Number(txn.fineAmount || 0).toFixed(2)}
+                              </span>
+                              <p className="mt-1 text-xs text-zinc-500">
+                                {txn.status === "MISSING" ? "Includes overdue · " : ""}
+                                {txn.finePaid ? "Paid" : "Unpaid"}
+                              </p>
+                            </td>
                             <td className="px-6 py-4 text-right">
                               <div className="inline-flex items-center justify-end gap-1.5">
+                                {txn.status !== "MISSING" && (
+                                  <>
                                 <button
                                   onClick={() => openReturnModal(txn)}
                                   disabled={actionLoadingId !== null}
@@ -1048,6 +1152,8 @@ export default function RequestsPage() {
                                 >
                                   <AlertTriangle className="w-3.5 h-3.5" /> Missing
                                 </button>
+                                  </>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -1246,8 +1352,8 @@ export default function RequestsPage() {
               <p className="mt-4 rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-center font-mono text-lg font-semibold text-zinc-100">{formatBorrowId(scannedBorrowId)}</p>
               {transactionLookupError && <p role="alert" className="mt-3 text-sm text-red-300">{transactionLookupError}</p>}
               <div className="mt-5 grid grid-cols-2 gap-3">
-                <button type="button" onClick={() => { setScannedBorrowId(""); setTransactionScannerOpen(true); }} disabled={verificationLoading} className="min-h-11 rounded-xl border border-zinc-700 px-4 py-2.5 text-sm font-medium text-zinc-200 hover:bg-zinc-800 disabled:opacity-50">Scan again</button>
-                <button type="button" onClick={() => void verifyBorrowId(scannedBorrowId)} disabled={verificationLoading} className="min-h-11 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">{verificationLoading ? "Verifying…" : "Confirm"}</button>
+                <button type="button" onClick={() => { setScannedBorrowId(""); setScannedApproval(null); setTransactionScannerOpen(true); }} disabled={verificationLoading} className="min-h-11 rounded-xl border border-zinc-700 px-4 py-2.5 text-sm font-medium text-zinc-200 hover:bg-zinc-800 disabled:opacity-50">Scan again</button>
+                <button type="button" onClick={() => void (scannedApproval ? verifyScannedApproval(scannedApproval) : verifyBorrowId(scannedBorrowId))} disabled={verificationLoading} className="min-h-11 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">{verificationLoading ? "Verifying…" : "Confirm"}</button>
               </div>
             </div>
           </div>

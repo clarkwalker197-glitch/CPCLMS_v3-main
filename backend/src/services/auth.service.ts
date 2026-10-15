@@ -9,7 +9,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../config';
-import { env, REFRESH_TOKEN_TTL_MS } from '../config/env';
+import { env, REFRESH_TOKEN_TTL_MS, SESSION_REFRESH_TOKEN_TTL_MS } from '../config/env';
 import { getSortParams } from '../utils/sorting';
 import { JwtPayload } from '../types';
 import {
@@ -140,7 +140,7 @@ export class AuthService {
   // ────────────────────────────────────────
   //  PUBLIC: LOGIN
   // ────────────────────────────────────────
-  async login(identifier: string, password: string, ipAddress?: string, userAgent?: string) {
+  async login(identifier: string, password: string, rememberMe = true, ipAddress?: string, userAgent?: string) {
     const normalized = (identifier || '').trim().toLowerCase();
     let user;
     try {
@@ -200,7 +200,10 @@ export class AuthService {
 
     // Generate token pair
     const accessToken = this.generateAccessToken(user.id, user.libraryId, user.role);
-    const refreshToken = await this.generateRefreshToken(user.id);
+    const refreshToken = await this.generateRefreshToken(
+      user.id,
+      rememberMe ? REFRESH_TOKEN_TTL_MS : SESSION_REFRESH_TOKEN_TTL_MS,
+    );
 
     // Log activity
     await this.logActivity(user.id, 'LOGIN', 'User', user.id, ipAddress, userAgent ? { userAgent } : undefined);
@@ -388,23 +391,58 @@ async register(input: RegisterInput, ipAddress?: string, userAgent?: string) {
       throw new UnauthorizedError('Account is deactivated.');
     }
 
-    // Rotate: revoke old, issue new
-    await prisma.refreshToken.update({
-      where: { id: storedToken.id },
-      data: { revokedAt: new Date() },
+    const rememberedSession =
+      storedToken.expiresAt.getTime() - storedToken.createdAt.getTime() > SESSION_REFRESH_TOKEN_TTL_MS / 2;
+    const now = new Date();
+    const nextRefreshToken = crypto.randomBytes(48).toString('hex');
+    const nextRefreshExpiresAt = new Date(
+      now.getTime() + (rememberedSession ? REFRESH_TOKEN_TTL_MS : SESSION_REFRESH_TOKEN_TTL_MS),
+    );
+    const rotated = await prisma.$transaction(async (tx) => {
+      const claimed = await tx.refreshToken.updateMany({
+        where: { id: storedToken.id, revokedAt: null, expiresAt: { gt: now } },
+        data: { revokedAt: now },
+      });
+      if (claimed.count !== 1) return false;
+
+      await tx.refreshToken.deleteMany({
+        where: { userId: storedToken.userId, expiresAt: { lt: now } },
+      });
+      await tx.refreshToken.create({
+        data: {
+          userId: storedToken.userId,
+          token: nextRefreshToken,
+          expiresAt: nextRefreshExpiresAt,
+        },
+      });
+      return true;
     });
+    if (!rotated) {
+      const currentToken = await prisma.refreshToken.findUnique({
+        where: { id: storedToken.id },
+        select: { revokedAt: true, expiresAt: true },
+      });
+      if (currentToken?.revokedAt) {
+        await prisma.refreshToken.updateMany({
+          where: { userId: storedToken.userId, revokedAt: null },
+          data: { revokedAt: new Date() },
+        });
+        throw new UnauthorizedError('Refresh token has already been used. All sessions have been invalidated for security.');
+      }
+      throw new UnauthorizedError('Refresh token has expired. Please log in again.');
+    }
 
     const accessToken = this.generateAccessToken(
       storedToken.user.id,
       storedToken.user.libraryId,
       storedToken.user.role
     );
-    const newRefreshToken = await this.generateRefreshToken(storedToken.userId);
 
     return {
       accessToken,
-      refreshToken: newRefreshToken.token,
+      refreshToken: nextRefreshToken,
       expiresIn: ACCESS_TOKEN_TTL_SECONDS,
+      rememberedSession,
     };
   }
 
@@ -497,7 +535,7 @@ async register(input: RegisterInput, ipAddress?: string, userAgent?: string) {
           take: 5,
         },
         reservations: {
-          where: { status: 'ACTIVE' },
+          where: { status: { in: ['ACTIVE', 'APPROVED'] } },
           include: { book: { select: { title: true } } },
           orderBy: { reservationDate: 'desc' },
           take: 5,
@@ -510,7 +548,7 @@ async register(input: RegisterInput, ipAddress?: string, userAgent?: string) {
         _count: {
           select: {
             borrowTransactions: { where: { status: 'ACTIVE' } },
-            reservations: { where: { status: 'ACTIVE' } },
+            reservations: { where: { status: { in: ['ACTIVE', 'APPROVED'] } } },
             notifications: { where: { isRead: false } },
           },
         },
@@ -763,7 +801,7 @@ async register(input: RegisterInput, ipAddress?: string, userAgent?: string) {
     return jwt.sign(
       { userId, libraryId, role } as JwtPayload,
       env.JWT_SECRET,
-      { expiresIn: env.JWT_EXPIRES_IN as string } as jwt.SignOptions
+      { expiresIn: ACCESS_TOKEN_TTL_SECONDS } as jwt.SignOptions
     );
   }
 
@@ -771,14 +809,14 @@ async register(input: RegisterInput, ipAddress?: string, userAgent?: string) {
    * Generate a cryptographically random refresh token and store it hashed in DB.
    * Returns the raw token (to deliver to client) and the DB record.
    */
-  private async generateRefreshToken(userId: string) {
+  private async generateRefreshToken(userId: string, ttlMs = REFRESH_TOKEN_TTL_MS) {
     // Clean up expired tokens for this user
     await prisma.refreshToken.deleteMany({
       where: { userId, expiresAt: { lt: new Date() } },
     });
 
     const rawToken = crypto.randomBytes(48).toString('hex');
-    const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
+    const expiresAt = new Date(Date.now() + ttlMs);
 
     const record = await prisma.refreshToken.create({
       data: {

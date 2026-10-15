@@ -1,6 +1,7 @@
 export type ApprovalInputResult = {
   approvalCode?: string;
   token?: string;
+  requestId?: string;
   error?: string;
 };
 
@@ -13,12 +14,14 @@ export function parseApprovalInput(rawValue: string): ApprovalInputResult {
 
   let approvalCode = '';
   let token = '';
+  let requestId = '';
 
   if (input.includes('://')) {
     try {
       const url = new URL(input);
       approvalCode = (url.searchParams.get('code') || '').trim().toUpperCase();
       token = url.searchParams.get('token') || '';
+      requestId = url.searchParams.get('request') || '';
     } catch {
       return { error: 'Invalid QR code format' };
     }
@@ -30,9 +33,9 @@ export function parseApprovalInput(rawValue: string): ApprovalInputResult {
     return { error: 'Could not extract transaction ID from QR code' };
   }
 
-  if (!/^BRW-\d{4}-\d{5}$/.test(approvalCode)) {
-    return { error: 'Invalid transaction ID format. Expected BRW-XXXX-XXXXX' };
+  if (!/^(?:\d{8}|BRW-\d{4}-\d{4})$/.test(approvalCode)) {
+    return { error: 'Invalid transaction ID format. Expected BRW-XXXX-XXXX' };
   }
 
-  return { approvalCode, token };
+  return { approvalCode, token, requestId };
 }

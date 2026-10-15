@@ -54,6 +54,16 @@ export const listBorrowRequests = asyncHandler(
   }
 );
 
+export const cancelBorrowRequest = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    await transactionService.cancelBorrowRequest(req.params.id, req.user!.userId, {
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+    });
+    sendSuccess(res, null, 'Borrow request cancelled');
+  }
+);
+
 export const approveRequest = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const result = await transactionService.approveRequest(
@@ -134,8 +144,8 @@ export const approveByQRCode = asyncHandler(
       res.status(400).json({ success: false, error: 'requestId is required' });
       return;
     }
-    if (!token && !approvalCode) {
-      res.status(400).json({ success: false, error: 'Either token or approvalCode is required' });
+    if (!token || !approvalCode) {
+      res.status(400).json({ success: false, error: 'A QR approval token and Borrow ID are required' });
       return;
     }
     const result = await transactionService.approveByQRCode(
@@ -197,6 +207,7 @@ export const payFine = asyncHandler(
       req.params.id,
       amount,
       req.user!.userId,
+      req.user!.role,
       { ipAddress: req.ip, userAgent: req.get('user-agent') },
     );
     sendSuccess(res, transaction, 'Fine paid successfully');

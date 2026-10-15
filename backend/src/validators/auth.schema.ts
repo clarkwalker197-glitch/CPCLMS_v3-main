@@ -46,9 +46,8 @@ export const registerSchema = z.object({
     libraryId: z
       .string()
       .trim()
-      .min(1, 'ID Number is required')
-      .max(8, 'ID Number must be at most 8 digits')
-      .regex(/^\d{1,8}$/, 'ID Number must contain digits only'),
+      .length(8, 'ID Number must contain exactly 8 digits')
+      .regex(/^\d{8}$/, 'ID Number must contain exactly 8 digits'),
     email: emailSchema,
     password: z
       .string()

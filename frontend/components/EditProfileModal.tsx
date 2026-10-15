@@ -67,12 +67,12 @@ export default function EditProfileModal({ onClose, onSaved }: EditProfileModalP
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     const nameParts = fullName.trim().split(/\s+/);
-    const phonePattern = /^\+?[\d\s-]{7,15}$/;
     if (nameParts.length < 2) return setError("Enter your first and last name.");
     if (!isValidName(nameParts[0])) return setError(nameValidationMessage("First name"));
     if (!isValidName(nameParts.slice(1).join(" "))) return setError(nameValidationMessage("Last name"));
+    if (email.trim().length > 50) return setError("Email must be at most 50 characters.");
     if (!/^\S+@\S+\.\S+$/.test(email.trim())) return setError("Enter a valid email address.");
-    if (phone && !phonePattern.test(phone)) return setError("Enter a valid phone number.");
+    if (phone && !/^\d{1,11}$/.test(phone)) return setError("Phone must contain up to 11 digits.");
     if (user?.role === "STUDENT" && !yearSection.trim()) {
       return setError("Year & Section is required for Student accounts.");
     }
@@ -138,8 +138,8 @@ export default function EditProfileModal({ onClose, onSaved }: EditProfileModalP
           </div>
 
           <Field label="Full Name" value={fullName} onChange={(value) => setFullName(sanitizeNameInput(value))} onBlur={() => setFullName((value) => value.trim())} required />
-          <Field label="Email" type="email" value={email} onChange={setEmail} required />
-          <Field label="Phone Number" value={phone} onChange={setPhone} placeholder="+63 912 345 6789" />
+          <Field label="Email" type="email" value={email} onChange={(value) => setEmail(value.slice(0, 50))} maxLength={50} required />
+          <Field label="Phone Number" value={phone} onChange={(value) => setPhone(value.replace(/\D/g, "").slice(0, 11))} maxLength={11} placeholder="11-digit phone number" />
           <Field label="ID Number" value={user?.libraryId || ""} onChange={() => {}} disabled />
           <label className="block space-y-1.5 text-sm font-medium text-zinc-300">
             Department{user?.role === "LIBRARIAN" ? " (optional)" : " *"}
@@ -169,11 +169,11 @@ export default function EditProfileModal({ onClose, onSaved }: EditProfileModalP
   );
 }
 
-function Field({ label, value, onChange, onBlur, type = "text", placeholder, required, disabled }: { label: string; value: string; onChange: (value: string) => void; onBlur?: () => void; type?: string; placeholder?: string; required?: boolean; disabled?: boolean }) {
+function Field({ label, value, onChange, onBlur, type = "text", placeholder, required, disabled, maxLength }: { label: string; value: string; onChange: (value: string) => void; onBlur?: () => void; type?: string; placeholder?: string; required?: boolean; disabled?: boolean; maxLength?: number }) {
   return (
     <label className="block space-y-1.5 text-sm font-medium text-zinc-300">
       {label}
-      <input type={type} value={value} onChange={(event) => onChange(event.target.value)} onBlur={onBlur} placeholder={placeholder} required={required} disabled={disabled} className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-white outline-none placeholder:text-zinc-600 focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-60" />
+      <input type={type} value={value} onChange={(event) => onChange(event.target.value)} onBlur={onBlur} placeholder={placeholder} required={required} disabled={disabled} maxLength={maxLength} className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-white outline-none placeholder:text-zinc-600 focus:border-blue-500 disabled:cursor-not-allowed disabled:opacity-60" />
     </label>
   );
 }

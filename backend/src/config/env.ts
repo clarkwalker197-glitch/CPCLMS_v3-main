@@ -8,6 +8,7 @@ import { z } from 'zod';
 import dotenv from 'dotenv';
 
 export const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+export const SESSION_REFRESH_TOKEN_TTL_MS = 2 * 60 * 60 * 1000;
 
 export function resolveDotenvPath(): string | undefined {
   const candidates = [
@@ -70,9 +71,9 @@ const envSchema = z.object({
   PORT: z.coerce.number().default(4000),
   DATABASE_URL: z.string().url(),
   JWT_SECRET: z.string().min(16, 'JWT_SECRET must be at least 16 characters'),
-  JWT_EXPIRES_IN: z.string().default('2h'),
+  JWT_EXPIRES_IN: z.literal('2h').default('2h'),
   JWT_REFRESH_SECRET: z.string().min(16, 'JWT_REFRESH_SECRET must be at least 16 characters'),
-  JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
+  JWT_REFRESH_EXPIRES_IN: z.literal('7d').default('7d'),
   VAPID_PUBLIC_KEY: z.string().optional(),
   VAPID_PRIVATE_KEY: z.string().optional(),
   VAPID_SUBJECT: vapidSubjectSchema,
@@ -99,7 +100,10 @@ const envSchema = z.object({
       return z.string().email().safeParse(displayNameAddress?.[1] ?? value).success;
     }, 'Invalid email')
   ),
-  BLOB_READ_WRITE_TOKEN: optionalTrimmedString.refine(
+  BLOB_READ_WRITE_TOKEN: z.preprocess(
+    (value) => (typeof value === 'string' ? value.trim() : value),
+    z.string().min(1, 'BLOB_READ_WRITE_TOKEN must not be blank').optional(),
+  ).refine(
     (value) => value === undefined || (!value.startsWith('"') && !value.startsWith("'") && !value.endsWith('"') && !value.endsWith("'")),
     'BLOB_READ_WRITE_TOKEN must not include surrounding quotes',
   ),

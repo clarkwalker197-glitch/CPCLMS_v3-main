@@ -737,6 +737,10 @@ async createBorrowRequest(data: {
     return this.get(`/transactions/requests/${id}`);
   }
 
+  async cancelBorrowRequest(id: string): Promise<ApiResponse<null>> {
+    return this.put(`/transactions/requests/${encodeURIComponent(id)}/cancel`);
+  }
+
   async getReservations(params?: Record<string, string>): Promise<ApiResponse<any[]>> {
     const query = params ? '?' + new URLSearchParams(params).toString() : '';
     return this.get(`/reservations${query}`);
@@ -774,7 +778,7 @@ async createBorrowRequest(data: {
   }
 
   // Confirm approval after the borrower scans the QR on their phone or enters code manually.
-  async approveByQRCode(requestId: string, token: string, approvalCode?: string): Promise<ApiResponse<any>> {
+  async approveByQRCode(requestId: string, token: string, approvalCode: string): Promise<ApiResponse<any>> {
     return this.post('/transactions/requests/approve-qr', { requestId, token, approvalCode });
   }
 

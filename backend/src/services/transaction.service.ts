@@ -13,7 +13,7 @@ import { Prisma } from '@prisma/client';
 import { Role } from '@prisma/client';
 import { prisma } from '../config';
 import { env } from '../config/env';
-import { NotFoundError, BadRequestError, ConflictError } from '../utils/errors';
+import { NotFoundError, BadRequestError, ConflictError, ForbiddenError } from '../utils/errors';
 import { getPaginationParams, buildPaginationMeta } from '../utils/pagination';
 import { getSortParams } from '../utils/sorting';
 import { generateQRFromText } from '../utils/qrcode';
@@ -26,6 +26,7 @@ import crypto from 'crypto';
 type ActivityRequestContext = { ipAddress?: string; userAgent?: string };
 
 const FINE_PER_BOOK_PER_DAY = 5;
+const BORROW_APPROVAL_TOKEN_TTL_MS = 5 * 60 * 1000;
 
 type LinkedBorrowRecord<T extends {
   userId: string | null;
@@ -68,9 +69,13 @@ function formatBorrowId(transactionId: string): string {
   return `BRW-${transactionId.slice(0, 4)}-${transactionId.slice(4)}`;
 }
 
-function buildBorrowVerificationUrl(transactionId: string): string {
+function buildBorrowVerificationUrl(transactionId: string, requestId: string, token: string): string {
   const frontendUrl = (Array.isArray(env.FRONTEND_URL) ? env.FRONTEND_URL[0] : env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
-  return `${frontendUrl}/scan-approve?borrowId=${encodeURIComponent(formatBorrowId(transactionId))}`;
+  const url = new URL('/scan-approve', frontendUrl);
+  url.searchParams.set('request', requestId);
+  url.searchParams.set('token', token);
+  url.searchParams.set('code', formatBorrowId(transactionId));
+  return url.toString();
 }
 
 export class TransactionService {
@@ -415,6 +420,58 @@ export class TransactionService {
     );
   }
 
+  async cancelBorrowRequest(requestId: string, userId: string, auditContext?: ActivityRequestContext) {
+    const cancelledRequests = await prisma.$transaction(async (tx) => {
+      const request = await tx.borrowRequest.findUnique({
+        where: { id: requestId },
+        select: { id: true, userId: true, requestBatchId: true, transactionId: true },
+      });
+      if (!request) throw new NotFoundError('Borrow request');
+      if (request.userId !== userId) throw new BadRequestError('Not your borrow request');
+
+      const batchWhere = request.requestBatchId
+        ? { requestBatchId: request.requestBatchId }
+        : request.transactionId
+          ? { transactionId: request.transactionId }
+          : { id: request.id };
+      const requests = await tx.borrowRequest.findMany({
+        where: { ...batchWhere, userId },
+        include: { book: { select: { title: true } } },
+      });
+      if (!requests.length) throw new NotFoundError('Borrow request');
+      if (requests.some((entry) => entry.status !== 'PENDING')) {
+        throw new BadRequestError('Only pending borrow requests can be cancelled');
+      }
+
+      const updated = await tx.borrowRequest.updateMany({
+        where: { id: { in: requests.map((entry) => entry.id) }, userId, status: 'PENDING' },
+        data: { status: 'CANCELLED' },
+      });
+      if (updated.count !== requests.length) {
+        throw new BadRequestError('This borrow request has already been processed');
+      }
+      return requests;
+    });
+
+    const batchId = cancelledRequests[0].requestBatchId
+      || cancelledRequests[0].transactionId
+      || requestId;
+    await prisma.activityLog.create({
+      data: {
+        userId,
+        action: 'CANCEL_BORROW_REQUEST',
+        entity: 'BorrowRequest',
+        entityId: batchId,
+        ipAddress: auditContext?.ipAddress,
+        details: {
+          bookTitles: cancelledRequests.map((entry) => entry.book?.title || 'Deleted book'),
+          status: 'Cancelled',
+          ...(auditContext?.userAgent ? { userAgent: auditContext.userAgent } : {}),
+        },
+      },
+    });
+  }
+
   async approveTransactionBatch(requestBatchId: string, librarianId: string, auditContext?: ActivityRequestContext) {
     const requestBatchWhere = {
       OR: [
@@ -449,9 +506,11 @@ export class TransactionService {
       if (!existingTransactionId || requests.some((request) => request.transactionId !== existingTransactionId)) {
         throw new BadRequestError('This request batch has an invalid Borrow ID');
       }
+      const approvalQr = await this.generateBorrowApprovalQr(existingTransactionId, librarianId);
       return {
         transactionId: existingTransactionId,
-        qrCode: await generateQRFromText(buildBorrowVerificationUrl(existingTransactionId)),
+        requestId: approvalQr.requestId,
+        qrCode: approvalQr.qrCode,
         requests,
       };
     }
@@ -511,14 +570,53 @@ export class TransactionService {
       },
     });
 
+    const approvalQr = await this.generateBorrowApprovalQr(transactionId, librarianId);
     return {
       transactionId,
-      qrCode: await generateQRFromText(buildBorrowVerificationUrl(transactionId)),
+      requestId: approvalQr.requestId,
+      qrCode: approvalQr.qrCode,
       requests: stagedRequests,
     };
   }
 
-  async verifyBorrowRequest(borrowId: string, userId: string, auditContext?: ActivityRequestContext) {
+  private async generateBorrowApprovalQr(transactionId: string, librarianId: string) {
+    const requests = await prisma.borrowRequest.findMany({
+      where: { transactionId, status: 'PENDING' },
+      select: { id: true },
+      orderBy: { requestDate: 'asc' },
+    });
+    if (!requests.length) throw new BadRequestError('This transaction is no longer pending');
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const expiresAt = new Date(Date.now() + BORROW_APPROVAL_TOKEN_TTL_MS);
+    const updated = await prisma.borrowRequest.updateMany({
+      where: { transactionId, status: 'PENDING' },
+      data: {
+        approvalTokenHash: tokenHash,
+        approvalTokenExpiresAt: expiresAt,
+        approvalTokenUsedAt: null,
+        approvalTokenIssuedById: librarianId,
+      },
+    });
+    if (updated.count !== requests.length) {
+      throw new BadRequestError('This transaction has already been processed');
+    }
+
+    return {
+      requestId: requests[0].id,
+      qrCode: await generateQRFromText(
+        buildBorrowVerificationUrl(transactionId, requests[0].id, token),
+      ),
+    };
+  }
+
+  async verifyBorrowRequest(
+    borrowId: string,
+    userId: string,
+    auditContext?: ActivityRequestContext,
+    qrApproval?: { tokenHash: string },
+  ) {
     const transactionId = normalizeBorrowId(borrowId);
     const requests = await prisma.borrowRequest.findMany({
       where: { transactionId },
@@ -554,6 +652,23 @@ export class TransactionService {
     const bookIds = requests.flatMap((request) => request.bookId ? [request.bookId] : []);
 
     const transactions = await prisma.$transaction(async (tx) => {
+      if (qrApproval) {
+        const consumed = await tx.borrowRequest.updateMany({
+          where: {
+            transactionId,
+            userId,
+            status: 'PENDING',
+            approvalTokenHash: qrApproval.tokenHash,
+            approvalTokenExpiresAt: { gt: borrowDate },
+            approvalTokenUsedAt: null,
+          },
+          data: { approvalTokenUsedAt: borrowDate },
+        });
+        if (consumed.count !== requests.length) {
+          throw new BadRequestError('This QR approval token is invalid, expired, or already used');
+        }
+      }
+
       const claimed = await tx.borrowRequest.updateMany({
         where: { transactionId, userId, status: 'PENDING' },
         data: { status: 'APPROVED', processedAt: borrowDate },
@@ -896,6 +1011,7 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
       PENDING: 0,
       APPROVED: 1,
       REJECTED: 2,
+      CANCELLED: 3,
     };
     const direction = order === 'asc' ? 1 : -1;
     const requests = Array.from(grouped.values()).map((group) => {
@@ -988,6 +1104,10 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
       throw new BadRequestError('This transaction no longer has an active user and book link');
     }
 
+    const book = transaction.book;
+    const borrower = transaction.user;
+    const bookId = transaction.bookId;
+    const borrowerId = transaction.userId;
     const now = new Date();
     const isOverdue = now >= new Date(transaction.dueDate.getFullYear(), transaction.dueDate.getMonth(), transaction.dueDate.getDate() + 1);
 
@@ -1000,9 +1120,13 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
       fineAmount = diffDays * FINE_PER_BOOK_PER_DAY;
     }
 
-    const [updated] = await prisma.$transaction([
-      prisma.borrowTransaction.update({
-        where: { id: transaction.id },
+    const updated = await prisma.$transaction(async (tx) => {
+      const claimed = await tx.borrowTransaction.updateMany({
+        where: {
+          id: transaction.id,
+          status: { in: ['ACTIVE', 'OVERDUE'] },
+          returnDate: null,
+        },
         data: {
           returnDate: now,
           status: 'RETURNED',
@@ -1010,16 +1134,28 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
           finePaid: transaction.finePaid || fineAmount > 0,
           qrScanned: true,
         },
-        include: {
-          book: { select: { title: true, accessionNo: true, isbn: true } },
-          user: { select: { id: true, firstName: true, lastName: true, libraryId: true } },
-        },
-      }),
-      prisma.book.update({
-        where: { id: transaction.bookId },
-        data: { availableCopies: { increment: 1 }, status: 'AVAILABLE' },
-      }),
-      prisma.activityLog.create({
+      });
+      if (claimed.count !== 1) {
+        throw new BadRequestError('This transaction has already been returned or is no longer active');
+      }
+
+      const [returnedTransaction] = await Promise.all([
+        tx.borrowTransaction.findUniqueOrThrow({
+          where: { id: transaction.id },
+          include: {
+            book: { select: { title: true, accessionNo: true, isbn: true } },
+            user: { select: { id: true, firstName: true, lastName: true, libraryId: true } },
+          },
+        }),
+        tx.book.updateMany({
+          where: { id: bookId, status: { not: 'LOST' } },
+          data: { availableCopies: { increment: 1 }, status: 'AVAILABLE' },
+        }),
+      ]);
+      if (!returnedTransaction.book) {
+        throw new BadRequestError('The book was removed before the transaction could be updated');
+      }
+      await tx.activityLog.create({
         data: {
           userId: actorUserId || transaction.userId,
           action: 'RETURN_BOOK',
@@ -1027,42 +1163,43 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
           entityId: transaction.id,
           ipAddress: auditContext?.ipAddress,
           details: {
-            bookTitle: transaction.book.title,
-            accessionNo: transaction.book.accessionNo,
+            bookTitle: book.title,
+            accessionNo: book.accessionNo,
             isOverdue,
             fineAmount,
             status: 'Returned',
             ...(auditContext?.userAgent ? { userAgent: auditContext.userAgent } : {}),
           },
         },
-      }),
-    ]);
+      });
+      return returnedTransaction;
+    });
     if (!updated.book) throw new BadRequestError('The book was removed before the transaction could be updated');
 
-    await this.recalculateReservationQueueForBook(transaction.bookId);
+    await this.recalculateReservationQueueForBook(bookId);
 
     // Notify all librarians about the returned book
-    const borrowerName = `${transaction.user.firstName} ${transaction.user.lastName}`;
+    const borrowerName = `${borrower.firstName} ${borrower.lastName}`;
     await notificationService.notifyAllLibrarians(
       'BORROW_CONFIRMATION',
       'Book Returned',
-      `${borrowerName} returned "${transaction.book.title}"${isOverdue ? ' (overdue)' : ''}`,
+      `${borrowerName} returned "${book.title}"${isOverdue ? ' (overdue)' : ''}`,
       '/requests'
     );
 
     if (fineAmount > 0) {
-      const fineMessage = `Your overdue fine of ₱${fineAmount.toFixed(2)} for "${transaction.book.title}" was automatically marked as paid when the book was returned.`;
+      const fineMessage = `Your overdue fine of ₱${fineAmount.toFixed(2)} for "${book.title}" was automatically marked as paid when the book was returned.`;
       await prisma.notification.create({
         data: {
-          userId: transaction.userId,
+          userId: borrowerId,
           type: 'OVERDUE_FINE',
           title: 'Overdue Fine Paid',
           message: fineMessage,
           link: `/requests?transactionId=${encodeURIComponent(transaction.id)}`,
         },
       });
-      if (transaction.userId) {
-        await sendPushToUser(transaction.userId, {
+      if (borrowerId) {
+        await sendPushToUser(borrowerId, {
           title: 'Overdue Fine Paid',
           body: fineMessage,
           url: `/requests?transactionId=${encodeURIComponent(transaction.id)}`,
@@ -1072,7 +1209,7 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
     }
 
     const nextReservation = await prisma.reservation.findFirst({
-      where: { bookId: transaction.bookId, status: 'ACTIVE' },
+      where: { bookId, status: 'ACTIVE' },
       orderBy: [{ user: { role: 'asc' } }, { reservationDate: 'asc' }, { queuePosition: 'asc' }],
       include: { user: { select: { firstName: true, lastName: true, role: true } } },
     });
@@ -1109,20 +1246,30 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
       },
     });
     if (!transaction) throw new NotFoundError('Transaction');
-    if (transaction.returnDate) throw new BadRequestError('Book already returned');
+    if (!['ACTIVE', 'OVERDUE'].includes(transaction.status) || transaction.returnDate) {
+      throw new BadRequestError('Only active or overdue borrows can be declared missing');
+    }
     if (!transaction.book || !transaction.user || !transaction.bookId || !transaction.userId) {
       throw new BadRequestError('This transaction no longer has an active user and book link');
     }
 
+    const book = transaction.book;
+    const borrower = transaction.user;
+    const bookId = transaction.bookId;
+    const borrowerId = transaction.userId;
     const now = new Date();
-    const replacementValue = Number(transaction.book.replacementValue ?? 0);
+    const replacementValue = Number(book.replacementValue ?? 0);
     const missingFineAmount = Number.isFinite(replacementValue) ? Math.max(0, replacementValue) : 0;
-    const outstandingOverdueFine = transaction.finePaid ? 0 : transaction.fineAmount ?? 0;
+    const outstandingOverdueFine = transaction.finePaid ? 0 : Math.max(0, Number(transaction.fineAmount ?? 0));
     const fineAmount = Number((outstandingOverdueFine + missingFineAmount).toFixed(2));
 
-    const [updated] = await prisma.$transaction([
-      prisma.borrowTransaction.update({
-        where: { id: transaction.id },
+    const updated = await prisma.$transaction(async (tx) => {
+      const claimed = await tx.borrowTransaction.updateMany({
+        where: {
+          id: transaction.id,
+          status: { in: ['ACTIVE', 'OVERDUE'] },
+          returnDate: null,
+        },
         data: {
           returnDate: now,
           status: 'MISSING',
@@ -1131,42 +1278,49 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
           qrScanned: true,
           notes: reason ? `${transaction.notes ? transaction.notes + ' ' : ''}Declared missing: ${reason}`.trim() : (transaction.notes || undefined),
         },
+      });
+      if (claimed.count !== 1) {
+        throw new BadRequestError('Only active or overdue borrows can be declared missing');
+      }
+      const missingTransaction = await tx.borrowTransaction.findUniqueOrThrow({
+        where: { id: transaction.id },
         include: {
           book: { select: { title: true, accessionNo: true, isbn: true } },
           user: { select: { id: true, firstName: true, lastName: true, libraryId: true } },
         },
-      }),
-      prisma.book.update({
-        where: { id: transaction.bookId },
+      });
+      await tx.book.update({
+        where: { id: bookId },
         data: { availableCopies: 0, status: 'LOST' },
-      }),
-      prisma.activityLog.create({
+      });
+      await tx.activityLog.create({
         data: {
           userId: librarianId,
           action: 'DECLARE_MISSING',
           entity: 'BorrowTransaction',
           entityId: transaction.id,
           details: {
-            bookTitle: transaction.book.title,
-            accessionNo: transaction.book.accessionNo,
-            borrower: `${transaction.user.firstName} ${transaction.user.lastName}`,
+            bookTitle: book.title,
+            accessionNo: book.accessionNo,
+            borrower: `${borrower.firstName} ${borrower.lastName}`,
             reason: reason || null,
             replacementValue: missingFineAmount,
             outstandingOverdueFine,
             totalFineAmount: fineAmount,
           },
         },
-      }),
-      prisma.notification.create({
+      });
+      await tx.notification.create({
         data: {
-          userId: transaction.userId,
+          userId: borrowerId,
           type: 'SYSTEM',
           title: 'Book Declared Missing',
-          message: `The book "${transaction.book.title}" you borrowed has been declared missing. A replacement charge of ₱${missingFineAmount.toFixed(2)} has been added to your unpaid fines${outstandingOverdueFine > 0 ? `, for a total of ₱${fineAmount.toFixed(2)}` : ''}. Please contact the library.`,
-          link: `/transactions/${transaction.id}`,
+          message: `The book "${book.title}" you borrowed has been declared missing. An unpaid fine of ₱${fineAmount.toFixed(2)} has been added to your account.`,
+          link: '/requests',
         },
-      }),
-    ]);
+      });
+      return missingTransaction;
+    });
     if (!updated.book) throw new BadRequestError('The book was removed before the transaction could be updated');
 
     return updated;
@@ -1292,12 +1446,16 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
     transactionId: string,
     amount: number,
     actorUserId: string,
+    actorRole: string,
     auditContext?: ActivityRequestContext,
   ) {
     const transaction = await prisma.borrowTransaction.findUnique({
       where: { id: transactionId },
     });
     if (!transaction) throw new NotFoundError('Transaction');
+    if (transaction.userId !== actorUserId && actorRole !== 'LIBRARIAN') {
+      throw new ForbiddenError('You can only pay fines for your own transactions');
+    }
     if (transaction.finePaid) throw new BadRequestError('Fine already paid');
     if (!transaction.fineAmount || transaction.fineAmount <= 0) {
       throw new BadRequestError('No fine to pay');
@@ -1310,9 +1468,13 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
     }
 
     const updated = await prisma.$transaction(async (tx) => {
-      const paidTransaction = await tx.borrowTransaction.update({
-        where: { id: transactionId },
+      const claimed = await tx.borrowTransaction.updateMany({
+        where: { id: transactionId, finePaid: false },
         data: { finePaid: true },
+      });
+      if (claimed.count !== 1) throw new BadRequestError('Fine already paid');
+      const paidTransaction = await tx.borrowTransaction.findUniqueOrThrow({
+        where: { id: transactionId },
         include: {
           book: { select: { title: true, accessionNo: true } },
           user: { select: { firstName: true, lastName: true, libraryId: true } },
@@ -1374,7 +1536,7 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
     const firstRequest = receipt.requests[0];
 
     return {
-      requestId: request.id,
+      requestId: receipt.requestId,
       transactionId: receipt.transactionId,
       approvalCode: formatBorrowId(receipt.transactionId),
       bookTitle: firstRequest.book?.title || 'Deleted book',
@@ -1386,20 +1548,34 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
   }
 
   /** Confirm the Borrow ID for the authenticated borrower and activate the batch. */
-  async approveByQRCode(requestId: string, _token: string | undefined, approvalCode: string | undefined, userId: string) {
+  async approveByQRCode(requestId: string, token: string | undefined, approvalCode: string | undefined, userId: string) {
     const request = await prisma.borrowRequest.findUnique({
       where: { id: requestId },
-      select: { id: true, userId: true, status: true, transactionId: true },
+      select: {
+        id: true,
+        userId: true,
+        status: true,
+        transactionId: true,
+        approvalTokenExpiresAt: true,
+        approvalTokenUsedAt: true,
+      },
     });
     if (!request) throw new NotFoundError('Borrow request');
     if (request.userId !== userId) throw new NotFoundError('Pending Borrow ID');
-    if (!approvalCode || request.status !== 'PENDING' || !request.transactionId) {
+    if (!token || !approvalCode || request.status !== 'PENDING' || !request.transactionId) {
       throw new BadRequestError('This request is not pending or has no Borrow ID');
     }
     if (normalizeBorrowId(approvalCode) !== request.transactionId) {
       throw new BadRequestError('Invalid Borrow ID');
     }
-    return this.verifyBorrowRequest(approvalCode, userId);
+    if (request.approvalTokenUsedAt) {
+      throw new BadRequestError('This QR approval token has already been used');
+    }
+    if (!request.approvalTokenExpiresAt || request.approvalTokenExpiresAt <= new Date()) {
+      throw new BadRequestError('This QR approval token has expired');
+    }
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    return this.verifyBorrowRequest(approvalCode, userId, undefined, { tokenHash });
   }
 
   // ============================================================
@@ -1460,7 +1636,7 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
       }
 
       const existingReservation = await tx.reservation.findFirst({
-        where: { userId, bookId, status: 'ACTIVE' },
+        where: { userId, bookId, status: { in: ['ACTIVE', 'APPROVED'] } },
       });
       if (existingReservation) {
         throw new ConflictError('You already have an active reservation for this book');
@@ -1552,7 +1728,7 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
     const reservation = await prisma.reservation.findUnique({
       where: { id: reservationId },
       include: {
-        book: { select: { title: true } },
+        book: { select: { title: true, availableCopies: true } },
         user: { select: { firstName: true, lastName: true, role: true } },
       },
     });
@@ -1561,14 +1737,25 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
       throw new BadRequestError('This archived reservation can no longer be approved');
     }
     if (reservation.status !== 'ACTIVE') throw new BadRequestError('Reservation is already resolved.');
+    if (reservation.book.availableCopies < 1) {
+      throw new BadRequestError('This reserved book is not available for pickup yet.');
+    }
 
-    const updated = await prisma.reservation.update({
-      where: { id: reservationId },
-      data: { notified: true },
-      include: {
-        book: { select: { title: true, author: true, accessionNo: true, isbn: true } },
-        user: { select: { firstName: true, lastName: true, libraryId: true, role: true } },
-      },
+    const updated = await prisma.$transaction(async (tx) => {
+      const result = await tx.reservation.updateMany({
+        where: { id: reservationId, status: 'ACTIVE' },
+        data: { status: 'APPROVED', notified: true },
+      });
+      if (result.count !== 1) throw new BadRequestError('Reservation is already resolved.');
+      const approved = await tx.reservation.findUniqueOrThrow({
+        where: { id: reservationId },
+        include: {
+          book: { select: { title: true, author: true, accessionNo: true, isbn: true } },
+          user: { select: { firstName: true, lastName: true, libraryId: true, role: true } },
+        },
+      });
+      await this.recalculateReservationQueueForBook(reservation.bookId!, tx);
+      return approved;
     });
 
     await prisma.notification.create({
@@ -1576,7 +1763,7 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
         userId: reservation.userId,
         type: 'SYSTEM',
         title: 'Reservation approved',
-        message: `Your reservation for "${reservation.book.title}" has been approved and is active.`,
+        message: `Your reservation for "${reservation.book.title}" has been approved and is ready for pickup.`,
         link: `/reservations/${reservation.id}`,
       },
     });
@@ -1663,7 +1850,9 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
     }
     const bookId = reservation.bookId;
     if (reservation.userId !== userId) throw new BadRequestError('This reservation is not assigned to you.');
-    if (reservation.status !== 'ACTIVE') throw new BadRequestError('This reservation has already been fulfilled or cancelled.');
+    if (!['ACTIVE', 'APPROVED'].includes(reservation.status)) {
+      throw new BadRequestError('This reservation has already been fulfilled or cancelled.');
+    }
 
     const book = await prisma.book.findUnique({ where: { id: reservation.bookId } });
     if (!book) throw new NotFoundError('Book');
@@ -1759,7 +1948,7 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
     }
     const bookId = reservation.bookId;
     if (reservation.userId !== userId) throw new BadRequestError('Not your reservation');
-    if (reservation.status !== 'ACTIVE') throw new BadRequestError('Reservation already processed');
+    if (!['ACTIVE', 'APPROVED'].includes(reservation.status)) throw new BadRequestError('Reservation already processed');
 
     await prisma.$transaction(async (tx) => {
       await tx.reservation.update({

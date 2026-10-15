@@ -113,7 +113,7 @@ export class BookService {
           },
         },
         reservations: {
-          where: { status: 'ACTIVE' },
+          where: { status: { in: ['ACTIVE', 'APPROVED'] } },
           include: {
             user: { select: { id: true, firstName: true, lastName: true, libraryId: true } },
           },

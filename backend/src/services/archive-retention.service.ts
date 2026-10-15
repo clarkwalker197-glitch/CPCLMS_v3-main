@@ -26,7 +26,7 @@ export class ArchiveRetentionService {
         canDelete: async (id: string) => {
           const [activeTransactions, activeReservations, pendingRequests] = await Promise.all([
             prisma.borrowTransaction.count({ where: { bookId: id, status: { in: ['ACTIVE', 'OVERDUE'] } } }),
-            prisma.reservation.count({ where: { bookId: id, status: 'ACTIVE' } }),
+            prisma.reservation.count({ where: { bookId: id, status: { in: ['ACTIVE', 'APPROVED'] } } }),
             prisma.borrowRequest.count({ where: { bookId: id, status: 'PENDING' } }),
           ]);
           return activeTransactions === 0 && activeReservations === 0 && pendingRequests === 0;
@@ -60,7 +60,7 @@ export class ArchiveRetentionService {
         canDelete: async (id: string) => {
           const [activeTransactions, activeReservations, pendingRequests] = await Promise.all([
             prisma.borrowTransaction.count({ where: { userId: id, status: { in: ['ACTIVE', 'OVERDUE'] } } }),
-            prisma.reservation.count({ where: { userId: id, status: 'ACTIVE' } }),
+            prisma.reservation.count({ where: { userId: id, status: { in: ['ACTIVE', 'APPROVED'] } } }),
             prisma.borrowRequest.count({ where: { userId: id, status: 'PENDING' } }),
           ]);
           return activeTransactions === 0 && activeReservations === 0 && pendingRequests === 0;

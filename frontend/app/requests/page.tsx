@@ -687,21 +687,7 @@ export default function RequestsPage() {
     d ? new Date(d).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" }) : "—";
 
   const reqTotalPages = Math.max(1, Math.ceil(reqTotal / REQUEST_PAGE_SIZE));
-  const pendingBorrowItems = !isLibrarian
-    ? records.flatMap((request: any) => (request.books || []).map((book: any) => ({
-      id: `pending-${request.id}-${book.requestId || book.id}`,
-      requestId: request.id,
-      requestDate: request.requestDate,
-      borrowDate: request.requestDate,
-      book,
-      user: request.user,
-      status: "PENDING",
-      fineAmount: 0,
-      finePaid: false,
-      _pendingRequest: true,
-    })))
-    : [];
-  const myBooks = [...txns, ...pendingBorrowItems]
+  const myBooks = txns
     .filter((transaction: any) => {
       const searchTerm = txnSearch.trim().toLocaleLowerCase();
       const matchesSearch = !searchTerm || [

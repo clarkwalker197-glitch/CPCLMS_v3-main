@@ -135,6 +135,17 @@ export function EditBookModal(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.book, props.open]);
 
+  useEffect(() => {
+    if (!props.open || !props.book?.categoryId || mainCategoryCode) return;
+    const categoryCode = categoryCodeForId(props.book.categoryId, props.categories);
+    const resolvedMainCategory = mainCategoryForCode(categoryCode);
+    if (resolvedMainCategory) {
+      // Fill the main category once category data becomes available; never replace a user selection.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setMainCategoryCode(resolvedMainCategory.code);
+    }
+  }, [mainCategoryCode, props.book?.categoryId, props.open, props.categories]);
+
   const update = (field: keyof typeof form) => (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => setForm((f) => ({ ...f, [field]: e.target.value }));

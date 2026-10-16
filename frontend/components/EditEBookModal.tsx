@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef } from "react";
 import { DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import { BookFormSidePanel } from "@/components/BookFormSidePanel";
 import api from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/api";
@@ -105,9 +104,11 @@ export function EditEBookModal(props: {
   const [ebookFile, setEbookFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Initialize form when e-book changes
+  // Initialize only when the editor opens or the selected e-book changes.
   useEffect(() => {
     if (props.ebook) {
+      // The selected record is the source of truth when opening or switching records.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setForm({
         isbn: props.ebook.isbn || "",
         title: props.ebook.title || "",
@@ -129,6 +130,8 @@ export function EditEBookModal(props: {
       setEbookFile(null);
       setFileMode("link");
     }
+    // A category refresh must not discard changes already made in the editor.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.ebook, props.open]);
 
   const update = (field: keyof typeof form) => (
@@ -257,8 +260,8 @@ export function EditEBookModal(props: {
       } else {
         setError(res.error || "Failed to update e-book. Please check the fields and try again.");
       }
-    } catch (err: any) {
-      setError(err?.message || "Network error. Please try again.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Network error. Please try again.");
     } finally {
       setLoading(false);
     }

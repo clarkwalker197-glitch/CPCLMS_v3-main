@@ -2,7 +2,6 @@
 
 import { useState, useRef, useEffect } from "react";
 import { DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import { BookFormSidePanel } from "@/components/BookFormSidePanel";
 import api from "@/lib/api";
 import MediaImage from "@/components/MediaImage";
@@ -45,11 +44,6 @@ const ACCEPTED_COVER_TYPES: Record<string, readonly string[]> = {
   "image/webp": [".webp"],
 };
 const MAX_COVER_MB = 5;
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 async function hasValidCoverSignature(file: File): Promise<boolean> {
   const bytes = new Uint8Array(await file.slice(0, 12).arrayBuffer());
@@ -109,9 +103,11 @@ export function EditBookModal(props: {
   const [coverError, setCoverError] = useState("");
   const coverInputRef = useRef<HTMLInputElement>(null);
 
-  // Initialize form when book changes
+  // Initialize only when the editor opens or the selected book changes.
   useEffect(() => {
     if (props.book) {
+      // The selected record is the source of truth when opening or switching records.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setForm({
         title: props.book.title || "",
         author: props.book.author || "",
@@ -135,6 +131,8 @@ export function EditBookModal(props: {
       setError("");
       setCoverError("");
     }
+    // A category refresh must not discard changes already made in the editor.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.book, props.open]);
 
   const update = (field: keyof typeof form) => (
@@ -328,8 +326,8 @@ export function EditBookModal(props: {
       } else {
         setError(res.error || "Failed to update book. Please check the fields and try again.");
       }
-    } catch (err: any) {
-      setError(err?.message || "Network error. Please try again.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Network error. Please try again.");
     } finally {
       setLoading(false);
     }

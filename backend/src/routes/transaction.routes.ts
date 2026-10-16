@@ -16,6 +16,7 @@ import {
   verifyBorrowRequestSchema,
   cancelSelectedSchema,
   confirmCancellationSchema,
+  resolveMissingSchema,
 } from '../validators/transaction.schema';
 
 const router = Router();
@@ -48,6 +49,7 @@ router.get('/', transactionController.listTransactions);
 router.get('/:id', transactionController.getTransaction);
 router.put('/:id/return', authorize('LIBRARIAN'), validate(returnBookSchema), transactionController.returnBook);
 router.put('/:id/missing', authorize('LIBRARIAN'), transactionController.declareMissing);
+router.post('/:id/resolve-missing', authorize('LIBRARIAN'), validate(resolveMissingSchema), transactionController.resolveMissing);
 
 // ── Fine Payment ─────────────────────────────────────────
 router.put('/:id/pay-fine', authenticate, validate(payFineSchema), transactionController.payFine);

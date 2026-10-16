@@ -32,6 +32,12 @@ import {
 const PAGE_SIZE = 10;
 const REQUEST_PAGE_SIZE = 5;
 
+type MissingResolutionOutcome = "PAID" | "REPLACED";
+type MissingResolutionTarget = {
+  id: string;
+  book?: { title?: string | null } | null;
+};
+
 const txnStatusBadge: Record<string, string> = {
   ACTIVE: "bg-blue-500/15 text-blue-400 ring-blue-500/30",
   RETURNED: "bg-emerald-500/15 text-emerald-400 ring-emerald-500/30",
@@ -45,6 +51,10 @@ const txnStatusLabel: Record<string, string> = {
   OVERDUE: "Overdue",
   MISSING: "Missing",
   PENDING: "Pending",
+};
+const librarianTxnStatusLabel: Record<string, string> = {
+  ...txnStatusLabel,
+  ACTIVE: "Active",
 };
 
 // ── Request status styling ──
@@ -63,6 +73,10 @@ const reqStatusLabel: Record<string, string> = {
 
 function requestStatusText(request: any): string {
   return reqStatusLabel[request.status] || request.status;
+}
+
+function isMissingCaseResolved(transaction: { notes?: string | null }): boolean {
+  return /Resolved:\s*(paid|replaced)\s*\(\d{4}-\d{2}-\d{2}\)\s*$/i.test(transaction.notes || "");
 }
 
 export default function RequestsPage() {
@@ -96,6 +110,10 @@ export default function RequestsPage() {
   const [missingReason, setMissingReason] = useState("");
   const [missingLoading, setMissingLoading] = useState(false);
   const [missingError, setMissingError] = useState("");
+  const [resolveTarget, setResolveTarget] = useState<MissingResolutionTarget | null>(null);
+  const [resolveOutcome, setResolveOutcome] = useState<MissingResolutionOutcome | "">("");
+  const [resolveLoading, setResolveLoading] = useState(false);
+  const [resolveError, setResolveError] = useState("");
 
   // Borrow requests
   const [records, setRecords] = useState<any[]>([]);
@@ -444,6 +462,33 @@ export default function RequestsPage() {
       setMissingError("Failed to declare book missing");
     } finally {
       setMissingLoading(false);
+    }
+  };
+
+  const openResolveModal = (record: MissingResolutionTarget) => {
+    setResolveTarget(record);
+    setResolveOutcome("");
+    setResolveError("");
+  };
+
+  const handleResolveMissing = async () => {
+    if (!resolveTarget || !resolveOutcome || resolveLoading) return;
+    setResolveLoading(true);
+    setResolveError("");
+    try {
+      const res = await api.resolveMissing(resolveTarget.id, resolveOutcome);
+      if (!res.success) {
+        setResolveError(res.error || "Failed to resolve missing-book case");
+        return;
+      }
+      setResolveTarget(null);
+      setSuccessMsg("Missing book case resolved");
+      await loadActiveTransactions();
+      setTimeout(() => setSuccessMsg(""), 4000);
+    } catch (err) {
+      setResolveError(err instanceof Error ? err.message : "Failed to resolve missing-book case");
+    } finally {
+      setResolveLoading(false);
     }
   };
 
@@ -1126,6 +1171,7 @@ export default function RequestsPage() {
                           <th className="px-6 py-3 font-medium">Book</th>
                           <th className="px-6 py-3 font-medium">Member</th>
                           <th className="px-6 py-3 font-medium hidden sm:table-cell"><SortHeader field="dueDate" sort={activeTxnSort} order={activeTxnSortOrder} onSort={(field) => changeActiveTxnSort(field, nextSortOrder(activeTxnSort, activeTxnSortOrder, field))}>Due Date</SortHeader></th>
+                          <th className="px-6 py-3 font-medium">Status</th>
                           <th className="px-6 py-3 font-medium text-right">Fine</th>
                           <th className="px-6 py-3 font-medium text-right">Actions</th>
                         </tr>
@@ -1136,7 +1182,6 @@ export default function RequestsPage() {
                             <td className="px-6 py-4">
                               <p className="text-zinc-100 font-medium">{txn.book?.title || "Unknown"}</p>
                               <p className="text-xs text-zinc-500">{txn.book?.author || ""}</p>
-                              {txn.status === "MISSING" && <span className="mt-1 inline-flex rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-300 ring-1 ring-amber-500/30">Missing</span>}
                             </td>
                             <td className="px-6 py-4 text-zinc-300">
                               <div className="flex items-center gap-2.5">
@@ -1145,11 +1190,12 @@ export default function RequestsPage() {
                               </div>
                             </td>
                             <td className="px-6 py-4 text-zinc-400 hidden sm:table-cell">
-                              <div className="flex items-center gap-2">
-                                <span>{formatDate(txn.dueDate)}</span>
-                                {txn.status === "OVERDUE" && <span className="inline-flex items-center rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-400 ring-1 ring-red-500/30">Overdue</span>}
-                                {txn.status === "MISSING" && <span className="inline-flex items-center rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-300 ring-1 ring-amber-500/30">Missing</span>}
-                              </div>
+                              {formatDate(txn.dueDate)}
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${txnStatusBadge[txn.status] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>
+                                {librarianTxnStatusLabel[txn.status] || txn.status}
+                              </span>
                             </td>
                             <td className="px-6 py-4 text-right">
                               <span className={`font-medium ${txn.finePaid ? "text-emerald-400" : "text-amber-400"}`}>
@@ -1162,7 +1208,16 @@ export default function RequestsPage() {
                             </td>
                             <td className="px-6 py-4 text-right">
                               <div className="inline-flex items-center justify-end gap-1.5">
-                                {txn.status !== "MISSING" && (
+                                {txn.status === "MISSING" && !isMissingCaseResolved(txn) ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => openResolveModal(txn)}
+                                    disabled={resolveLoading}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 text-xs font-medium rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                  >
+                                    Resolved
+                                  </button>
+                                ) : txn.status !== "MISSING" && (
                                   <>
                                 <button
                                   onClick={() => openReturnModal(txn)}
@@ -1195,9 +1250,11 @@ export default function RequestsPage() {
                       transaction={txn}
                       formatDate={formatDate}
                       statusBadge={txnStatusBadge}
-                      statusLabel={txnStatusLabel}
+                      statusLabel={librarianTxnStatusLabel}
                       contextLabel="Member"
                       contextValue={[txn.user?.firstName, txn.user?.lastName].filter(Boolean).join(" ") || "Unknown member"}
+                      showStatusRow
+                      onResolveMissing={txn.status === "MISSING" && !isMissingCaseResolved(txn) ? () => openResolveModal(txn) : undefined}
                       onReturn={() => openReturnModal(txn)}
                       onMissing={() => openMissingModal(txn)}
                       onPayFine={async (amount) => {
@@ -1274,6 +1331,72 @@ export default function RequestsPage() {
               <button onClick={handleDeclareMissing} disabled={missingLoading} className="flex-1 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold rounded-xl disabled:opacity-40">{missingLoading ? "Declaring..." : "Declare Missing"}</button>
             </div>
           </div>
+          </div>
+        </ModalLayer>
+      )}
+
+      {resolveTarget && (
+        <ModalLayer>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <button
+              type="button"
+              aria-label="Close missing-book resolution dialog"
+              className="fixed inset-0 bg-black/70 backdrop-blur-sm"
+              onClick={() => !resolveLoading && setResolveTarget(null)}
+            />
+            <section
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="resolve-missing-title"
+              className="relative z-50 w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl shadow-black/50"
+            >
+              <h3 id="resolve-missing-title" className="text-lg font-semibold text-white">Resolve Missing Book Case</h3>
+              <p className="mt-1 text-sm text-zinc-400">{resolveTarget.book?.title || "Unknown book"}</p>
+              <fieldset className="mt-5 space-y-3">
+                <legend className="mb-2 text-sm font-medium text-zinc-200">Choose how the case was resolved <span className="text-red-400">*</span></legend>
+                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-zinc-700 bg-zinc-950/70 p-3 text-sm text-zinc-200">
+                  <input
+                    type="radio"
+                    name="missing-resolution-outcome"
+                    value="PAID"
+                    checked={resolveOutcome === "PAID"}
+                    onChange={() => setResolveOutcome("PAID")}
+                    className="mt-0.5 accent-emerald-500"
+                  />
+                  <span>Paid the missing-book fine. The borrower settled the charge.</span>
+                </label>
+                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-zinc-700 bg-zinc-950/70 p-3 text-sm text-zinc-200">
+                  <input
+                    type="radio"
+                    name="missing-resolution-outcome"
+                    value="REPLACED"
+                    checked={resolveOutcome === "REPLACED"}
+                    onChange={() => setResolveOutcome("REPLACED")}
+                    className="mt-0.5 accent-emerald-500"
+                  />
+                  <span>Replaced with a new copy. The borrower gave the library a replacement copy.</span>
+                </label>
+              </fieldset>
+              {resolveError && <p role="alert" className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{resolveError}</p>}
+              <div className="mt-5 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setResolveTarget(null)}
+                  disabled={resolveLoading}
+                  className="flex-1 rounded-xl border border-zinc-700 px-4 py-2.5 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResolveMissing}
+                  disabled={!resolveOutcome || resolveLoading}
+                  className="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {resolveLoading ? "Marking resolved..." : "Mark resolved"}
+                </button>
+              </div>
+            </section>
           </div>
         </ModalLayer>
       )}

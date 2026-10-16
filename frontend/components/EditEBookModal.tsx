@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Dialog, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { BookFormSidePanel } from "@/components/BookFormSidePanel";
 import api from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/api";
 import MediaImage from "@/components/MediaImage";
@@ -203,6 +204,10 @@ export function EditEBookModal(props: {
       setError("Title, author, category, and a valid Dewey classification number are required.");
       return;
     }
+    if (form.coverImage.trim() && !isValidFileUrl(form.coverImage.trim())) {
+      setError("Enter a valid HTTP or HTTPS cover image URL.");
+      return;
+    }
     if (fileMode === "link" && !isValidFileUrl(form.fileUrl.trim())) {
       setError("Enter a valid http or https file URL.");
       return;
@@ -260,8 +265,8 @@ export function EditEBookModal(props: {
   };
 
   return (
-    <Dialog open={props.open} onOpenChange={handleClose}>
-      <DialogHeader>
+    <BookFormSidePanel open={props.open} onClose={handleClose} ariaLabel="Edit e-book">
+      <DialogHeader className="pr-10">
         <DialogTitle className="flex items-center gap-2">
           <BookOpen className="w-5 h-5 text-blue-400" />
           Edit E-Book
@@ -472,7 +477,7 @@ export function EditEBookModal(props: {
         </div>
 
         <div>
-          <label className={labelClass}>Cover Image URL</label>
+          <label className={labelClass}>Cover Image URL <span className="text-zinc-500">(optional)</span></label>
           <input
             className={inputClass}
             value={form.coverImage}
@@ -495,7 +500,6 @@ export function EditEBookModal(props: {
             rows={3}
           />
         </div>
-
       </div>
 
       <div className="mt-4 flex shrink-0 gap-2 border-t border-zinc-800 pt-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
@@ -516,6 +520,6 @@ export function EditEBookModal(props: {
         </button>
       </div>
       </form>
-    </Dialog>
+    </BookFormSidePanel>
   );
 }

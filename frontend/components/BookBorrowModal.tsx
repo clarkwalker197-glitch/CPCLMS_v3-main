@@ -6,10 +6,17 @@ import { Button } from "@/components/ui/button";
 import api from "@/lib/api";
 import { BookOpen, ShieldCheck } from "lucide-react";
 
+type BorrowableBook = {
+  id: string;
+  title: string;
+  author?: string | null;
+  accessionNo?: string | null;
+};
+
 export function BookBorrowModal(props: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  books: any[];
+  books: BorrowableBook[];
   onSuccess: () => void;
   onError?: (message: string) => void;
 }) {
@@ -38,8 +45,8 @@ export function BookBorrowModal(props: {
         setError(message);
         props.onError?.(message);
       }
-    } catch (err: any) {
-      const message = err?.message || "Network error. Please try again.";
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Network error. Please try again.";
       setError(message);
       props.onError?.(message);
     } finally {
@@ -51,7 +58,7 @@ export function BookBorrowModal(props: {
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
       <DialogHeader>
         <DialogTitle>Request to Borrow ({count} book{count !== 1 ? "s" : ""})</DialogTitle>
-        <DialogDescription>Submit a request to borrow these books from the library.</DialogDescription>
+        <DialogDescription>Borrowers may have up to 3 books at a time. Current loans and other pending requests count toward this limit.</DialogDescription>
       </DialogHeader>
 
       {/* Book list */}
@@ -90,7 +97,7 @@ export function BookBorrowModal(props: {
         {maxReached && (
           <p className="mt-2 text-xs text-blue-400 flex items-center gap-1.5">
             <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-            You&apos;ve reached the maximum of 3 books per transaction.
+            You&apos;ve reached the maximum of 3 books per borrowing request.
           </p>
         )}
       </div>

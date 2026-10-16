@@ -792,6 +792,10 @@ async returnBook(id: string, qrCode?: string): Promise<ApiResponse<any>> {
     return this.put(`/transactions/${id}/missing`, { reason });
   }
 
+  async resolveMissing(id: string, outcome: "PAID" | "REPLACED"): Promise<ApiResponse<any>> {
+    return this.post(`/transactions/${id}/resolve-missing`, { outcome });
+  }
+
 async payFine(id: string, amount: number): Promise<ApiResponse<any>> {
     return this.put(`/transactions/${id}/pay-fine`, { amount });
   }

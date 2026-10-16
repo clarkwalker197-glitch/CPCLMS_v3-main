@@ -210,6 +210,17 @@ export const declareMissing = asyncHandler(
   }
 );
 
+export const resolveMissing = asyncHandler(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const transaction = await transactionService.resolveMissing(
+      req.params.id,
+      req.user!.userId,
+      req.body.outcome
+    );
+    sendSuccess(res, transaction, 'Missing book case resolved');
+  }
+);
+
 export const payFine = asyncHandler(
   async (req: AuthenticatedRequest, res: Response) => {
     const { amount } = req.body;

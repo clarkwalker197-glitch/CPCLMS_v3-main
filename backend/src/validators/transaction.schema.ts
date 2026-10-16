@@ -97,6 +97,12 @@ export const payFineSchema = z.object({
   }),
 });
 
+export const resolveMissingSchema = z.object({
+  body: z.object({
+    outcome: z.enum(['PAID', 'REPLACED']),
+  }),
+});
+
 // Types
 export type CreateBorrowRequestInput = z.infer<typeof createBorrowRequestSchema>['body'];
 export type ApproveRequestInput = z.infer<typeof approveRequestSchema>['body'];

@@ -13,6 +13,8 @@ interface BorrowHistoryCardProps {
   contextValue?: string;
   onReturn?: () => void | Promise<void>;
   onMissing?: () => void | Promise<void>;
+  onResolveMissing?: () => void;
+  showStatusRow?: boolean;
   onPayFine?: (amount: number) => void | Promise<void>;
 }
 
@@ -25,6 +27,8 @@ export default function BorrowHistoryCard({
   contextValue,
   onReturn,
   onMissing,
+  onResolveMissing,
+  showStatusRow = false,
   onPayFine,
 }: BorrowHistoryCardProps) {
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -71,16 +75,35 @@ export default function BorrowHistoryCard({
             <p className="break-words font-semibold text-zinc-100">{transaction.book?.title || "Unknown"}</p>
             {borrower && <p className="mt-1 break-words text-sm text-zinc-400">{borrower}</p>}
           </div>
-          <span className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${statusBadge[transaction.status] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>
-            {statusLabel[transaction.status] || transaction.status}
-          </span>
+          {!showStatusRow && (
+            <span className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${statusBadge[transaction.status] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>
+              {statusLabel[transaction.status] || transaction.status}
+            </span>
+          )}
         </div>
+        {showStatusRow && (
+          <dl className="mt-3 border-t border-zinc-800 pt-3 text-sm">
+            <div className="flex items-center justify-between gap-3">
+              <dt className="text-zinc-500">Status</dt>
+              <dd><span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${statusBadge[transaction.status] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>{statusLabel[transaction.status] || transaction.status}</span></dd>
+            </div>
+          </dl>
+        )}
         {hasFine && (
           <p className={`mt-3 text-sm font-semibold ${transaction.finePaid ? "text-emerald-400" : "text-orange-400"}`}>
             Fine: ₱{fineAmount.toFixed(2)} · {transaction.finePaid ? "Paid" : "Unpaid"}
           </p>
         )}
       </button>
+      {onResolveMissing && transaction.status === "MISSING" && (
+        <button
+          type="button"
+          onClick={onResolveMissing}
+          className="mt-2 min-h-10 w-full rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-500/20"
+        >
+          Resolved
+        </button>
+      )}
 
       {detailsOpen && (
         <ModalLayer>

@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { Dialog, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { BookFormSidePanel } from "@/components/BookFormSidePanel";
 import api from "@/lib/api";
 import { categoryDisplayName, categoryForClassification, categoryIdForDewey, DEWEY_MAIN_CATEGORIES, LIBRARY_CATEGORIES, mainCategoryForClassification, normalizeClassificationNumber, sanitizeClassificationInput, subcategoriesForMain } from "@/lib/categories";
 import { BookOpen, Upload, FileText, X } from "lucide-react";
@@ -175,8 +176,8 @@ export function AddBookModal(props: {
   };
 
   return (
-    <Dialog open={props.open} onOpenChange={handleClose}>
-      <DialogHeader>
+    <BookFormSidePanel open={props.open} onClose={handleClose} ariaLabel="Add book">
+      <DialogHeader className="pr-10">
         <DialogTitle className="flex items-center gap-2">
           <BookOpen className="w-5 h-5 text-blue-400" />
           Add Book
@@ -422,6 +423,6 @@ export function AddBookModal(props: {
           </Button>
         </div>
       </form>
-    </Dialog>
+    </BookFormSidePanel>
   );
 }

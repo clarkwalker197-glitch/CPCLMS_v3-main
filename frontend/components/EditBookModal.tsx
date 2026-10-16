@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Dialog, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { BookFormSidePanel } from "@/components/BookFormSidePanel";
 import api from "@/lib/api";
 import MediaImage from "@/components/MediaImage";
 import { categoryCodeForId, categoryDisplayName, categoryForClassification, categoryIdForDewey, DEWEY_MAIN_CATEGORIES, mainCategoryForClassification, mainCategoryForCode, normalizeClassificationNumber, sanitizeClassificationInput, subcategoriesForMain } from "@/lib/categories";
@@ -101,6 +102,7 @@ export function EditBookModal(props: {
   const [form, setForm] = useState(emptyForm);
   const [mainCategoryCode, setMainCategoryCode] = useState("");
   const [originalCoverImage, setOriginalCoverImage] = useState<string>("");
+  const [coverImageUrl, setCoverImageUrl] = useState("");
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -128,6 +130,7 @@ export function EditBookModal(props: {
       const categoryCode = categoryCodeForId(props.book.categoryId, props.categories);
       setMainCategoryCode((mainCategoryForCode(categoryCode) || mainCategoryForCode(props.book.classificationNumber?.slice(0, 3)))?.code || "");
       setOriginalCoverImage(props.book.coverImage || "");
+      setCoverImageUrl("");
       setCoverFile(null);
       setError("");
       setCoverError("");
@@ -189,6 +192,7 @@ export function EditBookModal(props: {
       return;
     }
     setCoverError("");
+    setCoverImageUrl("");
     setCoverFile(file);
   };
 
@@ -203,6 +207,7 @@ export function EditBookModal(props: {
   const reset = () => {
     setForm(emptyForm);
     setMainCategoryCode("");
+    setCoverImageUrl("");
     setCoverFile(null);
     setOriginalCoverImage("");
     setError("");
@@ -254,6 +259,16 @@ export function EditBookModal(props: {
       return;
     }
 
+    if (coverImageUrl.trim()) {
+      try {
+        const coverUrl = new URL(coverImageUrl.trim());
+        if (!["http:", "https:"].includes(coverUrl.protocol)) throw new Error("Invalid protocol");
+      } catch {
+        setCoverError("Enter a valid HTTP or HTTPS cover image URL.");
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       const commonFields = {
@@ -270,6 +285,7 @@ export function EditBookModal(props: {
         language: form.language.trim() || "English",
         copies: copiesNum,
         availableCopies: availableCopiesNum,
+        ...(coverImageUrl.trim() && !coverFile ? { coverImage: coverImageUrl.trim() } : {}),
       };
 
       let res;
@@ -320,8 +336,8 @@ export function EditBookModal(props: {
   };
 
   return (
-    <Dialog open={props.open} onOpenChange={handleClose}>
-      <DialogHeader>
+    <BookFormSidePanel open={props.open} onClose={handleClose} ariaLabel="Edit book">
+      <DialogHeader className="pr-10">
         <DialogTitle className="flex items-center gap-2">
           <BookOpen className="w-5 h-5 text-blue-400" />
           Edit Book
@@ -534,6 +550,31 @@ export function EditBookModal(props: {
             accept={Object.values(ACCEPTED_COVER_TYPES).flat().join(",")}
             className="hidden"
           />
+          {!coverFile && (
+            <div className="mt-3">
+              <label className={`${labelClass} text-xs`}>Or use a cover image URL</label>
+              <input
+                type="url"
+                className={inputClass}
+                value={coverImageUrl}
+                onChange={(event) => {
+                  setCoverImageUrl(event.target.value);
+                  clearCoverError();
+                }}
+                placeholder="https://example.com/cover.jpg"
+              />
+              {coverImageUrl && (
+                <div className="mt-2 h-32 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900">
+                  <MediaImage
+                    src={coverImageUrl}
+                    alt="Cover preview"
+                    className="h-full w-full object-contain"
+                    fallback={<div className="flex h-full items-center justify-center text-xs text-zinc-500">No cover preview</div>}
+                  />
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div>
@@ -567,6 +608,6 @@ export function EditBookModal(props: {
         </button>
       </div>
       </form>
-    </Dialog>
+    </BookFormSidePanel>
   );
 }

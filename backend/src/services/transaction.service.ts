@@ -88,6 +88,16 @@ export class TransactionService {
    */
   static readonly MAX_BOOKS_PER_TRANSACTION = 3;
 
+  private async getMaximumBorrowCount(user: { role: Role; maxBooksAllowed: number | null }) {
+    if (user.role === Role.LIBRARIAN) return 999;
+    const configuredLimit = user.role === Role.STUDENT
+      ? user.maxBooksAllowed ?? await policyService.getNumber('MAX_BOOKS_PER_USER', 3)
+      : user.role === Role.FACULTY
+        ? user.maxBooksAllowed ?? await policyService.getNumber('FACULTY_MAX_BOOKS', 10)
+        : 999;
+    return Math.min(configuredLimit, TransactionService.MAX_BOOKS_PER_TRANSACTION);
+  }
+
   private async acquireIdempotencyRecord(
     tx: Prisma.TransactionClient,
     userId: string,
@@ -253,6 +263,10 @@ export class TransactionService {
         }
       }
 
+      await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM users WHERE id = ${userId} FOR UPDATE
+      `;
+
       const books = await tx.$queryRaw<Array<{ id: string; title: string; status: string; availableCopies: number }>>`
         SELECT id, title, status, available_copies AS "availableCopies"
         FROM books
@@ -319,28 +333,23 @@ export class TransactionService {
       }
 
       const existingActive = await tx.borrowTransaction.findFirst({
-        where: { userId, bookId: { in: uniqueBookIds }, status: 'ACTIVE' },
+        where: { userId, bookId: { in: uniqueBookIds }, status: { in: ['ACTIVE', 'OVERDUE'] } },
       });
       if (existingActive) {
         throw new ConflictError('You already have one of these books borrowed');
       }
 
       const activeCount = await tx.borrowTransaction.count({
-        where: { userId, status: 'ACTIVE' },
+        where: { userId, status: { in: ['ACTIVE', 'OVERDUE'] } },
       });
+      const pendingCount = await tx.borrowRequest.count({
+        where: { userId, status: 'PENDING' },
+      });
+      const maxBooks = await this.getMaximumBorrowCount(user);
 
-      let maxBooks: number;
-      if (user.role === Role.STUDENT) {
-        maxBooks = user.maxBooksAllowed ?? (await policyService.getNumber('MAX_BOOKS_PER_USER', 3));
-      } else if (user.role === Role.FACULTY) {
-        maxBooks = user.maxBooksAllowed ?? (await policyService.getNumber('FACULTY_MAX_BOOKS', 10));
-      } else {
-        maxBooks = 999;
-      }
-
-      if (activeCount + uniqueBookIds.length > maxBooks) {
+      if (activeCount + pendingCount + uniqueBookIds.length > maxBooks) {
         throw new BadRequestError(
-          `You have reached the maximum limit of ${maxBooks} active borrows. Return a book first.`
+          `You can have a maximum of ${maxBooks} borrowed or pending books at a time. Return a book or cancel a pending request first.`
         );
       }
 
@@ -688,14 +697,14 @@ export class TransactionService {
     }
     const borrowDate = new Date();
     const dueDate = await this.calculateBorrowDueDate(user, borrowDate);
-    const maxBooks = user.role === Role.STUDENT
-      ? user.maxBooksAllowed ?? await policyService.getNumber('MAX_BOOKS_PER_USER', 3)
-      : user.role === Role.FACULTY
-        ? user.maxBooksAllowed ?? await policyService.getNumber('FACULTY_MAX_BOOKS', 10)
-        : 999;
+    const maxBooks = await this.getMaximumBorrowCount(user);
     const bookIds = requests.flatMap((request) => request.bookId ? [request.bookId] : []);
 
     const transactions = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM users WHERE id = ${userId} FOR UPDATE
+      `;
+
       if (qrApproval) {
         const consumed = await tx.borrowRequest.updateMany({
           where: {
@@ -745,8 +754,20 @@ export class TransactionService {
       const activeCount = await tx.borrowTransaction.count({
         where: { userId, status: { in: ['ACTIVE', 'OVERDUE'] } },
       });
-      if (activeCount + requests.length > maxBooks) {
-        throw new BadRequestError(`You have reached the maximum limit of ${maxBooks} active borrows`);
+      const pendingOtherCount = await tx.borrowRequest.count({
+        where: {
+          userId,
+          status: 'PENDING',
+          OR: [
+            { transactionId: null },
+            { transactionId: { not: transactionId } },
+          ],
+        },
+      });
+      if (activeCount + pendingOtherCount + requests.length > maxBooks) {
+        throw new BadRequestError(
+          `You can have a maximum of ${maxBooks} borrowed or pending books at a time. Return a book or cancel a pending request first.`
+        );
       }
 
       const createdTransactions = await Promise.all(requests.map((request) => {
@@ -1453,6 +1474,100 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
     if (!updated.book) throw new BadRequestError('The book was removed before the transaction could be updated');
 
     return updated;
+  }
+
+  async resolveMissing(transactionId: string, librarianId: string, outcome: 'PAID' | 'REPLACED') {
+    const now = new Date();
+    const resolutionNote = `Resolved: ${outcome === 'PAID' ? 'paid' : 'replaced'} (${now.toISOString().slice(0, 10)})`;
+
+    return prisma.$transaction(async (tx) => {
+      await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM borrow_transactions WHERE id = ${transactionId} FOR UPDATE
+      `;
+      const transaction = await tx.borrowTransaction.findUnique({
+        where: { id: transactionId },
+        include: {
+          book: { select: { id: true, title: true, availableCopies: true, status: true } },
+          user: { select: { id: true, firstName: true, lastName: true } },
+        },
+      });
+      if (!transaction) throw new NotFoundError('Transaction');
+      if (transaction.status !== 'MISSING') {
+        throw new BadRequestError('Only missing-book transactions can be resolved');
+      }
+      if (/Resolved:\s*(paid|replaced)\s*\(\d{4}-\d{2}-\d{2}\)\s*$/i.test(transaction.notes || '')) {
+        throw new BadRequestError('Missing book case already resolved');
+      }
+      if (!transaction.book || !transaction.bookId || !transaction.user || !transaction.userId) {
+        throw new BadRequestError('This transaction no longer has an active user and book link');
+      }
+
+      await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM books WHERE id = ${transaction.bookId} FOR UPDATE
+      `;
+      const book = await tx.book.findUnique({
+        where: { id: transaction.bookId },
+        select: { title: true, availableCopies: true },
+      });
+      if (!book) throw new BadRequestError('The book was removed before the case could be resolved');
+      const availableCopies = book.availableCopies;
+      if (outcome === 'REPLACED') {
+        await tx.book.update({
+          where: { id: transaction.bookId },
+          data: {
+            availableCopies: availableCopies === 0 ? 1 : availableCopies,
+            status: 'AVAILABLE',
+          },
+        });
+      } else if (availableCopies > 0) {
+        const remainingCopies = availableCopies - 1;
+        await tx.book.update({
+          where: { id: transaction.bookId },
+          data: {
+            availableCopies: { decrement: 1 },
+            status: remainingCopies === 0 ? 'LOST' : 'AVAILABLE',
+          },
+        });
+      }
+
+      const updated = await tx.borrowTransaction.update({
+        where: { id: transaction.id },
+        data: {
+          finePaid: true,
+          notes: `${transaction.notes ? `${transaction.notes} ` : ''}${resolutionNote}`.slice(-1000),
+        },
+        include: {
+          book: { select: { title: true, accessionNo: true } },
+          user: { select: { id: true, firstName: true, lastName: true, libraryId: true } },
+        },
+      });
+      await tx.activityLog.create({
+        data: {
+          userId: librarianId,
+          action: 'RESOLVE_MISSING',
+          entity: 'BorrowTransaction',
+          entityId: transaction.id,
+          details: {
+            bookTitle: book.title,
+            borrower: `${transaction.user.firstName} ${transaction.user.lastName}`,
+            outcome,
+            fineAmount: transaction.fineAmount,
+            resolvedAt: now.toISOString(),
+          },
+        },
+      });
+      await tx.notification.create({
+        data: {
+          userId: transaction.userId,
+          type: 'SYSTEM',
+          isSystem: true,
+          title: 'Missing book case resolved',
+          message: `The missing-book case for "${book.title}" has been resolved. Outcome: ${outcome === 'PAID' ? 'Paid the missing-book fine.' : 'Replaced with a new copy.'}`,
+          link: '/requests',
+        },
+      });
+      return updated;
+    });
   }
 
   /**

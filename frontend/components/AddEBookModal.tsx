@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { Dialog, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { BookFormSidePanel } from "@/components/BookFormSidePanel";
 import api from "@/lib/api";
 import { categoryDisplayName, categoryIdForDewey, DEWEY_MAIN_CATEGORIES, subcategoriesForMain } from "@/lib/categories";
 import { BookOpen, Upload, Link2, FileText, X } from "lucide-react";
@@ -202,8 +203,8 @@ export function AddEBookModal(props: {
   };
 
   return (
-    <Dialog open={props.open} onOpenChange={handleClose}>
-      <DialogHeader>
+    <BookFormSidePanel open={props.open} onClose={handleClose} ariaLabel="Add e-book">
+      <DialogHeader className="pr-10">
         <DialogTitle className="flex items-center gap-2">
           <BookOpen className="w-5 h-5 text-blue-400" />
           Add E-Book
@@ -489,6 +490,6 @@ export function AddEBookModal(props: {
           </Button>
         </div>
       </form>
-    </Dialog>
+    </BookFormSidePanel>
   );
 }

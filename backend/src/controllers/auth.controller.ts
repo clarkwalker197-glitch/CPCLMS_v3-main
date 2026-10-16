@@ -75,12 +75,6 @@ export const verifyPasswordReset = asyncHandler(async (req: Request, res: Respon
   sendSuccess(res, result, 'Verification code accepted');
 });
 
-export const googleLogin = asyncHandler(async (req: Request, res: Response) => {
-  const result = await authService.googleLogin(req.body.credential, req.ip, req.get('user-agent'));
-  setRefreshCookie(res, result.refreshToken, new Date(Date.now() + REFRESH_TOKEN_TTL_MS));
-  sendSuccess(res, result, 'Google login successful');
-});
-
 export const resetPassword = asyncHandler(async (req: Request, res: Response) => {
   const result = await authService.resetPassword(req.body.token, req.body.newPassword, req.ip, req.get('user-agent'));
   sendSuccess(res, result, result.message);

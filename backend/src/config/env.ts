@@ -86,12 +86,21 @@ const envSchema = z.object({
     .transform((v) => (v === undefined || v === '' ? true : v === 'true')),
   AUTH_RATE_LIMIT_MAX: z.coerce.number().default(20),
   COOKIE_SECRET: z.string().min(16).optional(),
-  GOOGLE_CLIENT_ID: z.string().optional(),
-  GOOGLE_CLIENT_SECRET: z.string().optional(),
   RESEND_API_KEY: z.preprocess(
     (value) => (typeof value === 'string' ? value.trim() || undefined : value),
     z.string().optional()
   ),
+  RESET_API_KEY: z.preprocess(
+    (value) => (typeof value === 'string' ? value.trim() || undefined : value),
+    z.string().optional()
+  ),
+  EMAIL_HOST: optionalTrimmedString,
+  EMAIL_PORT: z.preprocess(
+    (value) => (typeof value === 'string' ? value.trim() || undefined : value),
+    z.coerce.number().int().positive().optional(),
+  ),
+  EMAIL_USER: optionalTrimmedString,
+  EMAIL_PASS: optionalTrimmedString,
   EMAIL_FROM: z.preprocess(
     (value) => (typeof value === 'string' ? value.trim() : value),
     z.string().optional().refine((value) => {

@@ -23,10 +23,62 @@ import {
 import { RegisterInput, CreateUserInput } from '../validators';
 import { notificationService } from './notification.service';
 import { recordActivity } from './activity-log.service';
-import { OAuth2Client } from 'google-auth-library';
 import { isDepartmentCode } from '../constants/departments';
 
 const ACCESS_TOKEN_TTL_SECONDS = 2 * 60 * 60;
+const PASSWORD_RESET_CODE_EXPIRY_MINUTES = 10;
+const PASSWORD_RESET_RESEND_COOLDOWN_MS = 60 * 1000;
+const PASSWORD_RESET_DELIVERY_TIMEOUT_MS = 2 * 60 * 1000;
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => {
+    const entities: Record<string, string> = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    };
+    return entities[character];
+  });
+}
+
+function createPasswordResetEmail(firstName: string, code: string) {
+  const greeting = firstName ? `Hello ${escapeHtml(firstName)},` : 'Hello,';
+  const text = `${firstName ? `Hello ${firstName},` : 'Hello,'}
+
+Your Cordova Public College Library one-time password is:
+
+${code}
+
+This code expires in ${PASSWORD_RESET_CODE_EXPIRY_MINUTES} minutes.
+If you did not request this, ignore this email.`;
+  const html = `<!doctype html>
+<html>
+  <body style="margin:0;padding:0;background-color:#f3f4f6;font-family:Arial,Helvetica,sans-serif;color:#374151;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#f3f4f6;">
+      <tr>
+        <td align="center" style="padding:32px 16px;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:480px;background-color:#ffffff;border-radius:12px;">
+            <tr>
+              <td align="center" style="padding:32px;">
+                <img src="https://cpc-library.online/CPClogo.png" width="64" height="64" alt="Cordova Public College" style="display:block;width:64px;height:64px;margin:0 auto 24px;">
+                <p style="margin:0 0 16px;font-size:16px;line-height:24px;color:#111827;">${greeting}</p>
+                <p style="margin:0 0 16px;font-size:16px;line-height:24px;color:#374151;">Your Cordova Public College Library one-time password is:</p>
+                <p style="margin:0 0 16px;font-size:32px;line-height:40px;font-weight:700;letter-spacing:8px;color:#111827;text-align:center;">${code}</p>
+                <p style="margin:0 0 8px;font-size:14px;line-height:20px;color:#6b7280;">This code expires in ${PASSWORD_RESET_CODE_EXPIRY_MINUTES} minutes.</p>
+                <p style="margin:0;font-size:14px;line-height:20px;color:#6b7280;">If you did not request this, ignore this email.</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+
+  return { text, html };
+}
 
 function getUserUniqueConflict(error: unknown): ConflictError | null {
   if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
@@ -45,40 +97,6 @@ function getUserUniqueConflict(error: unknown): ConflictError | null {
 }
 
 export class AuthService {
-  async googleLogin(credential: string, ipAddress?: string, userAgent?: string) {
-    if (!env.GOOGLE_CLIENT_ID) throw new BadRequestError('Google authentication is not configured.');
-    const ticket = await new OAuth2Client(env.GOOGLE_CLIENT_ID).verifyIdToken({
-      idToken: credential,
-      audience: env.GOOGLE_CLIENT_ID,
-    });
-    const payload = ticket.getPayload();
-    if (!payload?.sub || !payload.email || !payload.email_verified) throw new BadRequestError('Google account email is not verified.');
-
-    let user = await prisma.user.findFirst({ where: { OR: [{ googleId: payload.sub }, { email: payload.email.toLowerCase() }] } });
-    if (user?.googleId && user.googleId !== payload.sub) throw new BadRequestError('This email is linked to another Google account.');
-    if (!user) {
-      const libraryId = await this.generateLibraryId();
-      user = await prisma.user.create({
-        data: {
-          googleId: payload.sub,
-          libraryId,
-          firstName: payload.given_name || payload.name?.split(' ')[0] || 'Google',
-          lastName: payload.family_name || payload.name?.split(' ').slice(1).join(' ') || 'User',
-          email: payload.email.toLowerCase(),
-          password: await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 12),
-          role: 'STUDENT',
-          isActive: true,
-        },
-      });
-    } else if (!user.isActive) throw new UnauthorizedError('Your account has been deactivated. Please contact the library.');
-    else if (!user.googleId) user = await prisma.user.update({ where: { id: user.id }, data: { googleId: payload.sub } });
-
-    const accessToken = this.generateAccessToken(user.id, user.libraryId, user.role);
-    const refreshToken = await this.generateRefreshToken(user.id);
-    await this.logActivity(user.id, 'LOGIN_GOOGLE', 'User', user.id, ipAddress, userAgent ? { userAgent } : undefined);
-    return { accessToken, refreshToken: refreshToken.token, expiresIn: ACCESS_TOKEN_TTL_SECONDS, user: this.sanitizeUser(user) };
-  }
-
   async requestPasswordReset(identifier: string) {
     const normalized = identifier.trim().toLowerCase();
     const user = await prisma.user.findFirst({
@@ -86,28 +104,95 @@ export class AuthService {
     });
     if (!user) throw new NotFoundError('User account');
 
-    await prisma.passwordResetToken.deleteMany({ where: { userId: user.id } });
     const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
     const tokenHash = crypto.createHash('sha256').update(code).digest('hex');
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
-    await prisma.passwordResetToken.create({ data: { userId: user.id, tokenHash, expiresAt } });
+    const firstName = user.firstName?.trim() ?? '';
+    const { text, html } = createPasswordResetEmail(firstName, code);
 
-    const frontendUrl = (Array.isArray(env.FRONTEND_URL) ? env.FRONTEND_URL[0] : env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
-    await notificationService.sendEmail({
-      to: user.email,
-      userId: user.id,
-      subject: 'Your CPC Library password reset code',
-      body: `Hello ${user.firstName},\n\nYour password reset verification code is: ${code}\n\nThis code expires in 1 hour.`,
+    const resetToken = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM "users" WHERE id = ${user.id} FOR UPDATE
+      `;
+
+      const previousToken = await tx.passwordResetToken.findFirst({
+        where: { userId: user.id },
+        orderBy: { createdAt: 'desc' },
+      });
+      const now = new Date();
+      if (previousToken?.sentAt) {
+        if (now.getTime() < previousToken.sentAt.getTime() + PASSWORD_RESET_RESEND_COOLDOWN_MS) {
+          throw new BadRequestError('Please wait before requesting another code.');
+        }
+      } else if (previousToken) {
+        if (now.getTime() < previousToken.createdAt.getTime() + PASSWORD_RESET_DELIVERY_TIMEOUT_MS) {
+          throw new BadRequestError('Please wait before requesting another code.');
+        }
+        await tx.passwordResetToken.delete({ where: { id: previousToken.id } });
+      }
+
+      await tx.passwordResetToken.deleteMany({ where: { userId: user.id } });
+      return tx.passwordResetToken.create({
+        data: {
+          userId: user.id,
+          tokenHash,
+          expiresAt: now,
+          createdAt: now,
+        },
+      });
+    }, { maxWait: 10_000, timeout: 10_000 });
+
+    try {
+      await notificationService.sendEmail({
+        to: user.email,
+        userId: user.id,
+        fromName: 'Cordova Public College Library',
+        subject: 'Your One-Time Password (OTP)',
+        body: text,
+        html,
+      });
+    } catch (error) {
+      await prisma.passwordResetToken.deleteMany({
+        where: { id: resetToken.id, sentAt: null },
+      });
+      throw error;
+    }
+
+    const sentAt = new Date();
+    const expiresAt = new Date(sentAt.getTime() + PASSWORD_RESET_CODE_EXPIRY_MINUTES * 60 * 1000);
+    const resendAvailableAt = new Date(sentAt.getTime() + PASSWORD_RESET_RESEND_COOLDOWN_MS);
+    const markedSent = await prisma.passwordResetToken.updateMany({
+      where: { id: resetToken.id, sentAt: null },
+      data: { sentAt, createdAt: sentAt, expiresAt },
     });
+    if (markedSent.count !== 1) {
+      console.error('Password reset email was sent but its reset record could not be marked as sent.');
+      throw new AppError('We could not complete the password reset request. Request a new code.', 503);
+    }
 
-    return { message: 'A verification code has been sent to your registered email.', email: user.email };
+    return {
+      message: 'A verification code has been sent to your registered email.',
+      email: user.email,
+      expiresAt: expiresAt.toISOString(),
+      resendAvailableAt: resendAvailableAt.toISOString(),
+    };
   }
 
   async verifyPasswordReset(identifier: string, code: string) {
     const user = await prisma.user.findFirst({ where: { email: identifier.trim().toLowerCase(), isActive: true } });
     const codeHash = crypto.createHash('sha256').update(code).digest('hex');
-    const resetToken = user ? await prisma.passwordResetToken.findFirst({ where: { userId: user.id, tokenHash: codeHash, usedAt: null } }) : null;
-    if (!resetToken || resetToken.expiresAt <= new Date()) throw new BadRequestError('Invalid or expired verification code.');
+    const resetToken = user ? await prisma.passwordResetToken.findFirst({
+      where: { userId: user.id, usedAt: null, sentAt: { not: null } },
+      orderBy: { createdAt: 'desc' },
+    }) : null;
+    if (!resetToken) throw new BadRequestError('Invalid or expired verification code.');
+    const codeExpiresAt = new Date(Math.min(
+      resetToken.expiresAt.getTime(),
+      resetToken.createdAt.getTime() + PASSWORD_RESET_CODE_EXPIRY_MINUTES * 60 * 1000,
+    ));
+    if (codeExpiresAt <= new Date()) {
+      throw new BadRequestError('That code has expired. Request a new one.');
+    }
+    if (resetToken.tokenHash !== codeHash) throw new BadRequestError('Invalid or expired verification code.');
     const resetTokenValue = crypto.randomBytes(32).toString('hex');
     await prisma.passwordResetToken.update({ where: { id: resetToken.id }, data: { tokenHash: crypto.createHash('sha256').update(resetTokenValue).digest('hex'), expiresAt: new Date(Date.now() + 15 * 60 * 1000) } });
     return { resetToken: resetTokenValue };

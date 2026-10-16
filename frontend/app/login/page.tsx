@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
-import { GoogleLogin, GoogleOAuthProvider } from '@react-oauth/google';
 import { Eye, EyeOff, X } from 'lucide-react';
 
 function getPostLoginPath(role?: string, returnTo?: string | null) {
@@ -15,9 +14,8 @@ function getPostLoginPath(role?: string, returnTo?: string | null) {
 }
 
 export default function LoginPage() {
-  const { login, googleLogin, user, isAuthenticated, loading } = useAuth();
+  const { login, user, isAuthenticated, loading } = useAuth();
   const router = useRouter();
-  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID?.trim() || '';
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -258,33 +256,6 @@ export default function LoginPage() {
                     {submitting ? 'Signing in...' : 'Login'}
                   </button>
 
-                  {googleClientId && (
-                    <>
-                      <div className="relative py-1">
-                        <div className="border-t border-zinc-800" />
-                        <span className="absolute left-1/2 -top-2.5 -translate-x-1/2 bg-zinc-900 px-3 text-xs text-zinc-500">OR</span>
-                      </div>
-
-                      <GoogleOAuthProvider clientId={googleClientId}>
-                        <div className="google-login-button">
-                          <GoogleLogin
-                            onSuccess={async ({ credential }) => {
-                              if (!credential) return setError('Google did not return a valid credential');
-                              setError('');
-                              const result = await googleLogin(credential);
-                              if (result.success) router.push(getPostLoginPath(result.user?.role, returnTo));
-                              else setError(result.error || 'Google login failed');
-                            }}
-                            onError={() => setError('Google login failed. Please try again.')}
-                            theme="filled_black"
-                            size="large"
-                            width="100%"
-                            text="signin_with"
-                          />
-                        </div>
-                      </GoogleOAuthProvider>
-                    </>
-                  )}
                 </form>
 
                 {/* Register link */}

@@ -19,7 +19,6 @@ interface AuthContextType {
     error?: string;
     user?: User;
   }>;
-  googleLogin: (credential: string) => Promise<{ success: boolean; error?: string; user?: User }>;
   register: (data: RegisterData) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -162,23 +161,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { success: false, error: res.error || 'Login failed' };
     } catch (err: any) {
       return { success: false, error: err.message || 'Network error' };
-    }
-  };
-
-  const googleLogin = async (credential: string) => {
-    try {
-      const res = await api.googleLogin(credential);
-      if (res.success && res.data) {
-        const nextUser = res.data.user;
-        await clearOfflineData();
-        setUser(nextUser);
-        lastActivityRef.current = Date.now();
-        setStoredLastActivity(lastActivityRef.current);
-        return { success: true, user: nextUser };
-      }
-      return { success: false, error: res.error || 'Google login failed' };
-    } catch (err: any) {
-      return { success: false, error: err.message || 'Google login failed' };
     }
   };
 
@@ -343,7 +325,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         loading,
         isAuthenticated: !!user,
         login,
-        googleLogin,
         register,
         logout,
         refreshUser,

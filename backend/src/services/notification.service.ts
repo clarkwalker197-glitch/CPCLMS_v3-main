@@ -15,6 +15,8 @@ export interface EmailPayload {
   to: string;
   subject: string;
   body: string;
+  html?: string;
+  fromName?: string;
   userId?: string;
 }
 
@@ -256,6 +258,8 @@ export class NotificationService {
       to: payload.to,
       subject: payload.subject,
       text: payload.body,
+      html: payload.html,
+      fromName: payload.fromName,
     });
   }
 

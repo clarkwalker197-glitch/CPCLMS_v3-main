@@ -179,7 +179,7 @@ QR approval tokens expire after ten minutes. The public approval endpoint is rat
 
 ## Email Troubleshooting
 
-If Forgot Password returns an email configuration error, check that `EMAIL_USER` and `EMAIL_PASS` are present in `backend/.env`. Gmail must have two-step verification enabled and an App Password created for SMTP access.
+Forgot Password sends through Resend when `RESEND_API_KEY` (or the compatibility setting `RESET_API_KEY`) is configured. Otherwise, it uses SMTP when `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USER`, `EMAIL_PASS`, and `EMAIL_FROM` are all present in `backend/.env`. For Gmail, enable two-step verification and use an App Password.
 
 ## Validation Commands
 

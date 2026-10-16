@@ -256,7 +256,6 @@ class ApiClient {
       if (response.status === 401 && ![
         '/auth/login',
         '/auth/register',
-        '/auth/google',
         '/auth/refresh',
       ].includes(endpoint)) {
         const requestToken = headers['Authorization']?.slice('Bearer '.length) ?? null;
@@ -546,15 +545,6 @@ async put<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
 
   async verifyPasswordReset(identifier: string, code: string): Promise<ApiResponse<any>> {
     return this.post('/auth/verify-password-reset', { identifier, code });
-  }
-
-  async googleLogin(credential: string): Promise<ApiResponse<any>> {
-    const response = await this.post<{ accessToken: string; refreshToken: string; user: any }>('/auth/google', { credential });
-    if (response.success && response.data) {
-      this.setTokens(response.data.accessToken, response.data.refreshToken, true);
-      localStorage.setItem('user', JSON.stringify(response.data.user));
-    }
-    return response;
   }
 
   // Books

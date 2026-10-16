@@ -39,10 +39,9 @@ export default function MobileSearchInput({
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [focused, setFocused] = useState(false);
   const [listening, setListening] = useState(false);
+  const [voiceSupported, setVoiceSupported] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
-  const voiceSupported = typeof window !== "undefined"
-    && (("SpeechRecognition" in window) || ("webkitSpeechRecognition" in window));
 
   useEffect(() => {
     try {
@@ -52,6 +51,12 @@ export default function MobileSearchInput({
       setRecentSearches([]);
     }
   }, [storageKey]);
+
+  useEffect(() => {
+    setVoiceSupported(
+      "SpeechRecognition" in window || "webkitSpeechRecognition" in window,
+    );
+  }, []);
 
   useEffect(() => () => recognitionRef.current?.stop(), []);
 

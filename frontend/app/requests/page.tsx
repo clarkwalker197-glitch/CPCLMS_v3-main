@@ -14,6 +14,7 @@ import BorrowHistoryCard from "@/components/BorrowHistoryCard";
 import { QRDisplayModal } from "@/components/QRDisplayModal";
 import { QRScanner } from "@/components/QRScanner";
 import { ModalLayer } from "@/components/ModalLayer";
+import { useConfirmDialog } from "@/components/ui/ConfirmModal";
 import { formatBorrowId, normalizeBorrowId } from "@/lib/borrow-id";
 import { parseApprovalInput } from "@/lib/qr-approval";
 import { offlineDb } from "@/lib/offline-db";
@@ -67,6 +68,7 @@ function requestStatusText(request: any): string {
 export default function RequestsPage() {
   const { user } = useAuth();
   const router = useRouter();
+  const { confirm } = useConfirmDialog();
   const isLibrarian = user?.role === "LIBRARIAN";
 
   // Borrowed books remain available to students and faculty only.
@@ -104,8 +106,7 @@ export default function RequestsPage() {
   const [reqPage, setReqPage] = useState(1);
   const [reqSort, setReqSort] = useState("status");
   const [reqSortOrder, setReqSortOrder] = useState<"asc" | "desc">("asc");
-  const [selectedRequestIds, setSelectedRequestIds] = useState<Record<string, string>>({});
-  const [cancellingRequests, setCancellingRequests] = useState(false);
+  const [cancellingRequestId, setCancellingRequestId] = useState<string | null>(null);
 
   const [successMsg, setSuccessMsg] = useState("");
   const [error, setError] = useState("");
@@ -471,82 +472,38 @@ export default function RequestsPage() {
     }
   };
 
-  const cancelSelectedRequests = async () => {
-    const selected = Object.entries(selectedRequestIds);
-    if (!selected.length) {
-      setError("Please select at least one item to cancel.");
-      return;
-    }
-    if (selected.length > 50) {
-      setError("You can cancel up to 50 requests at a time.");
-      return;
-    }
+  const cancelBorrowRequest = async (book: { requestId?: string; title?: string | null }) => {
+    const requestId = book.requestId;
+    if (isLibrarian || !requestId) return;
     if (!navigator.onLine || showingCachedRequests) {
       setError("Connect to the internet and refresh your requests before cancelling.");
       return;
     }
-    const titles = selected.map(([, title]) => title);
-    if (!window.confirm(`Cancel the following requests?\n\n${titles.join("\n")}`)) return;
 
-    setCancellingRequests(true);
     setError("");
+    setCancellingRequestId(requestId);
     try {
-      const response = await api.cancelSelectedBorrowRequests(selected.map(([id]) => id));
-      if (!response.success || !response.data?.cancelled?.length) {
-        const message = response.error || "Unable to cancel the selected requests. Refresh and try again.";
-        setSelectedRequestIds({});
-        await loadRequests();
-        setError(message);
-        return;
-      }
-      const cancelledIds = new Set(response.data.cancelled.map(({ id }) => id));
-      const cancelledTitles = response.data.cancelled.map(({ title }) => title);
-      setRecords((current) => current.map((request) => {
-        const books = (request.books || []).map((book: { requestId?: string; status?: string; [key: string]: unknown }) =>
-          book.requestId && cancelledIds.has(book.requestId) ? { ...book, status: "CANCELLED" } : book
-        );
-        return {
-          ...request,
-          books,
-          status: books[0]?.status || request.status,
-        };
-      }));
-      setSelectedRequestIds({});
-      setSuccessMsg(`Cancelled borrow requests: ${cancelledTitles.join(", ")}.`);
-      if (user) {
-        try {
-          const cachedRecords = await offlineDb.borrowRequests.where("userId").equals(user.id).toArray();
-          await offlineDb.borrowRequests.bulkPut(cachedRecords.map((request) => {
-            const books = Array.isArray(request.books)
-              ? request.books.map((book) => {
-                if (!book || typeof book !== "object" || !("requestId" in book)) return book;
-                const requestId = book.requestId;
-                return typeof requestId === "string" && cancelledIds.has(requestId)
-                  ? { ...book, status: "CANCELLED" }
-                  : book;
-              })
-              : [];
-            const firstBook = books[0];
-            const firstBookStatus = firstBook && typeof firstBook === "object" && "status" in firstBook &&
-              typeof firstBook.status === "string" ? firstBook.status : request.status;
-            return {
-              ...request,
-              books,
-              status: firstBookStatus,
-            };
-          }));
-        } catch {
-          setError("Requests cancelled, but the offline cache could not be updated. Refresh when online.");
-        }
-      }
-      await loadRequests();
-      setTimeout(() => setSuccessMsg(""), 6000);
-    } catch {
-      setSelectedRequestIds({});
-      await loadRequests();
-      setError("Unable to cancel the selected requests. Refresh and try again.");
+      await confirm({
+        title: "Cancel this request?",
+        description: `Cancel your borrow request for “${book.title?.trim() || "this book"}”?`,
+        confirmLabel: "Cancel request",
+        variant: "danger",
+        onConfirm: async () => {
+          try {
+            const response = await api.cancelBorrowRequest(requestId);
+            if (!response.success) {
+              throw new Error(response.error || "Unable to cancel this request. Refresh and try again.");
+            }
+            await loadRequests();
+            setSuccessMsg("Borrow request cancelled.");
+            setTimeout(() => setSuccessMsg(""), 6000);
+          } finally {
+            setCancellingRequestId(null);
+          }
+        },
+      });
     } finally {
-      setCancellingRequests(false);
+      setCancellingRequestId(null);
     }
   };
 
@@ -857,7 +814,7 @@ export default function RequestsPage() {
             </div>
 
             {!isLibrarian && (
-              <div className="mb-4 border-b border-zinc-800 pb-4">
+              <div className="mb-4 hidden border-b border-zinc-800 pb-4 lg:block">
                 <form onSubmit={handleTransactionLookup} className="flex flex-col gap-3 sm:flex-row sm:items-end">
                   <div className="min-w-0 flex-1">
                     <label htmlFor="request-transaction-lookup" className="mb-2 block text-sm font-medium text-zinc-200">Scan / Find Transaction</label>
@@ -911,25 +868,6 @@ export default function RequestsPage() {
               </div>
             </div>
 
-            {!isLibrarian && (
-              <div className="mb-4 flex flex-col gap-3 rounded-xl border border-zinc-800 bg-zinc-900/70 p-3 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-sm text-zinc-400">
-                  {Object.keys(selectedRequestIds).length
-                    ? `${Object.keys(selectedRequestIds).length} request${Object.keys(selectedRequestIds).length === 1 ? "" : "s"} selected`
-                    : "Select one or more pending requests to cancel."}
-                </p>
-                <button
-                  type="button"
-                  onClick={cancelSelectedRequests}
-                  disabled={cancellingRequests}
-                  className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-300 transition-colors hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <XCircle className="h-4 w-4" />
-                  {cancellingRequests ? "Cancelling..." : "Cancel Selected Requests"}
-                </button>
-              </div>
-            )}
-
             {reqLoading && (
               <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
                 {Array.from({ length: 6 }).map((_, i) => (
@@ -955,7 +893,7 @@ export default function RequestsPage() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="bg-zinc-900 text-left text-xs uppercase tracking-wide text-zinc-500">
-                        <th className="px-6 py-3 font-medium">Books / Transaction</th>
+                        <th className="px-6 py-3 font-medium">{isLibrarian ? "Books / Transaction" : "Book"}</th>
                         <th className="px-6 py-3 font-medium hidden md:table-cell"><SortHeader field="memberName" sort={reqSort} order={reqSortOrder} onSort={(field) => changeRequestSort(field, nextSortOrder(reqSort, reqSortOrder, field))}>Member</SortHeader></th>
                         <th className="px-6 py-3 font-medium hidden sm:table-cell"><SortHeader field="requestDate" sort={reqSort} order={reqSortOrder} onSort={(field) => changeRequestSort(field, nextSortOrder(reqSort, reqSortOrder, field))}>Request Date</SortHeader></th>
                         <th className="px-6 py-3 font-medium">Notes</th>
@@ -970,21 +908,6 @@ export default function RequestsPage() {
                             <div className="space-y-1">
                               {(req.books || []).map((book: any) => (
                                 <div key={book.requestId || book.id} className="flex items-start gap-2">
-                                  {!isLibrarian && (book.status || req.status) === "PENDING" && book.requestId && (
-                                    <input
-                                      type="checkbox"
-                                      checked={Boolean(selectedRequestIds[book.requestId])}
-                                      disabled={showingCachedRequests || cancellingRequests}
-                                      onChange={(event) => setSelectedRequestIds((current) => {
-                                        const next = { ...current };
-                                        if (event.target.checked) next[book.requestId] = book.title || "Unknown book";
-                                        else delete next[book.requestId];
-                                        return next;
-                                      })}
-                                      aria-label={`Select ${book.title || "book"} borrow request`}
-                                      className="mt-1 h-4 w-4 shrink-0 rounded border-zinc-600 bg-zinc-950 accent-blue-600"
-                                    />
-                                  )}
                                   <div>
                                     <p className="text-zinc-100 font-medium">{book.title || "Unknown"}</p>
                                     <p className="text-xs text-zinc-400">{book.author || "Author unavailable"}</p>
@@ -1016,8 +939,22 @@ export default function RequestsPage() {
                               {requestStatusText(req)}
                             </span>
                           </td>
-                          <td className="px-6 py-4 text-right">
+                          <td className="px-6 py-4 text-right align-middle">
                             <div className="inline-flex items-center justify-end gap-1.5">
+                              {!isLibrarian && (req.books || []).map((book: any) =>
+                                (book.status || req.status) === "PENDING" && book.requestId ? (
+                                  <button
+                                    key={book.requestId}
+                                    type="button"
+                                    onClick={() => void cancelBorrowRequest(book)}
+                                    disabled={showingCachedRequests || cancellingRequestId !== null}
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1.5 text-xs font-semibold text-red-300 transition-colors hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-50"
+                                  >
+                                    {cancellingRequestId === book.requestId && <span className="h-3 w-3 animate-spin rounded-full border-2 border-red-300/40 border-t-red-300" aria-hidden="true" />}
+                                    {cancellingRequestId === book.requestId ? "Cancelling..." : "Cancel"}
+                                  </button>
+                                ) : null
+                              )}
                               {isLibrarian && req.status === "PENDING" && (
                                 <>
                                   <button
@@ -1049,21 +986,6 @@ export default function RequestsPage() {
                     <div className="border-b border-zinc-800/80 pb-3">
                       {(req.books || []).map((book: any) => (
                         <div key={book.requestId || book.id} className="mb-3 flex items-start gap-2 last:mb-0">
-                          {!isLibrarian && (book.status || req.status) === "PENDING" && book.requestId && (
-                            <input
-                              type="checkbox"
-                              checked={Boolean(selectedRequestIds[book.requestId])}
-                              disabled={showingCachedRequests || cancellingRequests}
-                              onChange={(event) => setSelectedRequestIds((current) => {
-                                const next = { ...current };
-                                if (event.target.checked) next[book.requestId] = book.title || "Unknown book";
-                                else delete next[book.requestId];
-                                return next;
-                              })}
-                              aria-label={`Select ${book.title || "book"} borrow request`}
-                              className="mt-1 h-4 w-4 shrink-0 rounded border-zinc-600 bg-zinc-950 accent-blue-600"
-                            />
-                          )}
                           <div>
                             <p className="font-semibold break-words text-zinc-100">{book.title || "Unknown"}</p>
                             <p className="mt-1 text-sm text-zinc-400">{book.author || "Author unavailable"}</p>
@@ -1079,6 +1001,20 @@ export default function RequestsPage() {
                         {requestStatusText(req)}
                       </span>
                       <div className="flex flex-wrap gap-2">
+                        {!isLibrarian && (req.books || []).map((book: any) =>
+                          (book.status || req.status) === "PENDING" && book.requestId ? (
+                            <button
+                              key={book.requestId}
+                              type="button"
+                              onClick={() => void cancelBorrowRequest(book)}
+                              disabled={showingCachedRequests || cancellingRequestId !== null}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-300 transition-colors hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {cancellingRequestId === book.requestId && <span className="h-3 w-3 animate-spin rounded-full border-2 border-red-300/40 border-t-red-300" aria-hidden="true" />}
+                              {cancellingRequestId === book.requestId ? "Cancelling..." : "Cancel"}
+                            </button>
+                          ) : null
+                        )}
                         {isLibrarian && req.status === "PENDING" && (
                           <>
                             <button disabled={actionLoadingId === req.id} onClick={() => approveListedBatch(req)} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-50">

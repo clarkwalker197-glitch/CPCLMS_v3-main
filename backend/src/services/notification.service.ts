@@ -146,10 +146,10 @@ export class NotificationService {
     });
     const hiddenTypes: Prisma.NotificationWhereInput[] = [];
     if (!preferenceState?.notificationsEnabled) {
-      hiddenTypes.push({ isSystem: true });
+      hiddenTypes.push({ isSystem: false });
     }
     if (!preferenceState?.systemNotificationsEnabled) {
-      hiddenTypes.push({ isSystem: false });
+      hiddenTypes.push({ isSystem: true });
     }
     const where: Prisma.NotificationWhereInput = {
       userId,
@@ -232,10 +232,10 @@ export class NotificationService {
     });
     const hiddenTypes: Prisma.NotificationWhereInput[] = [];
     if (!preferenceState?.notificationsEnabled) {
-      hiddenTypes.push({ isSystem: true });
+      hiddenTypes.push({ isSystem: false });
     }
     if (!preferenceState?.systemNotificationsEnabled) {
-      hiddenTypes.push({ isSystem: false });
+      hiddenTypes.push({ isSystem: true });
     }
     return prisma.notification.count({
       where: {

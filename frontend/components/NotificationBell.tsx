@@ -123,7 +123,10 @@ export default function NotificationBell() {
           if (response.success) {
             setUnreadCount(0);
             setNotifications((prev) => prev.map((notification) => ({ ...notification, isRead: true })));
-            setActionError("");
+            const cacheUpdated = await updateCachedReadState();
+            setActionError(cacheUpdated
+              ? ""
+              : "Notifications were marked read, but the offline cache could not be updated.");
           } else {
             setActionError(response.error || "Unable to mark notifications as read.");
           }
@@ -146,7 +149,10 @@ export default function NotificationBell() {
               prev.map((item) => (item.id === n.id ? { ...item, isRead: true } : item))
             );
             setUnreadCount((count) => Math.max(0, count - 1));
-            setActionError("");
+            const cacheUpdated = await updateCachedReadState(n.id);
+            setActionError(cacheUpdated
+              ? ""
+              : "Notification was marked read, but the offline cache could not be updated.");
           } else {
             setActionError(response.error || "Unable to mark notification as read.");
           }
@@ -162,6 +168,26 @@ export default function NotificationBell() {
   };
 
   const hasUnread = unreadCount > 0;
+
+  const updateCachedReadState = async (notificationId?: string) => {
+    if (!user) return false;
+    try {
+      if (notificationId) {
+        const cachedNotification = await offlineDb.notifications.get(notificationId);
+        if (cachedNotification?.userId === user.id) {
+          await offlineDb.notifications.update(notificationId, { isRead: true });
+        }
+        return true;
+      }
+      await offlineDb.notifications
+        .where("userId")
+        .equals(user.id)
+        .modify({ isRead: true });
+      return true;
+    } catch {
+      return false;
+    }
+  };
 
   return (
     <div className="relative" ref={dropdownRef}>
@@ -210,7 +236,10 @@ export default function NotificationBell() {
                           ...notification,
                           isRead: true,
                         })));
-                        setActionError("");
+                        const cacheUpdated = await updateCachedReadState();
+                        setActionError(cacheUpdated
+                          ? ""
+                          : "Notifications were marked read, but the offline cache could not be updated.");
                       } else {
                         setActionError(response.error || "Unable to mark notifications as read.");
                       }

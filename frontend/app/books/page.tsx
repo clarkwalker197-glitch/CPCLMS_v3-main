@@ -33,7 +33,6 @@ import {
   ImageIcon,
   ShoppingCart,
   X,
-  Check,
   Send,
   AlertCircle,
 } from "lucide-react";
@@ -43,7 +42,7 @@ const MAX_BOOKS_PER_TRANSACTION = 3;
 const MAX_LIMIT_MESSAGE = "You can only borrow a maximum of 3 books per transaction.";
 
 type BookRequestOverview = {
-  books?: Array<{ id: string }>;
+  books?: Array<{ id: string; status?: string }>;
 };
 
 type ReservationOverview = {
@@ -52,7 +51,11 @@ type ReservationOverview = {
 };
 
 const isPhysicalBookAvailable = (book: any) => {
-  return book?.status === 'AVAILABLE' && (book?.availableCopies ?? 0) > 0;
+  return ['AVAILABLE', 'BORROWED'].includes(book?.status) && Number(book?.availableCopies ?? 0) > 0;
+};
+
+const isPhysicalBookReservable = (book: any) => {
+  return ['AVAILABLE', 'BORROWED'].includes(book?.status) && Number(book?.availableCopies ?? 0) === 0;
 };
 
 export default function BooksPage() {
@@ -73,6 +76,7 @@ export default function BooksPage() {
   const [sort, setSort] = useState("title");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [cart, setCart] = useState<any[]>([]);
+  const [cartUserId, setCartUserId] = useState<string | null>(null);
   const [showBorrowModal, setShowBorrowModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -81,7 +85,10 @@ export default function BooksPage() {
   const [requestedBookIds, setRequestedBookIds] = useState<Set<string>>(new Set());
   const [reservedBookIds, setReservedBookIds] = useState<Set<string>>(new Set());
   const [actionsLoadedForUserId, setActionsLoadedForUserId] = useState<string | null>(null);
+  const [actionsLookupErrorForUserId, setActionsLookupErrorForUserId] = useState<string | null>(null);
+  const [actionsLookupRetryKey, setActionsLookupRetryKey] = useState(0);
   const [reservationLoading, setReservationLoading] = useState(false);
+  const [cardActionError, setCardActionError] = useState<{ bookId: string; message: string } | null>(null);
   const [borrowRequestError, setBorrowRequestError] = useState<{ bookIds: Set<string>; message: string } | null>(null);
   const [detailsError, setDetailsError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
@@ -96,6 +103,16 @@ export default function BooksPage() {
   const debouncedSearch = useDebounce(search, 300);
   const requestSequence = useRef(0);
   const reservationRequestInFlight = useRef(false);
+  const activeCart = user && cartUserId === user.id ? cart : [];
+
+  useEffect(() => {
+    setCart([]);
+    setCartUserId(user?.id ?? null);
+    setRequestedBookIds(new Set());
+    setReservedBookIds(new Set());
+    setActionsLoadedForUserId(null);
+    setActionsLookupErrorForUserId(null);
+  }, [user?.id]);
 
   useEffect(() => {
     const media = window.matchMedia("(min-width: 769px)");
@@ -103,6 +120,14 @@ export default function BooksPage() {
     updateLayout();
     media.addEventListener("change", updateLayout);
     return () => media.removeEventListener("change", updateLayout);
+  }, []);
+
+  useEffect(() => {
+    const retryLookupsWhenOnline = () => {
+      setActionsLookupRetryKey((current) => current + 1);
+    };
+    window.addEventListener("online", retryLookupsWhenOnline);
+    return () => window.removeEventListener("online", retryLookupsWhenOnline);
   }, []);
 
   const loadData = useCallback(async () => {
@@ -202,6 +227,8 @@ export default function BooksPage() {
     }
 
     let active = true;
+    setActionsLoadedForUserId(null);
+    setActionsLookupErrorForUserId(null);
     const getAllPages = async <T,>(
       fetchPage: (page: number) => Promise<ApiResponse<T[]>>
     ): Promise<T[]> => {
@@ -221,15 +248,17 @@ export default function BooksPage() {
 
     void Promise.all([
       getAllPages<BookRequestOverview>((page) => api.getBorrowRequests({ status: "PENDING", page: String(page), limit: "100" })),
-      getAllPages<BookRequestOverview>((page) => api.getBorrowRequests({ status: "APPROVED", page: String(page), limit: "100" })),
       getAllPages<ReservationOverview>((page) => api.getReservations({ status: "ACTIVE", page: String(page), limit: "100" })),
       getAllPages<ReservationOverview>((page) => api.getReservations({ status: "APPROVED", page: String(page), limit: "100" })),
     ])
-      .then(([pendingRequests, approvedRequests, activeReservations, approvedReservations]) => {
+      .then(([pendingRequests, activeReservations, approvedReservations]) => {
         if (!active) return;
         setActionsLoadedForUserId(user.id);
-        setRequestedBookIds(new Set([...pendingRequests, ...approvedRequests]
-          .flatMap((request) => request.books?.map((book) => book.id) || [])));
+        setActionsLookupErrorForUserId(null);
+        setRequestedBookIds(new Set(pendingRequests
+          .flatMap((request) => request.books || [])
+          .filter((book) => book.status === "PENDING")
+          .map((book) => book.id)));
         setReservedBookIds(new Set([...activeReservations, ...approvedReservations]
           .map((reservation) => reservation.bookId || reservation.book?.id)
           .filter((id): id is string => typeof id === "string")));
@@ -237,9 +266,7 @@ export default function BooksPage() {
       })
       .catch((caught: unknown) => {
         if (active) {
-          setActionsLoadedForUserId(user.id);
-          setRequestedBookIds(new Set());
-          setReservedBookIds(new Set());
+          setActionsLookupErrorForUserId(user.id);
           setDetailsError(caught instanceof Error
             ? caught.message
             : "Could not check your existing requests and reservations.");
@@ -249,7 +276,7 @@ export default function BooksPage() {
     return () => {
       active = false;
     };
-  }, [user]);
+  }, [actionsLookupRetryKey, user?.id, user?.role]);
 
   useEffect(() => {
     if (!navigator.onLine) return;
@@ -265,39 +292,45 @@ export default function BooksPage() {
     setCurrentPage(1);
   }, [debouncedSearch, categoryFilter, mainCategoryFilter, classificationFilter, sort, sortOrder]);
 
-  const inCart = (id: string) => cart.some((b) => b.id === id);
+  const inCart = (id: string) => activeCart.some((b) => b.id === id);
 
   const openBookDetails = (book: BookDetailsBook) => {
     setDetailsError(borrowRequestError?.bookIds.has(book.id) ? borrowRequestError.message : "");
     setDetailsBook(book);
   };
 
-  const handleDetailsBorrow = () => {
-    if (!detailsBook) return;
+  const handleBorrowBook = (book: BookDetailsBook) => {
     setBorrowRequestError(null);
+    setCardActionError(null);
     if (!user) {
       router.push("/login");
       return;
     }
-    if (!isPhysicalBookAvailable(detailsBook)) {
-      setDetailsError("This book is currently unavailable.");
+    if (!isPhysicalBookAvailable(book)) {
+      const message = "This book is currently unavailable.";
+      setDetailsError(message);
+      setCardActionError({ bookId: book.id, message });
       return;
     }
-    if (inCart(detailsBook.id)) {
-      setCart((previous) => previous.filter((book) => book.id !== detailsBook.id));
+    if (inCart(book.id)) {
+      setCart(activeCart.filter((item) => item.id !== book.id));
       setDetailsError("");
       return;
     }
-    if (requestedBookIds.has(detailsBook.id)) {
-      setDetailsError("You already have a pending or approved request for this book.");
+    if (actionsLoadedForUserId === user.id && requestedBookIds.has(book.id)) {
+      const message = "You already have a pending request for this book.";
+      setDetailsError(message);
+      setCardActionError({ bookId: book.id, message });
       return;
     }
-    if (cart.length >= MAX_BOOKS_PER_TRANSACTION) {
+    if (activeCart.length >= MAX_BOOKS_PER_TRANSACTION) {
       setDetailsError(MAX_LIMIT_MESSAGE);
+      setCardActionError({ bookId: book.id, message: MAX_LIMIT_MESSAGE });
       return;
     }
     setDetailsError("");
-    setCart((previous) => [...previous, detailsBook]);
+    setCartUserId(user.id);
+    setCart([...activeCart, book]);
   };
 
   const handleReserveBook = async (book: BookDetailsBook) => {
@@ -311,11 +344,12 @@ export default function BooksPage() {
     if (reservationRequestInFlight.current) return;
     setBorrowRequestError(null);
     if (reservedBookIds.has(book.id)) return;
-    if (isPhysicalBookAvailable(book)) return;
+    if (!isPhysicalBookReservable(book)) return;
 
     try {
       reservationRequestInFlight.current = true;
       setDetailsError('');
+      setCardActionError(null);
       setReservationLoading(true);
       const res = await api.reserveBook(book.id);
       if (res.success) {
@@ -326,11 +360,15 @@ export default function BooksPage() {
         setTimeout(() => setSuccessMsg(''), 4000);
         return;
       }
-      setDetailsError(res.error || 'Unable to reserve this book.');
+      const message = res.error || 'Unable to reserve this book.';
+      setDetailsError(message);
+      setCardActionError({ bookId: book.id, message });
     } catch (caught) {
-      setDetailsError(caught instanceof Error
+      const message = caught instanceof Error
         ? caught.message
-        : 'Unable to reserve this book right now.');
+        : 'Unable to reserve this book right now.';
+      setDetailsError(message);
+      setCardActionError({ bookId: book.id, message });
     } finally {
       reservationRequestInFlight.current = false;
       setReservationLoading(false);
@@ -338,15 +376,15 @@ export default function BooksPage() {
   };
 
   const handleRemoveFromCart = (id: string) => {
-    setCart((prev) => prev.filter((b) => b.id !== id));
+    setCart(activeCart.filter((b) => b.id !== id));
   };
 
   const handleBorrowNow = () => {
-    if (cart.length === 0) {
+    if (activeCart.length === 0) {
       setError("Please select at least one book to borrow.");
       return;
     }
-    if (cart.length > MAX_BOOKS_PER_TRANSACTION) {
+    if (activeCart.length > MAX_BOOKS_PER_TRANSACTION) {
       setError(MAX_LIMIT_MESSAGE);
       return;
     }
@@ -358,7 +396,7 @@ export default function BooksPage() {
     setSuccessMsg("Request sent! Waiting for librarian approval.");
     setBorrowRequestError(null);
     if (user) setActionsLoadedForUserId(user.id);
-    setRequestedBookIds((previous) => new Set([...previous, ...cart.map((book) => book.id)]));
+    setRequestedBookIds((previous) => new Set([...previous, ...activeCart.map((book) => book.id)]));
     setCart([]);
     loadData();
     setTimeout(() => setSuccessMsg(""), 4000);
@@ -415,7 +453,7 @@ export default function BooksPage() {
   const handleBorrowRequestError = (message: string) => {
     setDetailsError(message);
     setBorrowRequestError({
-      bookIds: new Set(cart.map((book) => book.id)),
+      bookIds: new Set(activeCart.map((book) => book.id)),
       message,
     });
   };
@@ -476,7 +514,7 @@ export default function BooksPage() {
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex">
       <Sidebar />
       <div className="flex-1 min-w-0">
-        <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-[calc(7rem+min(env(safe-area-inset-bottom),2rem))] lg:pb-8 ${!isLibrarian && cart.length > 0 ? "lg:pb-44" : ""}`}>
+        <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-[calc(7rem+min(env(safe-area-inset-bottom),2rem))] lg:pb-8 ${!isLibrarian && activeCart.length > 0 ? "lg:pb-44" : ""}`}>
           {successMsg && (
             <div className="p-4 mb-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-sm text-emerald-400">
               {successMsg}
@@ -650,7 +688,7 @@ export default function BooksPage() {
           {/* GRID VIEW */}
           {!loading && view === "grid" && visibleBooks.length > 0 && (
             <>
-              <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {paginatedBooks.map((book: any) => (
                   <div
                     key={book.id}
@@ -659,46 +697,26 @@ export default function BooksPage() {
                     onClick={() => openBookDetails(book)}
                     onKeyDown={(event) => openDetailsFromCard(event, book)}
                     aria-label={`View details for ${book.title}`}
-                    className="cursor-pointer rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden hover:border-zinc-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="flex h-full min-w-0 flex-col cursor-pointer overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/70 transition-colors hover:border-zinc-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     {/* Cover */}
-                    <div className="aspect-[3/4] bg-zinc-800 relative">
+                    <div className="relative aspect-[3/4] w-full shrink-0 overflow-hidden bg-zinc-800">
                       <MediaImage src={book.coverImage} alt={book.title} className="w-full h-full object-cover" fallback={fallbackCover} />
-                      {!isLibrarian && inCart(book.id) && (
-                        <div className="absolute top-2 right-2 w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center shadow-lg">
-                          <Check className="w-4 h-4 text-white" />
-                        </div>
-                      )}
                     </div>
-                    <div className="p-3 sm:p-4">
-                      <h3 className="line-clamp-2 text-sm font-semibold leading-4 text-white sm:text-base sm:leading-snug">{book.title}</h3>
-                      <p className="mt-1 truncate text-xs text-zinc-400 sm:text-sm">{book.author}</p>
-                      <div className="mt-2 flex min-h-5 flex-wrap items-center gap-1.5">
-                        <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium sm:px-2 sm:text-xs ${typeBadge(book)}`}>{typeLabel(book)}</span>
-                        {book.category ? (
-                          <span className="max-w-full truncate rounded-full bg-blue-500/15 px-1.5 py-0.5 text-[10px] text-blue-300 sm:px-2 sm:text-xs">{book.category.name}</span>
-                        ) : (
-                          <span className="rounded-full bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400 sm:px-2 sm:text-xs">General</span>
-                        )}
-                        {book.publishYear && (
-                          <span className="text-[10px] text-zinc-500 sm:text-xs">{book.publishYear}</span>
-                        )}
-                        {isLibrarian && (
-                          <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium sm:px-2 sm:text-xs ${book.status === 'AVAILABLE'
-                              ? 'bg-emerald-500/15 text-emerald-400'
-                              : 'bg-orange-500/15 text-orange-400'
-                            }`}>
-                            {book.status === 'AVAILABLE' ? 'Available' : 'Not Available'}
-                          </span>
-                        )}
-                      </div>
-                      <div className="mt-2 text-[10px] text-zinc-400 sm:text-xs"><span className="font-medium text-emerald-400">{book.availableCopies ?? 0}</span><span className="text-zinc-500"> / {book.copies ?? 0} available</span></div>
-                      <div className="mt-2 flex items-stretch gap-2">
+                    <div className="flex min-w-0 flex-1 flex-col p-3 sm:p-4">
+                      <h3 className="h-10 min-w-0 line-clamp-2 text-sm font-semibold leading-5 text-white sm:h-12 sm:text-base sm:leading-6">{book.title}</h3>
+                      <p className="mt-1 min-w-0 truncate text-xs text-zinc-400 sm:text-sm">{book.author}</p>
+                      <p className="mt-2 min-h-4 truncate text-[10px] text-zinc-500 sm:text-xs">{book.publishYear || "\u00a0"}</p>
+                      <p className="mt-2 min-w-0 truncate whitespace-nowrap text-[10px] text-zinc-400 sm:text-xs">
+                        <span className="font-medium text-emerald-400">{book.availableCopies ?? 0}</span>
+                        <span className="text-zinc-500"> / {book.copies ?? 0} available</span>
+                      </p>
+                      <div className="mt-auto grid h-28 grid-rows-2 gap-2 pt-2">
                         {isLibrarian ? (
                           <>
                             <button
                               onClick={(event) => { event.stopPropagation(); handleEdit(book); }}
-                              className="flex-1 min-w-0 whitespace-nowrap inline-flex items-center justify-center gap-1 rounded-lg bg-zinc-800 px-2 py-2 text-[10px] font-medium text-zinc-200 transition-colors hover:bg-zinc-700 sm:text-xs"
+                              className="min-h-11 min-w-0 whitespace-nowrap inline-flex items-center justify-center gap-1 rounded-lg bg-zinc-800 px-2 py-2 text-[10px] font-medium text-zinc-200 transition-colors hover:bg-zinc-700 sm:text-xs"
                             >
                               <Pencil className="h-4 w-4 shrink-0" />
                               <span>Edit</span>
@@ -707,7 +725,7 @@ export default function BooksPage() {
                               onClick={(event) => { event.stopPropagation(); void handleToggleAvailability(book); }}
                               disabled={togglingStatusId !== null}
                               aria-label={book.status === 'AVAILABLE' ? 'Mark not available' : 'Mark available'}
-                              className={`flex-1 min-w-0 whitespace-nowrap inline-flex items-center justify-center gap-1 rounded-lg px-2 py-2 text-[10px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 sm:text-xs ${book.status === 'AVAILABLE'
+                              className={`min-h-11 min-w-0 whitespace-nowrap inline-flex items-center justify-center gap-1 rounded-lg px-2 py-2 text-[10px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 sm:text-xs ${book.status === 'AVAILABLE'
                                   ? 'bg-orange-500/10 text-orange-400 hover:bg-orange-500/20'
                                   : 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
                                 }`}
@@ -717,15 +735,76 @@ export default function BooksPage() {
                             </button>
                           </>
                         ) : (
-                          <button
-                            type="button"
-                            onClick={(event) => { event.stopPropagation(); openBookDetails(book); }}
-                            className="flex-1 rounded-lg bg-zinc-800 px-3 py-2 text-xs font-semibold text-zinc-200 transition-colors hover:bg-zinc-700"
-                          >
-                            View details
-                          </button>
+                          <>
+                            {(() => {
+                              const available = isPhysicalBookAvailable(book);
+                              const reservable = isPhysicalBookReservable(book);
+                              const alreadyRequested = actionsLoadedForUserId === user?.id && requestedBookIds.has(book.id);
+                              const alreadyReserved = actionsLoadedForUserId === user?.id && reservedBookIds.has(book.id);
+                              const lookupFailed = Boolean(user && actionsLookupErrorForUserId === user.id);
+                              const checking = Boolean(
+                                user &&
+                                actionsLoadedForUserId !== user.id &&
+                                !lookupFailed
+                              );
+                              const selected = inCart(book.id);
+                              const actionLabel = lookupFailed
+                                ? "Retry request check"
+                                : !available && !reservable
+                                  ? "Unavailable"
+                                : checking
+                                ? "Checking requests..."
+                                : alreadyRequested
+                                  ? "Request already sent"
+                                  : available
+                                    ? selected
+                                      ? "Remove from Borrow Request"
+                                      : "Add to Borrow Request"
+                                    : alreadyReserved
+                                      ? "Already reserved"
+                                      : reservationLoading
+                                        ? "Reserving..."
+                                        : "Reserve";
+                              const disabled = lookupFailed
+                                ? false
+                                : checking || alreadyRequested || (!available && !reservable) || (available
+                                  ? !selected && activeCart.length >= MAX_BOOKS_PER_TRANSACTION
+                                  : !reservable || alreadyReserved || reservationLoading);
+                              return (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      if (lookupFailed) setActionsLookupRetryKey((current) => current + 1);
+                                      else if (available) handleBorrowBook(book);
+                                      else if (reservable) void handleReserveBook(book);
+                                    }}
+                                    disabled={disabled}
+                                    className={`min-h-11 min-w-0 whitespace-normal break-words rounded-lg px-1.5 py-1 text-[11px] font-semibold leading-tight transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                                      available
+                                        ? "bg-blue-600 text-white hover:bg-blue-700 disabled:bg-zinc-800 disabled:text-zinc-500"
+                                        : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
+                                    }`}
+                                  >
+                                    {actionLabel}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(event) => { event.stopPropagation(); openBookDetails(book); }}
+                                    className="min-h-11 min-w-0 rounded-lg bg-zinc-800 px-3 py-2 text-xs font-semibold text-zinc-200 transition-colors hover:bg-zinc-700"
+                                  >
+                                    View details
+                                  </button>
+                                </>
+                              );
+                            })()}
+                          </>
                         )}
                       </div>
+                      {!isLibrarian && cardActionError && cardActionError.bookId === book.id && (
+                        <p role="alert" className="mt-2 text-xs text-red-300">{cardActionError.message}</p>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -897,7 +976,7 @@ export default function BooksPage() {
           )}
 
           {/* Borrow Cart Bar */}
-          {!isLibrarian && cart.length > 0 && (
+          {!isLibrarian && activeCart.length > 0 && (
             <div className="fixed bottom-4 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-3xl z-50">
               <div className="rounded-2xl border border-zinc-700 bg-zinc-900/95 backdrop-blur shadow-2xl shadow-black/50 p-4">
                 <div className="flex items-center gap-3 mb-3">
@@ -906,7 +985,7 @@ export default function BooksPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-white">
-                      {cart.length}/3 books selected
+                      {activeCart.length}/3 books selected
                     </p>
                     <p className="text-xs text-zinc-500">You can borrow up to 3 books per transaction.</p>
                   </div>
@@ -919,7 +998,7 @@ export default function BooksPage() {
                 </div>
 
                 <div className="flex flex-wrap gap-2 mb-4">
-                  {cart.map((b) => (
+                  {activeCart.map((b) => (
                     <span
                       key={b.id}
                       className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-xs text-zinc-200"
@@ -949,11 +1028,11 @@ export default function BooksPage() {
             </div>
           )}
 
-          {!isLibrarian && cart.length > 0 && (
+          {!isLibrarian && activeCart.length > 0 && (
             <BookBorrowModal
               open={showBorrowModal}
               onOpenChange={setShowBorrowModal}
-              books={cart}
+              books={activeCart}
               onSuccess={handleBorrowSuccess}
               onError={handleBorrowRequestError}
             />
@@ -967,18 +1046,24 @@ export default function BooksPage() {
               inCart={inCart(detailsBook.id)}
               alreadyRequested={actionsLoadedForUserId === user?.id && requestedBookIds.has(detailsBook.id)}
               alreadyReserved={actionsLoadedForUserId === user?.id && reservedBookIds.has(detailsBook.id)}
-              cartLimitReached={cart.length >= MAX_BOOKS_PER_TRANSACTION}
+              cartLimitReached={activeCart.length >= MAX_BOOKS_PER_TRANSACTION}
               loadingExistingActions={Boolean(
                 user &&
                 user.role !== "LIBRARIAN" &&
-                loading &&
-                actionsLoadedForUserId !== user.id
+                actionsLoadedForUserId !== user.id &&
+                actionsLookupErrorForUserId !== user.id
+              )}
+              actionsLookupFailed={Boolean(
+                user &&
+                user.role !== "LIBRARIAN" &&
+                actionsLookupErrorForUserId === user.id
               )}
               loadingReservation={reservationLoading}
               error={detailsError}
               onClose={() => setDetailsBook(null)}
-              onBorrow={handleDetailsBorrow}
+              onBorrow={() => handleBorrowBook(detailsBook)}
               onReserve={() => { void handleReserveBook(detailsBook); }}
+              onRetryActionsCheck={() => setActionsLookupRetryKey((current) => current + 1)}
             />
           )}
 

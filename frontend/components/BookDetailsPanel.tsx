@@ -9,11 +9,13 @@ export type BookDetailsBook = {
   id: string;
   title: string;
   author: string;
+  status?: string | null;
   coverImage?: string | null;
   availableCopies?: number | null;
   copies?: number | null;
   isbn?: string | null;
   accessionNo?: string | null;
+  classificationNumber?: string | null;
   category?: { name?: string | null } | null;
   shelf?: string | null;
   row?: string | null;
@@ -28,12 +30,14 @@ type BookDetailsPanelProps = {
   alreadyReserved: boolean;
   cartLimitReached: boolean;
   loadingExistingActions: boolean;
+  actionsLookupFailed: boolean;
   loadingReservation: boolean;
   error: string;
   onClose: () => void;
   onBorrow: () => void;
   onReserve: () => void;
-};
+  onRetryActionsCheck: () => void;
+}
 
 export function BookDetailsPanel({
   book,
@@ -44,16 +48,41 @@ export function BookDetailsPanel({
   alreadyReserved,
   cartLimitReached,
   loadingExistingActions,
+  actionsLookupFailed,
   loadingReservation,
   error,
   onClose,
   onBorrow,
   onReserve,
+  onRetryActionsCheck,
 }: BookDetailsPanelProps) {
   const availableCopies = Number(book.availableCopies ?? 0);
   const copies = Number(book.copies ?? 0);
-  const borrowDisabled = !isAvailable || loadingExistingActions || (!inCart && (alreadyRequested || cartLimitReached));
-  const reserveDisabled = isAvailable || alreadyReserved || loadingExistingActions || loadingReservation;
+  const isCirculating = ["AVAILABLE", "BORROWED"].includes(book.status || "");
+  const hasAvailableCopies = isCirculating && availableCopies > 0;
+  const isReservable = isCirculating && availableCopies === 0;
+  const borrowDisabled = !isAvailable || loadingExistingActions || alreadyRequested || (!inCart && cartLimitReached);
+  const reserveDisabled = !isReservable || alreadyReserved || loadingExistingActions || loadingReservation;
+  const actionLabel = actionsLookupFailed
+    ? "Retry request check"
+    : !hasAvailableCopies && !isReservable
+      ? "Unavailable"
+    : loadingExistingActions
+    ? "Checking requests..."
+    : alreadyRequested
+      ? "Request already sent"
+      : hasAvailableCopies
+        ? inCart
+          ? "Remove from Borrow Request"
+          : "Add to Borrow Request"
+        : loadingReservation
+          ? "Reserving..."
+          : alreadyReserved
+            ? "Already reserved"
+            : "Reserve";
+  const actionDisabled = actionsLookupFailed
+    ? false
+    : loadingExistingActions || alreadyRequested || (hasAvailableCopies ? borrowDisabled : reserveDisabled);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -126,6 +155,7 @@ export function BookDetailsPanel({
             <dl className="mt-6 divide-y divide-zinc-800 rounded-xl border border-zinc-800 bg-zinc-900/60 px-4">
               {book.isbn && <Detail label="ISBN" value={book.isbn} />}
               {book.accessionNo && <Detail label="Accession number" value={book.accessionNo} />}
+              {book.classificationNumber && <Detail label="Dewey number" value={book.classificationNumber} />}
               <Detail label="Category" value={book.category?.name || "General"} />
               {(book.shelf || book.row) && (
                 <Detail label="Shelf location" value={[book.shelf, book.row].filter(Boolean).join(" · ")} />
@@ -142,35 +172,23 @@ export function BookDetailsPanel({
 
           {!isLibrarian && (
             <footer className="shrink-0 border-t border-zinc-800 bg-zinc-950 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={onBorrow}
-                  disabled={borrowDisabled}
-                  className="min-h-11 flex-1 rounded-xl bg-blue-600 px-3 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
-                >
-                  {loadingExistingActions
-                    ? "Checking requests..."
-                    : alreadyRequested && !inCart
-                    ? "Request already sent"
-                    : inCart
-                      ? "Remove from Borrow Request"
-                      : "Add to Borrow Request"}
-                </button>
-                <button
-                  type="button"
-                  onClick={onReserve}
-                  disabled={reserveDisabled}
-                  className="min-h-11 flex-1 rounded-xl bg-zinc-800 px-3 py-2.5 text-sm font-semibold text-zinc-200 transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {loadingReservation ? "Reserving..." : alreadyReserved ? "Already reserved" : "Reserve"}
-                </button>
-              </div>
-              {isAvailable ? (
-                <p className="mt-2 text-center text-xs text-zinc-500">Reserve is only available when no copy is free.</p>
-              ) : alreadyReserved ? (
+              <button
+                type="button"
+                onClick={actionsLookupFailed
+                  ? onRetryActionsCheck
+                  : hasAvailableCopies ? onBorrow : isReservable ? onReserve : undefined}
+                disabled={actionDisabled}
+                className={`min-h-11 w-full rounded-xl px-3 py-2.5 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                  hasAvailableCopies
+                    ? "bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-800 disabled:text-zinc-500"
+                    : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
+                }`}
+              >
+                {actionLabel}
+              </button>
+              {isReservable && alreadyReserved && (
                 <p className="mt-2 text-center text-xs text-zinc-500">You already have an active reservation for this book.</p>
-              ) : null}
+              )}
               {cartLimitReached && !inCart && isAvailable && !alreadyRequested && (
                 <p className="mt-2 text-center text-xs text-amber-300">You can only borrow up to 3 books per transaction.</p>
               )}

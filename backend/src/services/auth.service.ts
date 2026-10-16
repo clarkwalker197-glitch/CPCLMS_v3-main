@@ -391,8 +391,9 @@ async register(input: RegisterInput, ipAddress?: string, userAgent?: string) {
       throw new UnauthorizedError('Account is deactivated.');
     }
 
+    const sessionLifetime = storedToken.expiresAt.getTime() - storedToken.createdAt.getTime();
     const rememberedSession =
-      storedToken.expiresAt.getTime() - storedToken.createdAt.getTime() > SESSION_REFRESH_TOKEN_TTL_MS / 2;
+      sessionLifetime > (SESSION_REFRESH_TOKEN_TTL_MS + REFRESH_TOKEN_TTL_MS) / 2;
     const now = new Date();
     const nextRefreshToken = crypto.randomBytes(48).toString('hex');
     const nextRefreshExpiresAt = new Date(

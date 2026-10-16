@@ -274,6 +274,9 @@ export class TransactionService {
         if (book.status === 'MAINTENANCE') {
           throw new BadRequestError(`"${book.title}" is under maintenance`);
         }
+        if (!['AVAILABLE', 'BORROWED'].includes(book.status)) {
+          throw new BadRequestError(`"${book.title}" is not currently available for borrowing`);
+        }
         if (book.availableCopies < 1) {
           throw new BadRequestError(
             `No copies of "${book.title}" are currently available. You can reserve it instead.`
@@ -718,8 +721,8 @@ export class TransactionService {
         throw new BadRequestError('This Borrow ID has already been verified');
       }
 
-      const books = await tx.$queryRaw<Array<{ id: string; title: string; availableCopies: number }>>`
-        SELECT id, title, available_copies AS "availableCopies"
+      const books = await tx.$queryRaw<Array<{ id: string; title: string; status: string; availableCopies: number }>>`
+        SELECT id, title, status, available_copies AS "availableCopies"
         FROM books
         WHERE id = ANY (${bookIds})
         FOR UPDATE
@@ -728,7 +731,13 @@ export class TransactionService {
       const bookMap = new Map(books.map((book) => [book.id, book]));
       for (const bookId of bookIds) {
         const book = bookMap.get(bookId);
-        if (!book || book.availableCopies < 1) {
+        if (!book) {
+          throw new BadRequestError('One or more requested books are no longer available');
+        }
+        if (!['AVAILABLE', 'BORROWED'].includes(book.status)) {
+          throw new BadRequestError(`"${book.title}" is not currently available for borrowing`);
+        }
+        if (book.availableCopies < 1) {
           throw new BadRequestError(`No copies available for "${book?.title || 'a requested book'}"`);
         }
       }
@@ -839,62 +848,79 @@ export class TransactionService {
       include: { book: true },
     });
     if (!request) throw new NotFoundError('Borrow request');
-    if (request.status !== 'PENDING') {
-      throw new BadRequestError('Request already processed');
-    }
-    if (!request.book || !request.bookId) {
-      throw new BadRequestError('This archived request no longer has a linked book');
-    }
 
-    if (request.transactionId) {
-      const requests = await prisma.borrowRequest.findMany({
-        where: { transactionId: request.transactionId },
-        include: { book: { select: { title: true } } },
-      });
-      if (requests.some((entry) => entry.status !== request.status)) {
-        throw new BadRequestError('This transaction has already been processed');
-      }
-      const bookTitles = requests.map((entry) => entry.book?.title || 'Deleted book').join(', ');
-      await prisma.$transaction([
-        prisma.borrowRequest.updateMany({
-          where: { transactionId: request.transactionId, status: request.status },
+    const batchId = request.requestBatchId || request.transactionId;
+    if (batchId) {
+      const batchWhere = request.requestBatchId
+        ? { requestBatchId: request.requestBatchId, userId: request.userId }
+        : { transactionId: request.transactionId, userId: request.userId };
+      const bookTitles = await prisma.$transaction(async (tx) => {
+        const requests = await tx.borrowRequest.findMany({
+          where: batchWhere,
+          include: { book: { select: { title: true } } },
+        });
+        if (!requests.length || requests.some((entry) => !['PENDING', 'CANCELLED'].includes(entry.status))) {
+          throw new BadRequestError('This transaction has already been processed');
+        }
+        const pendingRequests = requests.filter((entry) => entry.status === 'PENDING');
+        if (!pendingRequests.length) {
+          throw new BadRequestError('This transaction has already been processed');
+        }
+
+        const updated = await tx.borrowRequest.updateMany({
+          where: { ...batchWhere, status: 'PENDING' },
           data: { status: 'REJECTED', processedById: librarianId, processedAt: new Date(), notes: reason },
-        }),
-        prisma.notification.create({
+        });
+        if (updated.count !== pendingRequests.length) {
+          throw new BadRequestError('This transaction has already been processed');
+        }
+
+        const titles = pendingRequests.map((entry) => entry.book?.title || 'Deleted book').join(', ');
+        await tx.notification.create({
           data: {
             userId: request.userId,
             type: 'REQUEST_REJECTED',
             title: 'Borrow Transaction Rejected',
-            message: `Your request for ${bookTitles} was rejected. Reason: ${reason}`,
+            message: `Your request for ${titles} was rejected. Reason: ${reason}`,
             link: '/requests',
           },
-        }),
-        prisma.activityLog.create({
+        });
+        await tx.activityLog.create({
           data: {
             userId: librarianId,
             action: 'REJECT_REQUEST',
             entity: 'BorrowRequest',
-            entityId: request.transactionId,
+            entityId: batchId,
             ipAddress: auditContext?.ipAddress,
             details: {
-              transactionId: request.transactionId,
-              bookTitles,
+              ...(request.requestBatchId
+                ? { requestBatchId: request.requestBatchId }
+                : { transactionId: request.transactionId }),
+              bookTitles: titles,
               reason,
               status: 'Rejected',
               ...(auditContext?.userAgent ? { userAgent: auditContext.userAgent } : {}),
             },
           },
-        }),
-      ]);
+        });
+        return titles;
+      });
       if (request.userId) {
         await sendPushToUser(request.userId, {
           title: 'Borrow Transaction Rejected',
           body: `Your request for ${bookTitles} was rejected. Reason: ${reason}`,
           url: '/requests',
-          tag: `request-rejected-${request.transactionId}`,
+          tag: `request-rejected-${batchId}`,
         });
       }
       return;
+    }
+
+    if (request.status !== 'PENDING') {
+      throw new BadRequestError('Request already processed');
+    }
+    if (!request.book || !request.bookId) {
+      throw new BadRequestError('This archived request no longer has a linked book');
     }
 
     await prisma.$transaction([
@@ -1030,12 +1056,60 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
       include,
       orderBy: [{ requestDate: order }, { id: 'asc' }],
     });
+    if (userId) {
+      const statusOrder: Record<string, number> = {
+        PENDING: 0,
+        APPROVED: 1,
+        REJECTED: 2,
+        CANCELLED: 3,
+      };
+      const direction = order === 'asc' ? 1 : -1;
+      const requests = matchingRows.map((request) => ({
+        id: request.id,
+        user: request.user,
+        status: request.status,
+        requestDate: request.requestDate,
+        notes: request.notes,
+        books: [{
+          ...(request.book || {}),
+          requestId: request.id,
+          status: request.status,
+        }],
+      }));
+
+      requests.sort((a, b) => {
+        if (sort === 'status') {
+          const statusDifference = (statusOrder[a.status] ?? 3) - (statusOrder[b.status] ?? 3);
+          if (statusDifference) return statusDifference * direction;
+        }
+        if (sort === 'memberName') {
+          const aName = a.user ? `${a.user.firstName} ${a.user.lastName}` : 'Deleted user';
+          const bName = b.user ? `${b.user.firstName} ${b.user.lastName}` : 'Deleted user';
+          const nameDifference = aName.localeCompare(bName);
+          if (nameDifference) return nameDifference * direction;
+        }
+        return (a.requestDate.getTime() - b.requestDate.getTime()) * direction || a.id.localeCompare(b.id);
+      });
+
+      const total = requests.length;
+      return {
+        requests: requests.slice(pagination.skip, pagination.skip + pagination.take),
+        meta: buildPaginationMeta(total, pagination),
+      };
+    }
+
     const transactionIds = Array.from(new Set(matchingRows
       .map((request) => request.transactionId)
       .filter((id): id is string => Boolean(id))));
-    const siblingRows = transactionIds.length
+    const requestBatchIds = Array.from(new Set(matchingRows
+      .map((request) => request.requestBatchId)
+      .filter((id): id is string => Boolean(id))));
+    const siblingConditions: Prisma.BorrowRequestWhereInput[] = [];
+    if (transactionIds.length) siblingConditions.push({ transactionId: { in: transactionIds } });
+    if (requestBatchIds.length) siblingConditions.push({ requestBatchId: { in: requestBatchIds } });
+    const siblingRows = siblingConditions.length
       ? await prisma.borrowRequest.findMany({
-        where: { transactionId: { in: transactionIds }, ...(userId ? { userId } : {}) },
+        where: { OR: siblingConditions, ...(userId ? { userId } : {}) },
         include,
       })
       : [];
@@ -1058,18 +1132,28 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
     const requests = Array.from(grouped.values()).map((group) => {
       group.sort((a, b) => a.requestDate.getTime() - b.requestDate.getTime());
       const first = group[0];
+      const status = group.some((request) => request.status === 'PENDING')
+        ? 'PENDING'
+        : group.some((request) => request.status === 'APPROVED')
+          ? 'APPROVED'
+          : group.some((request) => request.status === 'REJECTED')
+            ? 'REJECTED'
+            : first.status;
       return {
         id: first.id,
         ...(!userId ? { requestBatchId: first.requestBatchId, transactionId: first.transactionId } : {}),
         user: first.user,
-        status: first.status,
+        status,
         requestDate: first.requestDate,
         notes: first.notes,
         books: group.map((request) => ({ ...request.book, requestId: request.id, status: request.status })),
       };
     });
+    const filteredRequests = where.status
+      ? requests.filter((request) => request.status === where.status)
+      : requests;
 
-    requests.sort((a, b) => {
+    filteredRequests.sort((a, b) => {
       if (sort === 'status') {
         const statusDifference = (statusOrder[a.status] ?? 3) - (statusOrder[b.status] ?? 3);
         if (statusDifference) return statusDifference * direction;
@@ -1083,9 +1167,9 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
       return (a.requestDate.getTime() - b.requestDate.getTime()) * direction || a.id.localeCompare(b.id);
     });
 
-    const total = requests.length;
+    const total = filteredRequests.length;
     return {
-      requests: requests.slice(pagination.skip, pagination.skip + pagination.take),
+      requests: filteredRequests.slice(pagination.skip, pagination.skip + pagination.take),
       meta: buildPaginationMeta(total, pagination),
     };
   }
@@ -1358,6 +1442,7 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
         data: {
           userId: borrowerId,
           type: 'SYSTEM',
+          isSystem: true,
           title: 'Book Declared Missing',
           message: `The book "${book.title}" you borrowed has been declared missing. An unpaid fine of ₱${fineAmount.toFixed(2)} has been added to your account.`,
           link: '/requests',
@@ -1547,6 +1632,7 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
         data: {
           userId: transaction.userId,
           type: 'SYSTEM',
+          isSystem: true,
           title: 'Fine Paid',
           message: `Your fine of ₱${transaction.fineAmount.toFixed(2)} for "${updated.book?.title || 'a deleted book'}" has been paid.`,
           link: `/transactions/${transactionId}`,
@@ -1675,8 +1761,16 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
 
       const book = await tx.book.findUnique({ where: { id: bookId } });
       if (!book) throw new NotFoundError('Book');
-      if (book.availableCopies > 0 && book.status === 'AVAILABLE') {
-        throw new BadRequestError('This book is currently available. Please borrow it instead.');
+      if (book.status === 'LOST') {
+        throw new BadRequestError('This book is missing and cannot be reserved.');
+      }
+      if (!['AVAILABLE', 'BORROWED'].includes(book.status)) {
+        throw new BadRequestError('This book is unavailable and cannot be reserved.');
+      }
+      if (book.availableCopies !== 0) {
+        throw new BadRequestError(book.availableCopies > 0
+          ? 'This book is currently available. Please borrow it instead.'
+          : 'This book is unavailable and cannot be reserved.');
       }
       await this.recalculateReservationQueueForBook(bookId, tx);
 
@@ -1743,6 +1837,7 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
         data: {
           userId,
           type: 'SYSTEM',
+          isSystem: true,
           title: 'Reservation placed',
           message: `Your reservation for "${result.bookTitle}" is queued at position ${result.reservation.queuePosition ?? 1}.`,
           link: `/reservations/${result.reservation.id}`,
@@ -1815,6 +1910,7 @@ async listTransactions(query: Record<string, unknown>, userId?: string) {
       data: {
         userId: reservation.userId,
         type: 'SYSTEM',
+        isSystem: true,
         title: 'Reservation approved',
         message: `Your reservation for "${reservation.book.title}" has been approved and is ready for pickup.`,
         link: `/reservations/${reservation.id}`,

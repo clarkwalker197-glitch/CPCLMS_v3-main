@@ -17,7 +17,7 @@ function getPostLoginPath(role?: string, returnTo?: string | null) {
 export default function LoginPage() {
   const { login, googleLogin, user, isAuthenticated, loading } = useAuth();
   const router = useRouter();
-  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
+  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID?.trim() || '';
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -67,8 +67,7 @@ export default function LoginPage() {
   }
 
   return (
-    <GoogleOAuthProvider clientId={googleClientId || 'not-configured'}>
-      <div className="min-h-screen bg-zinc-950 flex flex-col">
+    <div className="min-h-screen bg-zinc-950 flex flex-col">
         <div className="flex-1 flex items-center justify-center p-4 sm:p-8">
           <div className="w-full max-w-6xl grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
             {/* ── Left Card: Dark branding ─────────────────────────── */}
@@ -259,27 +258,33 @@ export default function LoginPage() {
                     {submitting ? 'Signing in...' : 'Login'}
                   </button>
 
-                  <div className="relative py-1">
-                    <div className="border-t border-zinc-800" />
-                    <span className="absolute left-1/2 -top-2.5 -translate-x-1/2 bg-zinc-900 px-3 text-xs text-zinc-500">OR</span>
-                  </div>
+                  {googleClientId && (
+                    <>
+                      <div className="relative py-1">
+                        <div className="border-t border-zinc-800" />
+                        <span className="absolute left-1/2 -top-2.5 -translate-x-1/2 bg-zinc-900 px-3 text-xs text-zinc-500">OR</span>
+                      </div>
 
-                  <div className="google-login-button">
-                    <GoogleLogin
-                      onSuccess={async ({ credential }) => {
-                        if (!credential) return setError('Google did not return a valid credential');
-                        setError('');
-                        const result = await googleLogin(credential);
-                        if (result.success) router.push(getPostLoginPath(result.user?.role, returnTo));
-                        else setError(result.error || 'Google login failed');
-                      }}
-                      onError={() => setError('Google login failed. Please try again.')}
-                      theme="filled_black"
-                      size="large"
-                      width="100%"
-                      text="signin_with"
-                    />
-                  </div>
+                      <GoogleOAuthProvider clientId={googleClientId}>
+                        <div className="google-login-button">
+                          <GoogleLogin
+                            onSuccess={async ({ credential }) => {
+                              if (!credential) return setError('Google did not return a valid credential');
+                              setError('');
+                              const result = await googleLogin(credential);
+                              if (result.success) router.push(getPostLoginPath(result.user?.role, returnTo));
+                              else setError(result.error || 'Google login failed');
+                            }}
+                            onError={() => setError('Google login failed. Please try again.')}
+                            theme="filled_black"
+                            size="large"
+                            width="100%"
+                            text="signin_with"
+                          />
+                        </div>
+                      </GoogleOAuthProvider>
+                    </>
+                  )}
                 </form>
 
                 {/* Register link */}
@@ -304,7 +309,6 @@ export default function LoginPage() {
           </div>
         </div>
 
-      </div>
-    </GoogleOAuthProvider>
+    </div>
   );
 }

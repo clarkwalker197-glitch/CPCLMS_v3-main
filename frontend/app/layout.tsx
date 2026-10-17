@@ -4,6 +4,7 @@ import "./globals.css";
 import { AuthProvider } from "@/lib/auth-context";
 import { ThemeProvider } from "@/components/theme-provider";
 import { SWSelfHeal } from "@/components/SWSelfHeal";
+import { OfflineBorrowRequestSync } from "@/components/OfflineBorrowRequestSync";
 import { PolicyUpdateNotice } from "@/components/PolicyUpdateNotice";
 import { ConfirmDialogProvider } from "@/components/ui/ConfirmModal";
 import SiteFooter from "@/components/SiteFooter";
@@ -87,6 +88,7 @@ export default function RootLayout({
           <ConfirmDialogProvider>
             <AuthProvider>
               <SWSelfHeal />
+              <OfflineBorrowRequestSync />
               <PolicyUpdateNotice />
               <main className="flex-1">{children}</main>
               <SiteFooter />

@@ -8,6 +8,7 @@ import type { ApiResponse } from "@/lib/api";
 import MediaImage from "@/components/MediaImage";
 import { offlineDb } from "@/lib/offline-db";
 import { searchCachedBooks } from "@/lib/offline-api";
+import { syncCatalogForOffline } from "@/lib/catalog-cache";
 import { useDebounce } from "@/lib/useDebounce";
 import { BookBorrowModal } from "@/components/BookBorrowModal";
 import { BookDetailsPanel, type BookDetailsBook } from "@/components/BookDetailsPanel";
@@ -125,10 +126,41 @@ export default function BooksPage() {
   useEffect(() => {
     const retryLookupsWhenOnline = () => {
       setActionsLookupRetryKey((current) => current + 1);
+      void syncCatalogForOffline("books").catch((caught: unknown) => {
+        console.error("[Offline] Could not synchronize the physical book catalog:", caught);
+      });
     };
+    if (navigator.onLine) {
+      void syncCatalogForOffline("books").catch((caught: unknown) => {
+        console.error("[Offline] Could not synchronize the physical book catalog:", caught);
+      });
+    }
     window.addEventListener("online", retryLookupsWhenOnline);
     return () => window.removeEventListener("online", retryLookupsWhenOnline);
   }, []);
+
+  useEffect(() => {
+    if (!user || user.role === "LIBRARIAN") return;
+    let active = true;
+    void offlineDb.syncQueue
+      .where("userId")
+      .equals(user.id)
+      .filter((request) => request.type === "BORROW_REQUEST" && request.status === "QUEUED")
+      .toArray()
+      .then((requests) => {
+        if (!active) return;
+        setRequestedBookIds((previous) => new Set([
+          ...previous,
+          ...requests.flatMap((request) => request.bookIds),
+        ]));
+      })
+      .catch((caught: unknown) => {
+        console.error("[Offline] Could not load queued borrow requests:", caught);
+      });
+    return () => {
+      active = false;
+    };
+  }, [user?.id, user?.role]);
 
   const loadData = useCallback(async () => {
     const requestId = ++requestSequence.current;
@@ -392,8 +424,10 @@ export default function BooksPage() {
     setShowBorrowModal(true);
   };
 
-  const handleBorrowSuccess = () => {
-    setSuccessMsg("Request sent! Waiting for librarian approval.");
+  const handleBorrowSuccess = (queuedOffline = false) => {
+    setSuccessMsg(queuedOffline
+      ? "Request saved on this device. It will be sent to the librarian when you reconnect; it is not approved yet."
+      : "Request sent! Waiting for librarian approval.");
     setBorrowRequestError(null);
     if (user) setActionsLoadedForUserId(user.id);
     setRequestedBookIds((previous) => new Set([...previous, ...activeCart.map((book) => book.id)]));
@@ -1033,6 +1067,7 @@ export default function BooksPage() {
               open={showBorrowModal}
               onOpenChange={setShowBorrowModal}
               books={activeCart}
+              user={user!}
               onSuccess={handleBorrowSuccess}
               onError={handleBorrowRequestError}
             />

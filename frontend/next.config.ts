@@ -76,6 +76,22 @@ export default withPWA({
   workboxOptions: {
     runtimeCaching: [
       {
+        urlPattern: ({ request, url }: { request: Request; url: URL }) =>
+          request.mode === "navigate" && ["/books", "/ebooks"].includes(url.pathname),
+        handler: "NetworkFirst",
+        options: {
+          cacheName: "catalog-pages",
+          networkTimeoutSeconds: 3,
+          expiration: {
+            maxEntries: 2,
+            maxAgeSeconds: 60 * 60 * 24 * 7,
+          },
+          cacheableResponse: {
+            statuses: [200],
+          },
+        },
+      },
+      {
         urlPattern: ({ url }: { url: URL }) =>
           url.pathname.startsWith("/uploads/profiles/"),
         handler: "NetworkOnly",

@@ -16,6 +16,7 @@ import MobileSearchInput from '@/components/MobileSearchInput';
 import { DEWEY_MAIN_CATEGORIES, subcategoriesForMain } from '@/lib/categories';
 import { offlineDb } from '@/lib/offline-db';
 import { searchCachedBooks } from '@/lib/offline-api';
+import { syncCatalogForOffline } from '@/lib/catalog-cache';
 import { useConfirmDialog } from '@/components/ui/ConfirmModal';
 import {
   Plus,
@@ -120,7 +121,10 @@ export default function EBooksPage() {
       } else if (!ebooksRes.success) {
         setError(ebooksRes.error || 'Failed to load e-books');
       }
-      if (catsRes.success) setCategories((catsRes.data || []).filter((category: any) => category.slug?.startsWith('dewey-')));
+      if (catsRes.success) {
+        setCategories((catsRes.data || []).filter((category: any) => category.slug?.startsWith('dewey-')));
+        await offlineDb.categories.bulkPut(catsRes.data || []);
+      }
     } catch {
       setShowingCached(true);
       if (!ebooks.length) setError('Failed to load e-books. Reconnect to synchronize the catalog.');
@@ -133,6 +137,17 @@ export default function EBooksPage() {
     const timer = setTimeout(loadData, 300);
     return () => clearTimeout(timer);
   }, [loadData]);
+
+  useEffect(() => {
+    const refreshOfflineCatalog = () => {
+      void syncCatalogForOffline('ebooks').catch((caught: unknown) => {
+        console.error('[Offline] Could not synchronize the e-book catalog:', caught);
+      });
+    };
+    if (navigator.onLine) refreshOfflineCatalog();
+    window.addEventListener('online', refreshOfflineCatalog);
+    return () => window.removeEventListener('online', refreshOfflineCatalog);
+  }, []);
 
   useEffect(() => {
     setCurrentPage(1);

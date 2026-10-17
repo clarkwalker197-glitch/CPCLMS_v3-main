@@ -3,6 +3,7 @@ import type {
   LocalBook,
   LocalRecord,
   LocalUser,
+  OfflineBorrowRequest,
   SyncMeta,
 } from './offline-types';
 
@@ -15,6 +16,7 @@ export class CpclmsDatabase extends Dexie {
   categories!: Table<LocalRecord, string>;
   users!: Table<LocalUser, string>;
   borrowRequests!: Table<LocalRecord, string>;
+  syncQueue!: Table<OfflineBorrowRequest, string>;
   dashboard!: Table<LocalRecord, string>;
   meta!: Table<SyncMeta, string>;
 
@@ -58,6 +60,19 @@ export class CpclmsDatabase extends Dexie {
       syncQueue: null,
       meta: 'key, updatedAt',
     });
+    this.version(4).stores({
+      books: 'id, updatedAt, title, author, isbn, categoryId, classificationNumber',
+      ebooks: 'id, updatedAt, title, author, isbn, categoryId, classificationNumber',
+      categories: 'id, updatedAt, slug',
+      users: 'id, updatedAt, libraryId',
+      transactions: 'id, updatedAt, userId, status',
+      borrowRequests: 'id, updatedAt, userId, status',
+      reservations: 'id, updatedAt, userId, status',
+      notifications: 'id, userId, createdAt, isRead',
+      dashboard: 'id, updatedAt',
+      syncQueue: 'id, userId, createdAt, type, status',
+      meta: 'key, updatedAt',
+    });
   }
 }
 
@@ -72,7 +87,7 @@ export async function clearOfflineData(): Promise<void> {
   await Promise.all([
     db.users.clear(),
     db.transactions.clear(),
-    db.borrowRequests.clear(),
+    db.borrowRequests.filter((request) => !request.id.startsWith('local-borrow-')).delete(),
     db.reservations.clear(),
     db.notifications.clear(),
     db.dashboard.clear(),

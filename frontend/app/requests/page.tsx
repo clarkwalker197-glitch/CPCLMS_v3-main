@@ -18,6 +18,7 @@ import { useConfirmDialog } from "@/components/ui/ConfirmModal";
 import { formatBorrowId, normalizeBorrowId } from "@/lib/borrow-id";
 import { parseApprovalInput } from "@/lib/qr-approval";
 import { offlineDb } from "@/lib/offline-db";
+import { OFFLINE_BORROW_REQUESTS_UPDATED } from "@/lib/offline-borrow-requests";
 import {
   Search,
   BookOpen,
@@ -63,6 +64,7 @@ const reqStatusBadge: Record<string, string> = {
   APPROVED: "request-status-badge request-status-approved",
   REJECTED: "request-status-badge request-status-rejected",
   CANCELLED: "bg-zinc-500/15 text-zinc-400 ring-1 ring-zinc-500/30",
+  SYNC_FAILED: "bg-red-500/15 text-red-300 ring-1 ring-red-500/30",
 };
 const reqStatusLabel: Record<string, string> = {
   PENDING: "Pending",
@@ -72,6 +74,8 @@ const reqStatusLabel: Record<string, string> = {
 };
 
 function requestStatusText(request: any): string {
+  if (request.syncStatus === "QUEUED") return "Waiting for connection";
+  if (request.syncStatus === "SYNC_FAILED") return "Not sent";
   return reqStatusLabel[request.status] || request.status;
 }
 
@@ -295,7 +299,7 @@ export default function RequestsPage() {
     try {
       const cachedRecords = user
         ? (await offlineDb.borrowRequests.where("userId").equals(user.id).toArray())
-          .filter((request: any) => !request._pending && !String(request.id).startsWith("local-borrow-"))
+          .filter((request: any) => !request._pending)
         : [];
       if (!navigator.onLine) {
         if (cachedRecords.length) {
@@ -318,12 +322,13 @@ export default function RequestsPage() {
       const res = await api.getBorrowRequests(params);
       if (res.success) {
         const serverRecords = (res.data as any[]) || [];
+        const localRequests = cachedRecords.filter((request: any) => String(request.id).startsWith("local-borrow-"));
         await offlineDb.borrowRequests.bulkPut(serverRecords.map((request: any) => ({
           ...request,
           userId: request.userId || user?.id,
         })));
-        setRecords(serverRecords);
-        setReqTotal(res.meta?.total ?? serverRecords.length);
+        setRecords([...localRequests, ...serverRecords]);
+        setReqTotal((res.meta?.total ?? serverRecords.length) + localRequests.length);
         setShowingCachedRequests(false);
       } else if (res.rateLimited) {
         setError("You're moving too fast. Please wait a moment and try again.");
@@ -344,6 +349,11 @@ export default function RequestsPage() {
 
   useEffect(() => {
     loadRequests();
+  }, [loadRequests]);
+
+  useEffect(() => {
+    window.addEventListener(OFFLINE_BORROW_REQUESTS_UPDATED, loadRequests);
+    return () => window.removeEventListener(OFFLINE_BORROW_REQUESTS_UPDATED, loadRequests);
   }, [loadRequests]);
 
   useEffect(() => {
@@ -725,7 +735,7 @@ export default function RequestsPage() {
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex">
       <Sidebar />
       <div className="flex-1 min-w-0">
-        <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-[calc(7rem+min(env(safe-area-inset-bottom),2rem))] lg:pb-8 ${isLibrarian ? "flex flex-col" : ""}`}>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-[calc(7rem+min(env(safe-area-inset-bottom),2rem))] lg:pb-8 flex flex-col">
           {successMsg && (
             <div className="p-4 mb-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-sm text-emerald-400">
               {successMsg}
@@ -738,7 +748,7 @@ export default function RequestsPage() {
           )}
 
                     {!isLibrarian && (
-                      <div className="mb-8">
+                      <div className="order-2 mb-8">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
                           <div>
                             <h1 className="text-2xl font-bold text-white">My Borrowed Books</h1>
@@ -843,7 +853,7 @@ export default function RequestsPage() {
                     {/* ===================================================== */}
                     {/* Borrow Requests */}
           {/* ===================================================== */}
-          <div className="order-2">
+          <div className={isLibrarian ? "order-2" : "order-1"}>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
               <div>
                 <h2 className="text-2xl font-bold text-white">{isLibrarian ? "Borrow Requests" : "My Book Requests"}</h2>
@@ -980,13 +990,16 @@ export default function RequestsPage() {
                             ) : "—"}
                           </td>
                           <td className="px-6 py-4">
-                            <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${reqStatusBadge[req.status] || "bg-zinc-500/15 text-zinc-400 ring-1 ring-zinc-500/30"}`}>
+                            <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${reqStatusBadge[req.syncStatus === "SYNC_FAILED" ? "SYNC_FAILED" : req.status] || "bg-zinc-500/15 text-zinc-400 ring-1 ring-zinc-500/30"}`}>
                               {requestStatusText(req)}
                             </span>
+                            {req.syncStatus === "QUEUED" && <p className="mt-1 max-w-52 text-xs text-amber-300">Saved on this device; the librarian has not received it yet.</p>}
+                            {req.syncStatus === "SYNC_FAILED" && <p className="mt-1 max-w-52 text-xs text-red-300">{req.syncError || "Reconnect and submit a new request."}</p>}
                           </td>
                           <td className="px-6 py-4 text-right align-middle">
                             <div className="inline-flex items-center justify-end gap-1.5">
                               {!isLibrarian && (req.books || []).map((book: any) =>
+                                !req.syncStatus &&
                                 (book.status || req.status) === "PENDING" && book.requestId ? (
                                   <button
                                     key={book.requestId}
@@ -1042,11 +1055,14 @@ export default function RequestsPage() {
                     </div>
                     <div className="grid grid-cols-2 gap-3 py-4 text-sm"><div><p className="text-xs text-zinc-500">Member</p><p className="mt-1 break-words text-zinc-300">{req.user?.firstName} {req.user?.lastName}</p><p className="text-xs text-zinc-500">{req.user?.libraryId || ""}</p></div><div><p className="text-xs text-zinc-500">Request Date</p><p className="mt-1 text-zinc-300">{formatDate(req.requestDate)}</p></div><div className="col-span-2"><p className="text-xs text-zinc-500">Notes</p><p className="mt-1 whitespace-pre-wrap break-words text-zinc-300">{req.notes || "—"}</p></div></div>
                     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-800/80 pt-3">
-                      <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${reqStatusBadge[req.status] || "bg-zinc-500/15 text-zinc-400 ring-1 ring-zinc-500/30"}`}>
+                      <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${reqStatusBadge[req.syncStatus === "SYNC_FAILED" ? "SYNC_FAILED" : req.status] || "bg-zinc-500/15 text-zinc-400 ring-1 ring-zinc-500/30"}`}>
                         {requestStatusText(req)}
                       </span>
+                      {req.syncStatus === "QUEUED" && <p className="mt-1 text-xs text-amber-300">Saved on this device; the librarian has not received it yet.</p>}
+                      {req.syncStatus === "SYNC_FAILED" && <p className="mt-1 text-xs text-red-300">{req.syncError || "Reconnect and submit a new request."}</p>}
                       <div className="flex flex-wrap gap-2">
                         {!isLibrarian && (req.books || []).map((book: any) =>
+                          !req.syncStatus &&
                           (book.status || req.status) === "PENDING" && book.requestId ? (
                             <button
                               key={book.requestId}

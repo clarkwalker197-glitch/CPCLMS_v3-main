@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Dialog, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import api from "@/lib/api";
+import type { User } from "@/lib/auth";
+import { queueOfflineBorrowRequest } from "@/lib/offline-borrow-requests";
 import { BookOpen, ShieldCheck } from "lucide-react";
 
 type BorrowableBook = {
@@ -17,12 +19,25 @@ export function BookBorrowModal(props: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   books: BorrowableBook[];
-  onSuccess: () => void;
+  user: User;
+  onSuccess: (queuedOffline?: boolean) => void;
   onError?: (message: string) => void;
 }) {
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [isOnline, setIsOnline] = useState(true);
+
+  useEffect(() => {
+    const updateOnlineStatus = () => setIsOnline(navigator.onLine);
+    updateOnlineStatus();
+    window.addEventListener("online", updateOnlineStatus);
+    window.addEventListener("offline", updateOnlineStatus);
+    return () => {
+      window.removeEventListener("online", updateOnlineStatus);
+      window.removeEventListener("offline", updateOnlineStatus);
+    };
+  }, []);
 
   const count = props.books.length;
   const maxReached = count >= 3;
@@ -32,12 +47,35 @@ export function BookBorrowModal(props: {
     setError("");
     setLoading(true);
     try {
+      const idempotencyKey = crypto.randomUUID();
+      if (!navigator.onLine) {
+        await queueOfflineBorrowRequest({
+          user: props.user,
+          books: props.books,
+          notes: notes || undefined,
+          idempotencyKey,
+        });
+        props.onSuccess(true);
+        props.onOpenChange(false);
+        setNotes("");
+        return;
+      }
       const res = await api.createBorrowRequest({
         bookIds: props.books.map((b) => b.id),
         notes: notes || undefined,
-      });
+      }, idempotencyKey);
       if (res.success) {
         props.onSuccess();
+        props.onOpenChange(false);
+        setNotes("");
+      } else if (res.networkError) {
+        await queueOfflineBorrowRequest({
+          user: props.user,
+          books: props.books,
+          notes: notes || undefined,
+          idempotencyKey,
+        });
+        props.onSuccess(true);
         props.onOpenChange(false);
         setNotes("");
       } else {
@@ -58,7 +96,11 @@ export function BookBorrowModal(props: {
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
       <DialogHeader>
         <DialogTitle>Request to Borrow ({count} book{count !== 1 ? "s" : ""})</DialogTitle>
-        <DialogDescription>Borrowers may have up to 3 books at a time. Current loans and other pending requests count toward this limit.</DialogDescription>
+        <DialogDescription>
+          {isOnline
+            ? "Borrowers may have up to 3 books at a time. Current loans and other pending requests count toward this limit."
+            : "This request will be saved on this device and sent to the librarian when your internet connection returns. The request is not approved until then."}
+        </DialogDescription>
       </DialogHeader>
 
       {/* Book list */}

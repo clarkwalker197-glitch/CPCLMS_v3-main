@@ -239,8 +239,17 @@ export default function Sidebar() {
                   {item.children.map((child: any) => {
                     const ChildIcon = child.icon;
                     const isChildActive = pathname === child.href || pathname.startsWith(child.href + "/");
+                    const childClassName = `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${isChildActive ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`;
+                    if (!isOnline && ["/books", "/ebooks"].includes(child.href)) {
+                      return (
+                        <a key={child.label} href={child.href} className={childClassName}>
+                          <ChildIcon className="w-4 h-4" />
+                          {child.label}
+                        </a>
+                      );
+                    }
                     return (
-                      <Link key={child.label} href={child.href} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${isChildActive ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}>
+                      <Link key={child.label} href={child.href} className={childClassName}>
                         <ChildIcon className="w-4 h-4" />
                         {child.label}
                       </Link>
@@ -308,8 +317,22 @@ export default function Sidebar() {
           const Icon = item.icon;
           const isActive = pathname === item.href || pathname.startsWith(item.href + "/") || (["Search", "Books"].includes(item.label) && pathname.startsWith("/ebooks"));
           const showUnreadBadge = isCompactMobile && (item.label === "Requests" || item.label === "Approvals");
+          const mobileLinkClassName = `relative flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl px-0.5 py-1 text-[10px] font-medium leading-3 transition-colors ${isActive ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`;
+          if (!isOnline && ["/books", "/ebooks"].includes(item.href)) {
+            return (
+              <a key={item.href} href={item.href} aria-label={item.label} title={item.label} className={mobileLinkClassName}>
+                <Icon className="h-5 w-5 shrink-0" />
+                <span className="w-full whitespace-nowrap text-center">{item.label}</span>
+                {showUnreadBadge && unreadCount > 0 && (
+                  <span className="absolute right-1 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold leading-none text-white ring-2 ring-zinc-900" aria-label={`${unreadCount} unread notifications`}>
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
+              </a>
+            );
+          }
           return (
-            <Link key={item.href} href={item.href} aria-label={item.label} title={item.label} className={`relative flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl px-0.5 py-1 text-[10px] font-medium leading-3 transition-colors ${isActive ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}>
+            <Link key={item.href} href={item.href} aria-label={item.label} title={item.label} className={mobileLinkClassName}>
               <Icon className="h-5 w-5 shrink-0" />
               <span className="w-full whitespace-nowrap text-center">{item.label}</span>
               {showUnreadBadge && unreadCount > 0 && (

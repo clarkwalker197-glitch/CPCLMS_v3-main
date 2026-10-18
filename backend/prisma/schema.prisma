@@ -485,6 +485,7 @@ model Suggestion {
   subject   String   @db.VarChar(255)
   message   String   @db.VarChar(3000)
   status    String   @default("PENDING") @db.VarChar(50)
+  rating    Int?
   adminNote String?  @map("admin_note") @db.VarChar(2000)
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")

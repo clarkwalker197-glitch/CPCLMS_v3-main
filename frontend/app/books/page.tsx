@@ -18,8 +18,8 @@ import MobileBookTypeSelect from "@/components/MobileBookTypeSelect";
 import MobileSearchInput from "@/components/MobileSearchInput";
 import Sidebar from "@/components/Sidebar";
 import HeaderUserActions from "@/components/HeaderUserActions";
-import { useConfirmDialog } from "@/components/ui/ConfirmModal";
 import ResponsiveTable from "@/components/ResponsiveTable";
+import AvailabilitySwitch from "@/components/AvailabilitySwitch";
 import { SortHeader, SortSelect, nextSortOrder, type SortOption } from "@/components/SortControls";
 import { categoryDisplayName, DEWEY_MAIN_CATEGORIES, subcategoriesForMain } from "@/lib/categories";
 import {
@@ -35,7 +35,6 @@ import {
   ShoppingCart,
   X,
   Send,
-  AlertCircle,
 } from "lucide-react";
 
 const PAGE_SIZE = 20;
@@ -55,13 +54,16 @@ const isPhysicalBookAvailable = (book: any) => {
   return ['AVAILABLE', 'BORROWED'].includes(book?.status) && Number(book?.availableCopies ?? 0) > 0;
 };
 
+const isBookCirculationEnabled = (book: any) => {
+  return ['AVAILABLE', 'BORROWED'].includes(book?.status);
+};
+
 const isPhysicalBookReservable = (book: any) => {
   return ['AVAILABLE', 'BORROWED'].includes(book?.status) && Number(book?.availableCopies ?? 0) === 0;
 };
 
 export default function BooksPage() {
   const { user } = useAuth();
-  const { confirm } = useConfirmDialog();
   const router = useRouter();
   const [books, setBooks] = useState<any[]>([]);
   const [totalBooks, setTotalBooks] = useState(0);
@@ -72,7 +74,7 @@ export default function BooksPage() {
   const [categoryFilter, setCategoryFilter] = useState("");
   const [mainCategoryFilter, setMainCategoryFilter] = useState("");
   const [classificationFilter, setClassificationFilter] = useState("");
-  const [view, setView] = useState<"grid" | "list">("grid");
+  const [viewPreference, setViewPreference] = useState<"grid" | "list" | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [sort, setSort] = useState("title");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
@@ -99,6 +101,7 @@ export default function BooksPage() {
   const [isDesktop, setIsDesktop] = useState(false);
 
   const isLibrarian = user?.role === "LIBRARIAN";
+  const view = viewPreference ?? (isLibrarian ? "list" : "grid");
 
   // Debounced search/filter values (300ms) to avoid per-keystroke API spam
   const debouncedSearch = useDebounce(search, 300);
@@ -441,40 +444,29 @@ export default function BooksPage() {
     setShowEditModal(true);
   };
 
-  const handleToggleAvailability = async (book: any) => {
+  const handleToggleAvailability = async (book: any, available: boolean) => {
     if (togglingStatusId) return;
-    const newStatus = book.status === 'AVAILABLE' ? 'MAINTENANCE' : 'AVAILABLE';
-    const available = newStatus === 'AVAILABLE';
-    await confirm({
-      title: available ? 'Mark book as available?' : 'Mark book as unavailable?',
-      description: available
-        ? `Students will be able to borrow “${book.title}”.`
-        : `Students will no longer be able to borrow “${book.title}”.`,
-      confirmLabel: available ? 'Mark available' : 'Mark unavailable',
-      variant: available ? 'default' : 'warning',
-      onConfirm: async () => {
-        setTogglingStatusId(book.id);
-        try {
-          const res = await api.updateBook(book.id, { status: newStatus });
-          if (!res.success) {
-            const message = res.rateLimited
-              ? "You're moving too fast. Please wait a moment and try again."
-              : res.error || 'Failed to update book';
-            setError(message);
-            throw new Error(message);
-          }
-          setSuccessMsg(`Book marked as ${available ? 'available' : 'not available'}`);
-          void loadData();
-          setTimeout(() => setSuccessMsg(''), 4000);
-        } catch (caught) {
-          const message = caught instanceof Error ? caught.message : 'Failed to update book';
-          setError(message);
-          throw caught;
-        } finally {
-          setTogglingStatusId(null);
-        }
-      },
-    });
+    const previousStatus = book.status;
+    const newStatus = available ? "AVAILABLE" : "MAINTENANCE";
+    setTogglingStatusId(book.id);
+    setError("");
+    setBooks((current) => current.map((item) => item.id === book.id ? { ...item, status: newStatus } : item));
+    try {
+      const response = await api.updateBook(book.id, { status: newStatus });
+      if (!response.success) {
+        throw new Error(response.rateLimited
+          ? "You're moving too fast. Please wait a moment and try again."
+          : response.error || "Failed to update book");
+      }
+      setSuccessMsg(`Book marked as ${available ? "available" : "not available"}`);
+      void loadData();
+      setTimeout(() => setSuccessMsg(""), 4000);
+    } catch (caught) {
+      setBooks((current) => current.map((item) => item.id === book.id ? { ...item, status: previousStatus } : item));
+      setError(caught instanceof Error ? caught.message : "Failed to update book");
+    } finally {
+      setTogglingStatusId(null);
+    }
   };
 
   const handleEditSuccess = () => {
@@ -614,7 +606,7 @@ export default function BooksPage() {
                 <MobileBookTypeSelect current="physical" className="min-w-0 flex-1 sm:w-[180px] sm:flex-none" />
                 <div className="flex shrink-0 items-center gap-1 rounded-xl border border-zinc-700 bg-zinc-950 p-1">
                   <button
-                    onClick={() => setView("grid")}
+                    onClick={() => setViewPreference("grid")}
                     className={`flex h-11 w-11 items-center justify-center rounded-lg border transition-colors ${view === "grid" ? "border-blue-400/50 bg-blue-600 text-white shadow-md shadow-blue-600/20" : "border-transparent text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}
                     aria-label="Grid view"
                     aria-pressed={view === "grid"}
@@ -622,7 +614,7 @@ export default function BooksPage() {
                     <LayoutGrid className="h-4 w-4" />
                   </button>
                   <button
-                    onClick={() => setView("list")}
+                    onClick={() => setViewPreference("list")}
                     className={`flex h-11 w-11 items-center justify-center rounded-lg border transition-colors ${view === "list" ? "border-blue-400/50 bg-blue-600 text-white shadow-md shadow-blue-600/20" : "border-transparent text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}
                     aria-label="List view"
                     aria-pressed={view === "list"}
@@ -675,7 +667,7 @@ export default function BooksPage() {
 
               <div className="hidden items-center gap-1 rounded-xl border border-zinc-700 bg-zinc-950 p-1 sm:flex">
                 <button
-                  onClick={() => setView("grid")}
+                  onClick={() => setViewPreference("grid")}
                   className={`flex h-11 w-11 items-center justify-center rounded-lg border transition-colors ${view === "grid" ? "border-blue-400/50 bg-blue-600 text-white shadow-md shadow-blue-600/20" : "border-transparent text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}
                   aria-label="Grid view"
                   aria-pressed={view === "grid"}
@@ -683,7 +675,7 @@ export default function BooksPage() {
                   <LayoutGrid className="h-4 w-4" />
                 </button>
                 <button
-                  onClick={() => setView("list")}
+                  onClick={() => setViewPreference("list")}
                   className={`flex h-11 w-11 items-center justify-center rounded-lg border transition-colors ${view === "list" ? "border-blue-400/50 bg-blue-600 text-white shadow-md shadow-blue-600/20" : "border-transparent text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}
                   aria-label="List view"
                   aria-pressed={view === "list"}
@@ -755,18 +747,15 @@ export default function BooksPage() {
                               <Pencil className="h-4 w-4 shrink-0" />
                               <span>Edit</span>
                             </button>
-                            <button
-                              onClick={(event) => { event.stopPropagation(); void handleToggleAvailability(book); }}
-                              disabled={togglingStatusId !== null}
-                              aria-label={book.status === 'AVAILABLE' ? 'Mark not available' : 'Mark available'}
-                              className={`min-h-11 min-w-0 whitespace-nowrap inline-flex items-center justify-center gap-1 rounded-lg px-2 py-2 text-[10px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 sm:text-xs ${book.status === 'AVAILABLE'
-                                  ? 'bg-orange-500/10 text-orange-400 hover:bg-orange-500/20'
-                                  : 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
-                                }`}
-                            >
-                              <AlertCircle className={`h-4 w-4 shrink-0 ${togglingStatusId === book.id ? "animate-spin" : ""}`} />
-                              <span>{book.status === 'AVAILABLE' ? 'Unavailable' : 'Available'}</span>
-                            </button>
+                            <div className="flex min-h-11 items-center justify-center gap-2 rounded-lg bg-zinc-800/70 px-2 text-xs text-zinc-300">
+                              <AvailabilitySwitch
+                                checked={isBookCirculationEnabled(book)}
+                                disabled={togglingStatusId !== null}
+                                label={`Availability for ${book.title}`}
+                                onChange={(available) => void handleToggleAvailability(book, available)}
+                              />
+                              <span>{isBookCirculationEnabled(book) ? "Available" : "Not available"}</span>
+                            </div>
                           </>
                         ) : (
                           <>
@@ -896,11 +885,11 @@ export default function BooksPage() {
                             </span>
                             {book.bookType === "ebook" && <span className={`rounded-full px-2.5 py-1 text-xs font-medium w-fit ${typeBadge(book)}`}>Digital reader</span>}
                             {isLibrarian && (
-                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium w-fit ${book.status === 'AVAILABLE'
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium w-fit ${isBookCirculationEnabled(book)
                                   ? 'bg-emerald-500/15 text-emerald-400'
                                   : 'bg-orange-500/15 text-orange-400'
                                 }`}>
-                                {book.status === 'AVAILABLE' ? 'Available' : 'Not Available'}
+                                {isBookCirculationEnabled(book) ? 'Available' : 'Not Available'}
                               </span>
                             )}
                           </div>
@@ -915,17 +904,12 @@ export default function BooksPage() {
                               >
                                 <Pencil className="w-4 h-4" />
                               </button>
-                              <button
-                                onClick={(event) => { event.stopPropagation(); void handleToggleAvailability(book); }}
+                              <AvailabilitySwitch
+                                checked={isBookCirculationEnabled(book)}
                                 disabled={togglingStatusId !== null}
-                                className={`p-2 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${book.status === 'AVAILABLE'
-                                    ? 'text-zinc-400 hover:bg-orange-500/10 hover:text-orange-400'
-                                    : 'text-zinc-400 hover:bg-emerald-500/10 hover:text-emerald-400'
-                                  }`}
-                                aria-label={book.status === 'AVAILABLE' ? 'Mark not available' : 'Mark available'}
-                              >
-                                <AlertCircle className={`w-4 h-4 ${togglingStatusId === book.id ? "animate-spin" : ""}`} />
-                              </button>
+                                label={`Availability for ${book.title}`}
+                                onChange={(available) => void handleToggleAvailability(book, available)}
+                              />
                             </div>
                           ) : (
                             <button
@@ -958,7 +942,7 @@ export default function BooksPage() {
                       <div className="min-w-0"><p className="font-semibold text-zinc-100 break-words">{book.title}</p><p className="mt-1 text-sm text-zinc-500 break-words">{book.author}</p></div>
                     </div>
                     <div className="grid grid-cols-2 gap-3 py-4 text-sm"><div><p className="text-xs text-zinc-500">Type</p><span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${typeBadge(book)}`}>{typeLabel(book)}</span></div><div><p className="text-xs text-zinc-500">Genre</p><p className="mt-1 text-zinc-300">{book.category?.name || "General"}</p></div><div><p className="text-xs text-zinc-500">Year</p><p className="mt-1 text-zinc-300">{book.publishYear || "—"}</p></div><div><p className="text-xs text-zinc-500">{book.bookType === "ebook" ? "Access" : "Copies"}</p><p className="mt-1 text-zinc-300">{book.bookType === "ebook" ? "Digital reader" : `${book.availableCopies ?? 0}/${book.copies ?? 0} available`}</p></div></div>
-                    <div className="flex items-center justify-between gap-3 border-t border-zinc-800/80 pt-3"><span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${isPhysicalBookAvailable(book) ? "bg-emerald-500/15 text-emerald-400 ring-emerald-500/30" : "bg-red-500/15 text-red-400 ring-red-500/30"}`}>{isPhysicalBookAvailable(book) ? "Available" : "Unavailable"}</span>{isLibrarian ? <div className="flex gap-2"><button onClick={(event) => { event.stopPropagation(); handleEdit(book); }} className="rounded-lg bg-zinc-800 px-3 py-2 text-xs text-zinc-200">Edit</button><button onClick={(event) => { event.stopPropagation(); void handleToggleAvailability(book); }} className="rounded-lg bg-orange-500/10 px-3 py-2 text-xs text-orange-400">Toggle</button></div> : <button type="button" onClick={(event) => { event.stopPropagation(); openBookDetails(book); }} className="rounded-lg bg-zinc-800 px-3 py-2 text-xs font-semibold text-zinc-200">View details</button>}</div>
+                    <div className="mt-3 flex items-center justify-between gap-3 border-t border-zinc-800/80 pt-3"><span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${isPhysicalBookAvailable(book) ? "bg-emerald-500/15 text-emerald-400 ring-emerald-500/30" : "bg-red-500/15 text-red-400 ring-red-500/30"}`}>{isPhysicalBookAvailable(book) ? "Available" : "Unavailable"}</span>{isLibrarian ? <div className="flex items-center gap-3"><button onClick={(event) => { event.stopPropagation(); handleEdit(book); }} className="rounded-lg bg-zinc-800 px-3 py-2 text-xs text-zinc-200">Edit</button><AvailabilitySwitch checked={isBookCirculationEnabled(book)} disabled={togglingStatusId !== null} label={`Availability for ${book.title}`} onChange={(available) => void handleToggleAvailability(book, available)} /></div> : <button type="button" onClick={(event) => { event.stopPropagation(); openBookDetails(book); }} className="rounded-lg bg-zinc-800 px-3 py-2 text-xs font-semibold text-zinc-200">View details</button>}</div>
                   </article>
                 ))
               } />

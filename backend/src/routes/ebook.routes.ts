@@ -13,7 +13,9 @@ const router = Router();
 
 // Public routes (any authenticated user can view)
 router.get('/', ebookController.listEBooks);
+router.get('/:id/view-logs', authenticate, authorize('LIBRARIAN'), ebookController.getEBookViewLogs);
 router.get('/:id', ebookController.getEBook);
+router.post('/:id/views', authenticate, authorize('STUDENT', 'FACULTY'), ebookController.recordEBookView);
 
 // Librarian-only (CRUD management)
 router.post(

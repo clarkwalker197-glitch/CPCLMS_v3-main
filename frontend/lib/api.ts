@@ -6,6 +6,17 @@
 
 import { reportNetworkStatus } from './network-status';
 
+function retryAfterMs(response: Response, fallbackMs: number): number {
+  const retryAfter = response.headers.get('Retry-After');
+  if (!retryAfter) return fallbackMs;
+
+  const seconds = Number(retryAfter);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+
+  const retryAt = Date.parse(retryAfter);
+  return Number.isNaN(retryAt) ? fallbackMs : Math.max(0, retryAt - Date.now());
+}
+
 function resolveApiBaseUrl(): string {
   const envValue = process.env.NEXT_PUBLIC_API_URL?.trim();
   if (envValue) return envValue.replace(/\/+$/, '');
@@ -94,7 +105,7 @@ class ApiClient {
   // Client-side rate-limit cooldown: timestamp until which requests are suppressed
   private rateLimitUntil = 0;
   // How long to suppress requests after receiving a 429 (ms)
-  private static readonly RATE_LIMIT_COOLDOWN_MS = 10000;
+  private static readonly RATE_LIMIT_COOLDOWN_MS = 60000;
 
   constructor(baseUrl: string) {
     this.baseUrl = baseUrl;
@@ -229,7 +240,8 @@ class ApiClient {
       // 429 — rate limited. Record a cooldown so the UI can show a message
       // and we suppress repeated identical calls for a short window.
       if (response.status === 429) {
-        this.rateLimitUntil = Date.now() + ApiClient.RATE_LIMIT_COOLDOWN_MS;
+        const retryInMs = retryAfterMs(response, ApiClient.RATE_LIMIT_COOLDOWN_MS);
+        this.rateLimitUntil = Date.now() + retryInMs;
         let data: ApiResponse<T>;
         try {
           data = await response.json();
@@ -240,7 +252,7 @@ class ApiClient {
           ...data,
           success: false,
           rateLimited: true,
-          retryAfterMs: ApiClient.RATE_LIMIT_COOLDOWN_MS,
+          retryAfterMs: retryInMs,
           statusCode: response.status,
           error: data.error || 'Too many requests, please try again later.',
         } as ApiResponse<T>;
@@ -899,6 +911,7 @@ async payFine(id: string, amount: number): Promise<ApiResponse<any>> {
   async getMySuggestions(): Promise<ApiResponse<any[]>> { return this.get('/suggestions/mine'); }
   async getSuggestions(status = ''): Promise<ApiResponse<any[]>> { return this.get(`/suggestions${status ? `?status=${encodeURIComponent(status)}` : ''}`); }
   async updateSuggestion(id: string, data: Record<string, unknown>): Promise<ApiResponse<any>> { return this.patch(`/suggestions/${id}`, data); }
+  async rateSuggestion(id: string, rating: number): Promise<ApiResponse<{ rating: number }>> { return this.post(`/suggestions/${id}/rating`, { rating }); }
 
   async createAcquisitionRequest(data: Record<string, unknown>): Promise<ApiResponse<any>> { return this.post('/acquisition-requests', data); }
   async getMyAcquisitionRequests(): Promise<ApiResponse<any[]>> { return this.get('/acquisition-requests/mine'); }
@@ -938,6 +951,14 @@ async payFine(id: string, amount: number): Promise<ApiResponse<any>> {
 
   async getEBook(id: string): Promise<ApiResponse<any>> {
     return this.get(`/ebooks/${id}`);
+  }
+
+  async recordEBookView(id: string): Promise<ApiResponse<any>> {
+    return this.post(`/ebooks/${id}/views`, {});
+  }
+
+  async getEBookViewLogs(id: string): Promise<ApiResponse<any>> {
+    return this.get(`/ebooks/${id}/view-logs`);
   }
 
   async createEBook(data: {

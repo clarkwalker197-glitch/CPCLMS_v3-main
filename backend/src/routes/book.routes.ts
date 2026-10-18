@@ -37,4 +37,3 @@ router.put(
 router.delete('/:id', authenticate, authorize('LIBRARIAN'), bookController.deleteBook);
 
 export default router;
-

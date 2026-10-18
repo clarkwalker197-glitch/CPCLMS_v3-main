@@ -9,6 +9,7 @@ import { sendSuccess } from '../utils/helpers';
 import { BadRequestError } from '../utils/errors';
 import { storeCoverImage, tryDeleteNewCoverImage } from '../services/cover-image-storage.service';
 import { storeEBookFile, tryDeleteNewEBookFile, tryDeleteUnreferencedEBookFile } from '../services/ebook-file-storage.service';
+import { AuthenticatedRequest } from '../types';
 
 /**
  * GET /api/ebooks
@@ -24,6 +25,16 @@ export const listEBooks = asyncHandler(async (req: Request, res: Response) => {
 export const getEBook = asyncHandler(async (req: Request, res: Response) => {
   const ebook = await ebookService.getEBookById(req.params.id);
   sendSuccess(res, ebook);
+});
+
+export const recordEBookView = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const result = await ebookService.recordView(req.params.id, req.user!.userId);
+  sendSuccess(res, result, 'E-book view recorded');
+});
+
+export const getEBookViewLogs = asyncHandler(async (req: Request, res: Response) => {
+  const logs = await ebookService.getViewLogs(req.params.id);
+  sendSuccess(res, logs);
 });
 
 /**

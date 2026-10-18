@@ -13,6 +13,7 @@ export const createSuggestion = asyncHandler(async (req: AuthenticatedRequest, r
 export const listMineSuggestions = asyncHandler(async (req: AuthenticatedRequest, res: Response) => sendSuccess(res, await communityService.listSuggestions(req.user!.userId)));
 export const listSuggestions = asyncHandler(async (req: Request, res: Response) => sendSuccess(res, await communityService.listSuggestions(undefined, req.query.status as string | undefined)));
 export const updateSuggestion = asyncHandler(async (req: Request, res: Response) => sendSuccess(res, await communityService.updateSuggestion(req.params.id, req.body), 'Suggestion updated'));
+export const rateSuggestion = asyncHandler(async (req: AuthenticatedRequest, res: Response) => sendSuccess(res, await communityService.rateSuggestion(req.params.id, req.user!.userId, req.body.rating), 'Suggestion rating saved'));
 
 export const createAcquisitionRequest = asyncHandler(async (req: AuthenticatedRequest, res: Response) => sendSuccess(res, await communityService.createAcquisitionRequest(req.user!.userId, req.body), 'Book request submitted'));
 export const listMineAcquisitionRequests = asyncHandler(async (req: AuthenticatedRequest, res: Response) => sendSuccess(res, await communityService.listAcquisitionRequests(req.user!.userId)));

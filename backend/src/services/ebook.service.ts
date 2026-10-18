@@ -3,7 +3,7 @@
 // ============================================================
 
 import { prisma } from '../config';
-import { NotFoundError, ConflictError } from '../utils/errors';
+import { NotFoundError, ConflictError, BadRequestError } from '../utils/errors';
 import { getPaginationParams, buildPaginationMeta } from '../utils/pagination';
 import { normalizeClassificationNumber } from '../constants/categories';
 import { getSortParams } from '../utils/sorting';
@@ -14,7 +14,7 @@ export class EBookService {
    */
   async listEBooks(query: Record<string, unknown>) {
     const { page, limit, skip, take } = getPaginationParams(query);
-    const { sort, order } = getSortParams(query, ['title', 'author', 'classification', 'createdAt', 'availability'] as const, 'title', 'asc');
+    const { sort, order } = getSortParams(query, ['title', 'author', 'classification', 'createdAt', 'availability', 'views'] as const, 'title', 'asc');
 
     const where: Record<string, unknown> = { deletedAt: null };
 
@@ -58,17 +58,46 @@ export class EBookService {
         },
         orderBy: sort === 'availability'
           ? [{ status: order === 'asc' ? 'asc' : 'desc' }, { title: 'asc' }, { id: 'asc' }]
+          : sort === 'views'
+            ? [{ views: { _count: order } }, { title: 'asc' }, { id: 'asc' }]
           : [{ [sort === 'classification' ? 'classificationNumber' : sort]: order }, { id: 'asc' }],
         skip,
         take,
       }),
       prisma.eBook.count({ where }),
     ]);
+    const viewSummaries = await this.getViewSummaries(ebooks.map(({ id }) => id));
 
     return {
-      ebooks,
+      ebooks: ebooks.map((ebook) => ({
+        ...ebook,
+        totalViews: viewSummaries.get(ebook.id)?.totalViews ?? 0,
+        uniqueViewers: viewSummaries.get(ebook.id)?.uniqueViewers ?? 0,
+      })),
       meta: buildPaginationMeta(total, { page, limit, skip, take }),
     };
+  }
+
+  private async getViewSummaries(ebookIds: string[]) {
+    if (!ebookIds.length) return new Map<string, { totalViews: number; uniqueViewers: number }>();
+    const [totals, uniqueUsers] = await Promise.all([
+      prisma.eBookView.groupBy({
+        by: ['ebookId'],
+        where: { ebookId: { in: ebookIds } },
+        _count: { _all: true },
+      }),
+      prisma.eBookView.findMany({
+        where: { ebookId: { in: ebookIds } },
+        select: { ebookId: true, userId: true },
+        distinct: ['ebookId', 'userId'],
+      }),
+    ]);
+    const uniqueCounts = new Map<string, number>();
+    uniqueUsers.forEach(({ ebookId }) => uniqueCounts.set(ebookId, (uniqueCounts.get(ebookId) ?? 0) + 1));
+    return new Map(ebookIds.map((id) => [id, {
+      totalViews: totals.find((item) => item.ebookId === id)?._count._all ?? 0,
+      uniqueViewers: uniqueCounts.get(id) ?? 0,
+    }]));
   }
 
   /**
@@ -83,7 +112,45 @@ export class EBookService {
     });
 
     if (!ebook) throw new NotFoundError('E-Book');
-    return ebook;
+    const views = await this.getViewSummaries([id]);
+    return {
+      ...ebook,
+      totalViews: views.get(id)?.totalViews ?? 0,
+      uniqueViewers: views.get(id)?.uniqueViewers ?? 0,
+    };
+  }
+
+  async recordView(id: string, userId: string) {
+    const ebook = await prisma.eBook.findFirst({
+      where: { id, deletedAt: null },
+      select: { id: true, status: true },
+    });
+    if (!ebook) throw new NotFoundError('E-Book');
+    if (ebook.status !== 'AVAILABLE') throw new BadRequestError('This e-book is not currently available');
+    await prisma.eBookView.create({ data: { ebookId: id, userId } });
+    const summary = await this.getViewSummaries([id]);
+    return summary.get(id)!;
+  }
+
+  async getViewLogs(id: string) {
+    const ebook = await prisma.eBook.findFirst({ where: { id, deletedAt: null }, select: { id: true } });
+    if (!ebook) throw new NotFoundError('E-Book');
+    const [summary, recentActivity] = await Promise.all([
+      this.getViewSummaries([id]),
+      prisma.eBookView.findMany({
+        where: { ebookId: id },
+        orderBy: { viewedAt: 'desc' },
+        take: 20,
+        select: {
+          viewedAt: true,
+          user: { select: { id: true, firstName: true, lastName: true, libraryId: true } },
+        },
+      }),
+    ]);
+    return {
+      ...(summary.get(id) ?? { totalViews: 0, uniqueViewers: 0 }),
+      recentActivity,
+    };
   }
 
   /**
@@ -219,4 +286,3 @@ export class EBookService {
 }
 
 export const ebookService = new EBookService();
-

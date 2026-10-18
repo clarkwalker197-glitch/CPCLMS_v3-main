@@ -74,7 +74,6 @@ export class BookService {
       }),
       prisma.book.count({ where }),
     ]);
-
     return {
       books,
       meta: buildPaginationMeta(total, { page, limit, skip, take }),

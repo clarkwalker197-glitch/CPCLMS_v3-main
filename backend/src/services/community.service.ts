@@ -2,7 +2,7 @@ import { prisma } from '../config';
 import { BadRequestError, NotFoundError } from '../utils/errors';
 import { notificationService } from './notification.service';
 
-const suggestionStatuses = new Set(['PENDING', 'REVIEWED', 'ACCEPTED', 'REJECTED']);
+const suggestionStatuses = new Set(['PENDING', 'REVIEWED', 'ACCEPTED', 'REJECTED', 'FULFILLED']);
 const acquisitionStatuses = new Set(['PENDING', 'ACCEPTED', 'REJECTED', 'FULFILLED']);
 
 export class CommunityService {
@@ -94,6 +94,23 @@ export class CommunityService {
       );
     }
     return suggestion;
+  }
+
+  async rateSuggestion(id: string, userId: string, rating: number) {
+    const existing = await prisma.suggestion.findUnique({ where: { id } });
+    if (!existing || existing.userId !== userId) throw new NotFoundError('Suggestion');
+    if (existing.status !== 'FULFILLED') {
+      throw new BadRequestError('Only fulfilled suggestions can be rated');
+    }
+
+    const updated = await prisma.suggestion.updateMany({
+      where: { id, userId, status: 'FULFILLED' },
+      data: { rating },
+    });
+    if (updated.count !== 1) {
+      throw new BadRequestError('This suggestion is no longer available to rate');
+    }
+    return { rating };
   }
 
   async createAcquisitionRequest(userId: string, input: { title: string; author?: string; isbn?: string; details?: string }) {

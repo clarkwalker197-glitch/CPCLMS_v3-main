@@ -445,17 +445,17 @@ export default function Sidebar() {
           <button
             type="button"
             onClick={() => {
-              if (user?.role === "STUDENT") {
+              if (user?.role === "STUDENT" || user?.role === "FACULTY") {
                 if (pathname === "/requests") window.dispatchEvent(new Event("cpc:open-qr"));
                 else router.push("/requests?mobileScan=1");
                 return;
               }
               router.push("/requests");
             }}
-            aria-label={user?.role === "STUDENT" ? "Scan QR code" : "Open approvals"}
+            aria-label={user?.role === "STUDENT" || user?.role === "FACULTY" ? "Scan QR code" : "Open approvals"}
             className="fixed bottom-[calc(5.75rem+env(safe-area-inset-bottom))] left-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-blue-600 text-white shadow-xl shadow-blue-600/30 transition-transform active:scale-95"
           >
-            {user?.role === "STUDENT" ? <QrCode className="h-6 w-6" /> : <ClipboardList className="h-6 w-6" />}
+            {user?.role === "STUDENT" || user?.role === "FACULTY" ? <QrCode className="h-6 w-6" /> : <ClipboardList className="h-6 w-6" />}
           </button>
         </>
       )}

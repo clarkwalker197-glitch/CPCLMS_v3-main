@@ -1137,7 +1137,7 @@ export default function RequestsPage() {
           </div>
 
           {isLibrarian && (
-            <div className={isLibrarian ? "order-1 mt-8" : "mt-8"}>
+            <div className="order-1 mt-8 mb-8">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
                 <div>
                   <h2 className="text-2xl font-bold text-white">Borrowed & Missing Books</h2>

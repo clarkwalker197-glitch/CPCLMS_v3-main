@@ -9,6 +9,7 @@ import Sidebar from "@/components/Sidebar";
 import HeaderUserActions from "@/components/HeaderUserActions";
 import ResponsiveTable from "@/components/ResponsiveTable";
 import UserAvatar from "@/components/UserAvatar";
+import { BookFormSidePanel } from "@/components/BookFormSidePanel";
 import { SortHeader, SortSelect, nextSortOrder, type SortOption } from "@/components/SortControls";
 import { Dialog, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
@@ -37,6 +38,12 @@ type AddMemberFormState = {
   section: string;
   phone: string;
 };
+
+const memberRoleTabs = [
+  { value: "STUDENT", label: "Student" },
+  { value: "FACULTY", label: "Faculty" },
+  { value: "LIBRARIAN", label: "Librarian" },
+] as const;
 
 const emptyAddMemberForm: AddMemberFormState = {
   firstName: "",
@@ -170,12 +177,14 @@ const [usersRes, statsRes] = await Promise.all([
   };
 
   const handleAddMemberChange = (
-    field: keyof AddMemberFormState
+    field: Exclude<keyof AddMemberFormState, "role">
   ) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const value = field === "firstName" || field === "lastName"
       ? sanitizeNameInput(event.target.value)
-      : field === "libraryId" && memberForm.role === "STUDENT"
-        ? event.target.value.replace(/\D/g, "").slice(0, 8)
+      : field === "libraryId"
+        ? memberForm.role === "STUDENT"
+          ? event.target.value.replace(/\D/g, "").slice(0, 8)
+          : event.target.value.replace(/\D/g, "")
         : field === "email"
           ? event.target.value.slice(0, 50)
           : field === "phone"
@@ -184,8 +193,12 @@ const [usersRes, statsRes] = await Promise.all([
     setMemberForm((current) => ({
       ...current,
       [field]: value,
-      ...(field === "role" ? { libraryId: "" } : {}),
     }));
+    setMemberFormError("");
+  };
+
+  const handleMemberRoleChange = (role: AddMemberFormState["role"]) => {
+    setMemberForm((current) => ({ ...current, role, libraryId: "" }));
     setMemberFormError("");
   };
 
@@ -218,6 +231,11 @@ const [usersRes, statsRes] = await Promise.all([
       return;
     }
 
+    if (memberForm.role !== "STUDENT" && !/^\d+$/.test(memberForm.libraryId.trim())) {
+      setMemberFormError("ID Number must contain digits only.");
+      return;
+    }
+
     if ((memberForm.role === "STUDENT" || memberForm.role === "FACULTY") && !memberForm.department.trim()) {
       setMemberFormError("Department is required for Student and Faculty accounts.");
       return;
@@ -238,7 +256,9 @@ const [usersRes, statsRes] = await Promise.all([
         libraryId: memberForm.libraryId.trim() || undefined,
         password: memberForm.password,
         role: memberForm.role,
-        department: memberForm.department.trim() || undefined,
+        department: memberForm.role !== "LIBRARIAN" && memberForm.department.trim()
+          ? memberForm.department.trim()
+          : undefined,
         yearSection: memberForm.role === "STUDENT" ? `${memberForm.year}-${memberForm.section}` : undefined,
         phone: memberForm.phone.trim() || undefined,
       };
@@ -392,11 +412,15 @@ const [usersRes, statsRes] = await Promise.all([
           )}
 
           {/* Table */}
-          <Dialog open={showAddMemberModal} onOpenChange={(open) => {
-            setShowAddMemberModal(open);
-            if (!open) resetAddMemberForm();
-          }}>
-            <DialogHeader>
+          <BookFormSidePanel
+            open={showAddMemberModal}
+            onClose={() => {
+              setShowAddMemberModal(false);
+              resetAddMemberForm();
+            }}
+            ariaLabel="Add member"
+          >
+            <DialogHeader className="pr-10">
               <DialogTitle className="flex items-center gap-2">
                 <Plus className="w-4 h-4 text-blue-400" />
                 Add Member
@@ -414,6 +438,48 @@ const [usersRes, statsRes] = await Promise.all([
 
             <form onSubmit={handleAddMember} className="flex min-h-0 flex-1 flex-col">
               <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pr-1">
+              <div
+                className="grid grid-cols-3 gap-1 rounded-xl border border-zinc-800 bg-zinc-900 p-1"
+                role="tablist"
+                aria-label="Member role"
+              >
+                {memberRoleTabs.map(({ value, label }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    role="tab"
+                    id={`add-member-tab-${value.toLowerCase()}`}
+                    aria-selected={memberForm.role === value}
+                    aria-controls="add-member-fields"
+                    tabIndex={memberForm.role === value ? 0 : -1}
+                    onClick={() => handleMemberRoleChange(value)}
+                    onKeyDown={(event) => {
+                      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+                      event.preventDefault();
+                      const currentIndex = memberRoleTabs.findIndex((tab) => tab.value === value);
+                      const direction = event.key === "ArrowRight" ? 1 : -1;
+                      const nextIndex = (currentIndex + direction + memberRoleTabs.length) % memberRoleTabs.length;
+                      const nextRole = memberRoleTabs[nextIndex];
+                      handleMemberRoleChange(nextRole.value);
+                      document.getElementById(`add-member-tab-${nextRole.value.toLowerCase()}`)?.focus();
+                    }}
+                    className={`rounded-lg px-2 py-2 text-xs font-medium transition-colors sm:text-sm ${
+                      memberForm.role === value
+                        ? "bg-blue-600 text-white shadow"
+                        : "text-zinc-400 hover:bg-zinc-800 hover:text-white"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <div
+                id="add-member-fields"
+                role="tabpanel"
+                aria-labelledby={`add-member-tab-${memberForm.role.toLowerCase()}`}
+                className="space-y-4"
+              >
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-zinc-300 mb-1.5">First Name *</label>
@@ -464,18 +530,6 @@ const [usersRes, statsRes] = await Promise.all([
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-zinc-300 mb-1.5">Role *</label>
-                  <select
-                    value={memberForm.role}
-                    onChange={handleAddMemberChange("role")}
-                    className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
-                  >
-                    <option value="STUDENT">Student</option>
-                    <option value="FACULTY">Faculty</option>
-                    <option value="LIBRARIAN">Librarian</option>
-                  </select>
-                </div>
-                <div>
                   <label className="block text-sm font-medium text-zinc-300 mb-1.5">Phone</label>
                   <input
                     type="tel"
@@ -489,24 +543,23 @@ const [usersRes, statsRes] = await Promise.all([
                   />
                   <p className="mt-1 text-xs text-zinc-500">up to 11 digits</p>
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-1.5">ID Number *</label>
+                  <input
+                    required
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={memberForm.role === "STUDENT" ? 8 : undefined}
+                    pattern={memberForm.role === "STUDENT" ? "[0-9]{8}" : "[0-9]+"}
+                    value={memberForm.libraryId}
+                    onChange={handleAddMemberChange("libraryId")}
+                    className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
+                    placeholder={memberForm.role === "STUDENT" ? "8-digit ID number" : "ID number"}
+                  />
+                </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-zinc-300 mb-1.5">ID Number *</label>
-                <input
-                  required
-                  type="text"
-                  inputMode={memberForm.role === "STUDENT" ? "numeric" : undefined}
-                  maxLength={memberForm.role === "STUDENT" ? 8 : undefined}
-                  pattern={memberForm.role === "STUDENT" ? "[0-9]{8}" : undefined}
-                  value={memberForm.libraryId}
-                  onChange={handleAddMemberChange("libraryId")}
-                  className="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
-                  placeholder={memberForm.role === "STUDENT" ? "8-digit ID number" : memberForm.role === "LIBRARIAN" ? "e.g., LIB-2026-0001" : "Faculty ID number"}
-                />
-              </div>
-
-              {(memberForm.role === "STUDENT" || memberForm.role === "FACULTY") && (
+              {memberForm.role !== "LIBRARIAN" && (
                 <div>
                   <label className="block text-sm font-medium text-zinc-300 mb-1.5">Department *</label>
                   <select
@@ -557,6 +610,7 @@ const [usersRes, statsRes] = await Promise.all([
                   </div>
                 </div>
               )}
+              </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -584,27 +638,27 @@ const [usersRes, statsRes] = await Promise.all([
               </div>
               </div>
 
-              <div className="flex shrink-0 justify-end gap-3 pt-4">
+              <div className="flex shrink-0 gap-3 border-t border-zinc-800 pt-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
                 <button
                   type="button"
                   onClick={() => {
                     setShowAddMemberModal(false);
                     resetAddMemberForm();
                   }}
-                  className="px-4 py-2 rounded-xl border border-zinc-700 text-zinc-300 hover:bg-zinc-800 transition-colors"
+                  className="flex-1 rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2 text-zinc-200 hover:bg-zinc-700 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submittingMember}
-                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                  className="flex-1 rounded-xl bg-blue-600 px-4 py-2 font-medium text-white shadow-lg shadow-blue-600/30 hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
                 >
                   {submittingMember ? "Creating..." : "Create Member"}
                 </button>
               </div>
             </form>
-          </Dialog>
+          </BookFormSidePanel>
 
           <Dialog
             open={Boolean(memberToDelete)}

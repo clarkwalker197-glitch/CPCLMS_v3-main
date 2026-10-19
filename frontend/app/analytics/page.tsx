@@ -72,6 +72,8 @@ export default function AnalyticsPage() {
   const [inventory, setInventory] = useState<any>({ lowStock: [], neverBorrowed: [] });
   const [departmentFilter, setDepartmentFilter] = useState("");
   const [departmentBooks, setDepartmentBooks] = useState<any[]>([]);
+  const [departmentBooksLoading, setDepartmentBooksLoading] = useState(false);
+  const [departmentBooksError, setDepartmentBooksError] = useState("");
   const [showAllInventory, setShowAllInventory] = useState(false);
   const [error, setError] = useState("");
 
@@ -112,10 +114,9 @@ export default function AnalyticsPage() {
           api.getReturnPerformance(range),
           api.getRequestPipeline(range),
           api.getInventoryHealth(),
-          api.getMostBorrowedByDepartment(range, departmentFilter, 10),
         ]);
-        const [dashboard, trend, category, department, books, fine, performance, pipeline, health, departmentBooksResponse] = results;
-        if (!dashboard.success || !trend.success || !category.success || !department.success || !books.success || !fine.success || !performance.success || !pipeline.success || !health.success || !departmentBooksResponse.success) {
+        const [dashboard, trend, category, department, books, fine, performance, pipeline, health] = results;
+        if (!dashboard.success || !trend.success || !category.success || !department.success || !books.success || !fine.success || !performance.success || !pipeline.success || !health.success) {
           setError("Some analytics could not be loaded. Try refreshing the page.");
         }
         if (dashboard.success) setStats(dashboard.data);
@@ -127,7 +128,6 @@ export default function AnalyticsPage() {
         if (performance.success) setReturns(performance.data || {});
         if (pipeline.success) setRequests(pipeline.data || {});
         if (health.success) setInventory(health.data || {});
-        if (departmentBooksResponse.success) setDepartmentBooks(Array.isArray(departmentBooksResponse.data) ? departmentBooksResponse.data : []);
       } catch {
         setError("Unable to load analytics right now.");
       } finally {
@@ -138,7 +138,54 @@ export default function AnalyticsPage() {
     const handleOnline = () => { void loadAnalytics(); };
     window.addEventListener("online", handleOnline);
     return () => window.removeEventListener("online", handleOnline);
-  }, [departmentFilter, range, router, user]);
+  }, [range, router, user]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadDepartmentBooks() {
+      if (!departmentFilter) {
+        setDepartmentBooks([]);
+        setDepartmentBooksError("");
+        setDepartmentBooksLoading(false);
+        return;
+      }
+
+      if (!navigator.onLine) {
+        setDepartmentBooks([]);
+        setDepartmentBooksLoading(false);
+        return;
+      }
+
+      setDepartmentBooksLoading(true);
+      setDepartmentBooksError("");
+      try {
+        const response = await api.getMostBorrowedByDepartment(range, departmentFilter, 10);
+        if (cancelled) return;
+        if (!response.success) {
+          setDepartmentBooks([]);
+          setDepartmentBooksError(response.error || "Unable to load department book rankings.");
+        } else {
+          setDepartmentBooks(Array.isArray(response.data) ? response.data : []);
+        }
+      } catch {
+        if (!cancelled) {
+          setDepartmentBooks([]);
+          setDepartmentBooksError("Unable to load department book rankings.");
+        }
+      } finally {
+        if (!cancelled) setDepartmentBooksLoading(false);
+      }
+    }
+
+    void loadDepartmentBooks();
+    const handleOnline = () => { void loadDepartmentBooks(); };
+    window.addEventListener("online", handleOnline);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("online", handleOnline);
+    };
+  }, [departmentFilter, range]);
 
   const overview = stats?.overview || {};
   const overdueRate = overview.activeBorrows
@@ -168,6 +215,8 @@ export default function AnalyticsPage() {
   const neverBorrowedItems = (inventory.neverBorrowed || []).slice(0, showAllInventory ? undefined : 3);
   const hasMoreInventoryItems = (inventory.lowStock || []).length > 3 || (inventory.neverBorrowed || []).length > 3;
   const categoryColors = ["#34d399", "#60a5fa", "#fbbf24", "#f472b6", "#a78bfa", "#f87171", "#2dd4bf", "#f59e0b", "#38bdf8", "#c084fc"];
+  const selectedDepartmentBooks = departmentBooks.find((group) => group.department === departmentFilter)?.topBooks || [];
+  const displayedTopBooks = departmentFilter ? selectedDepartmentBooks : topBooks;
 
   return (
     <ProtectedRoute roles={["LIBRARIAN"]}>
@@ -222,58 +271,54 @@ export default function AnalyticsPage() {
             </div>
 
             <div className="mb-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
-              <Panel title="Top 10 Most Borrowed Books">
-                {topBooks.length === 0 ? <p className="text-sm text-zinc-500">No borrow data for this range</p> : <div className="space-y-3">{topBooks.map((book) => <div key={book.id} className="flex items-center justify-between gap-4 border-b border-zinc-800/60 pb-3 last:border-0 last:pb-0"><div className="min-w-0"><p className="truncate text-sm font-medium text-zinc-100">{book.title}</p><p className="truncate text-xs text-zinc-500">{book.author}</p></div><span className="text-sm font-semibold text-blue-400">{book.borrowCount}</span></div>)}</div>}
-              </Panel>
+              <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-6">
+                <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <h2 className="text-base font-semibold text-white">Top 10 Most Borrowed Books</h2>
+                  <select
+                    value={departmentFilter}
+                    onChange={(event) => setDepartmentFilter(event.target.value)}
+                    aria-label="Filter top borrowed books by department"
+                    className="rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-xs text-zinc-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">All departments</option>
+                    {departments.map((department) => (
+                      <option key={department.code} value={department.code}>{department.name}</option>
+                    ))}
+                  </select>
+                </div>
+                {departmentBooksError ? (
+                  <p role="alert" className="text-sm text-amber-300">{departmentBooksError}</p>
+                ) : departmentBooksLoading ? (
+                  <p className="text-sm text-zinc-500">Loading book rankings...</p>
+                ) : displayedTopBooks.length === 0 ? (
+                  <p className="text-sm text-zinc-500">
+                    {departmentFilter ? "No borrowing data for this department and range." : "No borrow data for this range."}
+                  </p>
+                ) : (
+                  <ol className="space-y-3">
+                    {displayedTopBooks.map((book: any, index: number) => (
+                      <li key={book.id || `${book.title}-${index}`} className="flex items-center gap-3 border-b border-zinc-800/60 pb-3 last:border-0 last:pb-0">
+                        <span className="w-7 shrink-0 text-center text-sm font-semibold text-zinc-500">
+                          {String(index + 1).padStart(2, "0")}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-zinc-100">{book.title}</p>
+                          <p className="truncate text-xs text-zinc-500">{book.author || "Unknown author"}</p>
+                        </div>
+                        <span className="shrink-0 text-sm font-semibold text-blue-400">
+                          {book.borrowCount} <span className="text-xs font-normal text-zinc-500">borrows</span>
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </section>
               <Panel title="Most Borrowed Categories">
                 {categories.length === 0 ? <p className="text-sm text-zinc-500">No category data for this range</p> : <div className="h-72"><ResponsiveContainer width="100%" height="100%"><BarChart data={categories} layout="vertical" margin={{ left: 8, right: 28 }}><CartesianGrid strokeDasharray="3 3" stroke="#27272a" horizontal={false} /><XAxis type="number" allowDecimals={false} stroke="#71717a" fontSize={11} tickLine={false} axisLine={false} /><YAxis type="category" dataKey="name" width={110} stroke="#a1a1aa" fontSize={11} tickLine={false} axisLine={false} /><Tooltip contentStyle={chartStyle} /><Bar dataKey="borrowCount" radius={[0, 6, 6, 0]}>{categories.map((category, index) => (
                     <Cell key={`${category.name}-${index}`} fill={categoryColors[index % categoryColors.length]} />
                   ))}<LabelList dataKey="borrowCount" position="right" fill="#a1a1aa" fontSize={11} /></Bar></BarChart></ResponsiveContainer></div>}
               </Panel>
             </div>
-
-            <Panel title="Most Borrowed Books by Department" className="mb-6">
-              <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-xs text-zinc-500">Ranked by borrow count within each department</p>
-                <select value={departmentFilter} onChange={(event) => setDepartmentFilter(event.target.value)} aria-label="Department filter" className="rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-xs text-zinc-300">
-                  <option value="">All departments</option>
-                  {departments.map((department) => <option key={department.code} value={department.code}>{department.name}</option>)}
-                </select>
-              </div>
-              {departmentBooks.length === 0 ? <p className="text-sm text-zinc-500">No department borrowing data for this range.</p> : <div className="grid grid-cols-1 gap-x-10 gap-y-8 md:grid-cols-2">{departmentBooks.map((group) => {
-                const departmentColor = getDepartmentColor(group.department);
-                const maxBorrowCount = Math.max(1, ...group.topBooks.map((book: any) => Number(book.borrowCount || 0)));
-                return (
-                  <section key={group.department} aria-label={`${group.department} most borrowed books`}>
-                    <div className="mb-4 flex items-center justify-between border-b border-zinc-800 pb-3">
-                      <div className="flex items-center gap-2.5">
-                        <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: departmentColor }} />
-                        <h3 className="font-semibold text-white">{group.department}</h3>
-                      </div>
-                      <span className="text-xs text-zinc-500">{group.topBooks.length} titles</span>
-                    </div>
-                    <div className="space-y-4">
-                      {group.topBooks.map((book: any, index: number) => {
-                        const borrowCount = Number(book.borrowCount || 0);
-                        const barWidth = borrowCount ? Math.max(4, (borrowCount / maxBorrowCount) * 100) : 0;
-                        return (
-                          <div key={`${group.department}-${book.title}`}>
-                            <div className="mb-1.5 flex items-start gap-3 text-sm">
-                              <span className="w-5 shrink-0 pt-0.5 text-xs text-zinc-600">{String(index + 1).padStart(2, "0")}</span>
-                              <span className="min-w-0 flex-1 break-words text-zinc-300">{book.title}</span>
-                              <span className="shrink-0 font-semibold text-zinc-100">{borrowCount}</span>
-                            </div>
-                            <div className="ml-8 h-1.5 overflow-hidden rounded-full bg-zinc-800" role="progressbar" aria-label={`${book.title} borrows`} aria-valuenow={borrowCount} aria-valuemin={0} aria-valuemax={maxBorrowCount}>
-                              <div className="h-full rounded-full" style={{ width: `${barWidth}%`, backgroundColor: departmentColor }} />
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </section>
-                );
-              })}</div>}
-            </Panel>
 
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
               <Panel title="Request Pipeline">

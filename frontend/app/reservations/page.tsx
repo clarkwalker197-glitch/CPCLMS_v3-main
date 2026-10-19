@@ -16,6 +16,7 @@ export default function ReservationsPage() {
   const [successMsg, setSuccessMsg] = useState("");
   const [selectedReservationIds, setSelectedReservationIds] = useState<Record<string, string>>({});
   const [cancellingReservations, setCancellingReservations] = useState(false);
+  const [cancellingReservationId, setCancellingReservationId] = useState<string | null>(null);
   const [showingCached, setShowingCached] = useState(false);
   const [quickActionReservation, setQuickActionReservation] = useState<any | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -90,12 +91,14 @@ export default function ReservationsPage() {
   }, [user, isLibrarian]);
 
   const handleCancel = async (id: string) => {
+    if (cancellingReservations || cancellingReservationId) return;
     const reservation = reservations.find((item) => item.id === id);
     if (!reservation || !window.confirm(`Cancel the reservation for "${reservation.book?.title || "this book"}"?`)) return;
     if (!navigator.onLine || showingCached) {
       setError("Connect to the internet and refresh your reservations before cancelling.");
       return;
     }
+    setCancellingReservationId(id);
     setError("");
     try {
       const response = await api.cancelReservation(id);
@@ -108,6 +111,11 @@ export default function ReservationsPage() {
       if (window.matchMedia("(max-width: 768px)").matches && "vibrate" in navigator) navigator.vibrate(25);
       const cancelled = response.data?.cancelled?.[0];
       setReservations((current) => current.map((item) => item.id === id ? { ...item, status: "CANCELLED" } : item));
+      setSelectedReservationIds((current) => {
+        const next = { ...current };
+        delete next[id];
+        return next;
+      });
       setSuccessMsg(`Cancelled reservation: ${cancelled?.title || reservation.book?.title || "Book"}.`);
       try {
         await offlineDb.reservations.update(id, { status: "CANCELLED" });
@@ -118,10 +126,13 @@ export default function ReservationsPage() {
     } catch {
       await loadReservations();
       setError("Unable to cancel reservation. Refresh and try again.");
+    } finally {
+      setCancellingReservationId(null);
     }
   };
 
   const cancelSelectedReservations = async () => {
+    if (cancellingReservations || cancellingReservationId) return;
     const selected = Object.entries(selectedReservationIds);
     if (!selected.length) {
       setError("Please select at least one item to cancel.");
@@ -218,7 +229,7 @@ export default function ReservationsPage() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex">
-      <Sidebar />
+      <Sidebar showCopyright={false} />
       <div className="flex-1 min-w-0">
         <div className="max-w-6xl mx-auto px-4 py-8 pb-[calc(7rem+min(env(safe-area-inset-bottom),2rem))] sm:px-6 lg:px-8 lg:pb-8">
           <div className="mb-6 flex items-center justify-between gap-3">
@@ -256,7 +267,7 @@ export default function ReservationsPage() {
               <button
                 type="button"
                 onClick={cancelSelectedReservations}
-                disabled={cancellingReservations}
+                disabled={cancellingReservations || cancellingReservationId !== null}
                 className="inline-flex min-h-10 items-center justify-center rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-300 transition-colors hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {cancellingReservations ? "Cancelling..." : "Cancel Selected Reservations"}
@@ -302,7 +313,7 @@ export default function ReservationsPage() {
                                 <input
                                   type="checkbox"
                                   checked={Boolean(selectedReservationIds[reservation.id])}
-                                  disabled={showingCached || cancellingReservations}
+                                  disabled={showingCached || cancellingReservations || cancellingReservationId !== null}
                                   onChange={(event) => setSelectedReservationIds((current) => {
                                     const next = { ...current };
                                     if (event.target.checked) next[reservation.id] = reservation.book?.title || "Unknown book";
@@ -353,10 +364,10 @@ export default function ReservationsPage() {
                               {canPickUp && (isLibrarian || isOwner) && (
                                 <button
                                   onClick={() => handleCancel(reservation.id)}
-                                  disabled={showingCached || cancellingReservations}
+                                  disabled={showingCached || cancellingReservations || cancellingReservationId !== null}
                                   className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-300 hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
-                                  Cancel
+                                  {cancellingReservationId === reservation.id ? "Cancelling..." : "Cancel"}
                                 </button>
                               )}
                               {canPickUp && isOwner && (
@@ -415,7 +426,7 @@ export default function ReservationsPage() {
                             <input
                               type="checkbox"
                               checked={Boolean(selectedReservationIds[reservation.id])}
-                              disabled={showingCached || cancellingReservations}
+                              disabled={showingCached || cancellingReservations || cancellingReservationId !== null}
                               onChange={(event) => setSelectedReservationIds((current) => {
                                 const next = { ...current };
                                 if (event.target.checked) next[reservation.id] = reservation.book?.title || "Unknown book";
@@ -461,8 +472,8 @@ export default function ReservationsPage() {
                           </button>
                         )}
                         {(isLibrarian && isActive || isOwner && ["ACTIVE", "APPROVED"].includes(reservation.status)) && (
-                          <button onClick={() => handleCancel(reservation.id)} disabled={showingCached || cancellingReservations} className="min-h-11 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-300 hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-50">
-                            Cancel
+                          <button onClick={() => handleCancel(reservation.id)} disabled={showingCached || cancellingReservations || cancellingReservationId !== null} className="min-h-11 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-300 hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-50">
+                            {cancellingReservationId === reservation.id ? "Cancelling..." : "Cancel"}
                           </button>
                         )}
                       </div>
@@ -489,7 +500,7 @@ export default function ReservationsPage() {
                     <button type="button" onClick={async () => { await handlePickup(quickActionReservation.id); setQuickActionReservation(null); }} className="min-h-11 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white">Pick up</button>
                   )}
                   {(isLibrarian && quickActionReservation.status === "ACTIVE" || user?.id === quickActionReservation.userId && ["ACTIVE", "APPROVED"].includes(quickActionReservation.status)) && (
-                    <button type="button" onClick={async () => { await handleCancel(quickActionReservation.id); setQuickActionReservation(null); }} className="min-h-11 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-300">Cancel</button>
+                    <button type="button" onClick={async () => { await handleCancel(quickActionReservation.id); setQuickActionReservation(null); }} disabled={cancellingReservationId !== null} className="min-h-11 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-300 disabled:opacity-50">{cancellingReservationId === quickActionReservation.id ? "Cancelling..." : "Cancel"}</button>
                   )}
                   <button type="button" onClick={() => setQuickActionReservation(null)} className="min-h-11 rounded-xl border border-zinc-700 px-3 py-2 text-sm font-medium text-zinc-300">Close</button>
                 </div>

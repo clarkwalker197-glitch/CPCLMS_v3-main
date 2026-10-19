@@ -58,6 +58,24 @@ router.get(
   authorize('LIBRARIAN'),
   authController.listUsers
 );
+router.get(
+  '/pending-student-registrations',
+  authenticate,
+  authorize('LIBRARIAN'),
+  authController.listPendingStudentRegistrations
+);
+router.post(
+  '/pending-student-registrations/:id/approve',
+  authenticate,
+  authorize('LIBRARIAN'),
+  authController.approveStudentRegistration
+);
+router.delete(
+  '/pending-student-registrations/:id',
+  authenticate,
+  authorize('LIBRARIAN'),
+  authController.rejectStudentRegistration
+);
 router.post(
   '/admin/users',
   authenticate,

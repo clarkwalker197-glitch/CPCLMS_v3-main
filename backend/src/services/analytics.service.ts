@@ -511,6 +511,37 @@ export class AnalyticsService {
     }));
   }
 
+  async getTopViewedEBooks(range: string = 'all', department?: string, limit = 10) {
+    const rangeStart = getRangeStart(normalizeRange(range));
+    const groupedViews = await prisma.eBookView.groupBy({
+      by: ['ebookId'],
+      where: {
+        ...(rangeStart ? { viewedAt: { gte: rangeStart } } : {}),
+        ebook: { deletedAt: null },
+        user: {
+          archivedAt: null,
+          isActive: true,
+          role: { in: ['STUDENT', 'FACULTY'] },
+          ...(department ? { department } : {}),
+        },
+      },
+      _count: { _all: true },
+    });
+    const ebooks = await prisma.eBook.findMany({
+      where: { id: { in: groupedViews.map(({ ebookId }) => ebookId) } },
+      select: { id: true, title: true, author: true },
+    });
+    const ebookMap = new Map(ebooks.map((ebook) => [ebook.id, ebook]));
+
+    return groupedViews
+      .flatMap(({ ebookId, _count }) => {
+        const ebook = ebookMap.get(ebookId);
+        return ebook ? [{ ...ebook, viewCount: _count._all }] : [];
+      })
+      .sort((a, b) => b.viewCount - a.viewCount || a.title.localeCompare(b.title))
+      .slice(0, Math.min(10, Math.max(1, limit)));
+  }
+
   async getReturnPerformance(range: string = 'all') {
     const rangeStart = getRangeStart(normalizeRange(range));
     const returned = await prisma.borrowTransaction.findMany({

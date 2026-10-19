@@ -447,10 +447,13 @@ export default function BooksPage() {
   const handleToggleAvailability = async (book: any, available: boolean) => {
     if (togglingStatusId) return;
     const previousStatus = book.status;
+    const previousAvailableCopies = book.availableCopies;
     const newStatus = available ? "AVAILABLE" : "MAINTENANCE";
     setTogglingStatusId(book.id);
     setError("");
-    setBooks((current) => current.map((item) => item.id === book.id ? { ...item, status: newStatus } : item));
+    setBooks((current) => current.map((item) => item.id === book.id
+      ? { ...item, status: newStatus, ...(available ? {} : { availableCopies: 0 }) }
+      : item));
     try {
       const response = await api.updateBook(book.id, { status: newStatus });
       if (!response.success) {
@@ -462,7 +465,9 @@ export default function BooksPage() {
       void loadData();
       setTimeout(() => setSuccessMsg(""), 4000);
     } catch (caught) {
-      setBooks((current) => current.map((item) => item.id === book.id ? { ...item, status: previousStatus } : item));
+      setBooks((current) => current.map((item) => item.id === book.id
+        ? { ...item, status: previousStatus, availableCopies: previousAvailableCopies }
+        : item));
       setError(caught instanceof Error ? caught.message : "Failed to update book");
     } finally {
       setTogglingStatusId(null);

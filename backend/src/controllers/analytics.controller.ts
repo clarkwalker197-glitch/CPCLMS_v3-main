@@ -47,6 +47,15 @@ export const getTopBorrowedBooks = asyncHandler(async (req: Request, res: Respon
   sendSuccess(res, await analyticsService.getTopBorrowedBooks(req.query.range as string | undefined, limit));
 });
 
+export const getTopViewedEBooks = asyncHandler(async (req: Request, res: Response) => {
+  const limit = req.query.limit ? Number(req.query.limit) : 10;
+  sendSuccess(res, await analyticsService.getTopViewedEBooks(
+    req.query.range as string | undefined,
+    req.query.department as string | undefined,
+    limit,
+  ));
+});
+
 export const getReturnPerformance = asyncHandler(async (req: Request, res: Response) => {
   sendSuccess(res, await analyticsService.getReturnPerformance(req.query.range as string | undefined));
 });
@@ -67,4 +76,3 @@ export const getMostBorrowedByDepartment = asyncHandler(async (req: Request, res
   const limit = req.query.limit ? Number(req.query.limit) : 10;
   sendSuccess(res, await analyticsService.getMostBorrowedByDepartment(req.query.range as string | undefined, req.query.department as string | undefined, limit));
 });
-

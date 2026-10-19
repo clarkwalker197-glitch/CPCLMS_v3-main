@@ -19,7 +19,10 @@ import {
   Users,
   ChevronLeft,
   ChevronRight,
-Phone,
+  Phone,
+  Check,
+  X,
+  Clock3,
 } from "lucide-react";
 
 const PAGE_SIZE = 10;
@@ -63,6 +66,9 @@ const emptyAddMemberForm: AddMemberFormState = {
 export default function MembersPage() {
   const { user } = useAuth();
   const [members, setMembers] = useState<any[]>([]);
+  const [pendingRegistrations, setPendingRegistrations] = useState<any[]>([]);
+  const [pendingRegistrationError, setPendingRegistrationError] = useState("");
+  const [pendingActionId, setPendingActionId] = useState<string | null>(null);
   const [departments, setDepartments] = useState<Array<{ code: string; name: string }>>([]);
   const [finesMap, setFinesMap] = useState<Record<string, number>>({});
   const [total, setTotal] = useState(0);
@@ -102,9 +108,10 @@ export default function MembersPage() {
       params.sort = sort;
       params.order = sortOrder;
 
-const [usersRes, statsRes] = await Promise.all([
+      const [usersRes, statsRes, pendingRes] = await Promise.all([
         api.get<any>("/auth/users?" + new URLSearchParams(params).toString()),
         api.getDashboardStats(),
+        api.getPendingStudentRegistrations(),
       ]);
 
       if (usersRes.success) {
@@ -120,6 +127,12 @@ const [usersRes, statsRes] = await Promise.all([
           map[o.userId] = o.totalFine ?? 0;
         }
         setFinesMap(map);
+      }
+      if (pendingRes.success) {
+        setPendingRegistrations(pendingRes.data || []);
+        setPendingRegistrationError("");
+      } else {
+        setPendingRegistrationError(pendingRes.error || "Failed to load pending student registrations");
       }
     } catch {
       setError("Failed to load members");
@@ -173,6 +186,34 @@ const [usersRes, statsRes] = await Promise.all([
       setDeleteError("Failed to delete member");
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const handlePendingRegistration = async (id: string, action: "approve" | "reject") => {
+    if (pendingActionId) return;
+    setPendingActionId(id);
+    setPendingRegistrationError("");
+    try {
+      const response = action === "approve"
+        ? await api.approveStudentRegistration(id)
+        : await api.rejectStudentRegistration(id);
+      if (!response.success) {
+        setPendingRegistrationError(response.error || `Failed to ${action} registration`);
+        return;
+      }
+
+      setPendingRegistrations((current) => current.filter((registration) => registration.id !== id));
+      if (action === "approve") {
+        setSuccessMsg("Student registration approved successfully");
+        void loadData();
+      } else {
+        setSuccessMsg("Student registration rejected and removed");
+      }
+      setTimeout(() => setSuccessMsg(""), 4000);
+    } catch {
+      setPendingRegistrationError(`Failed to ${action} registration. Please try again.`);
+    } finally {
+      setPendingActionId(null);
     }
   };
 
@@ -390,6 +431,111 @@ const [usersRes, statsRes] = await Promise.all([
               </select>
             </div>
           </div>
+
+          {(pendingRegistrations.length > 0 || pendingRegistrationError) && (
+            <section className="mb-6 overflow-hidden rounded-2xl border border-amber-500/20 bg-zinc-900/70">
+              <div className="flex items-center justify-between gap-3 border-b border-zinc-800 px-5 py-4">
+                <div>
+                  <h2 className="font-semibold text-white">Pending Student Registrations</h2>
+                  <p className="mt-1 text-sm text-zinc-400">Review requests before student accounts are activated.</p>
+                </div>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-300 ring-1 ring-amber-500/20">
+                  <Clock3 className="h-3.5 w-3.5" />
+                  {pendingRegistrations.length} pending
+                </span>
+              </div>
+              {pendingRegistrationError && (
+                <div role="alert" className="m-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
+                  {pendingRegistrationError}
+                </div>
+              )}
+              {pendingRegistrations.length > 0 && (
+                <>
+                  <div className="hidden overflow-x-auto md:block">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-zinc-950/50 text-left text-xs uppercase tracking-wide text-zinc-500">
+                          <th className="px-5 py-3 font-medium">Name</th>
+                          <th className="px-5 py-3 font-medium">ID Number</th>
+                          <th className="px-5 py-3 font-medium">Department</th>
+                          <th className="px-5 py-3 font-medium">Year &amp; Section</th>
+                          <th className="px-5 py-3 text-right font-medium">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pendingRegistrations.map((registration) => (
+                          <tr key={registration.id} className="border-t border-zinc-800/70">
+                            <td className="px-5 py-4 font-medium text-zinc-100">
+                              {[registration.firstName, registration.lastName].filter(Boolean).join(" ")}
+                              <span className="mt-1 block text-xs font-normal text-zinc-500">{registration.email}</span>
+                            </td>
+                            <td className="px-5 py-4 text-zinc-300">{registration.libraryId}</td>
+                            <td className="px-5 py-4 text-zinc-300">{registration.department}</td>
+                            <td className="px-5 py-4 text-zinc-300">{registration.yearSection}</td>
+                            <td className="px-5 py-4">
+                              <div className="flex justify-end gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handlePendingRegistration(registration.id, "approve")}
+                                  disabled={pendingActionId !== null}
+                                  className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600/15 px-3 py-2 text-xs font-semibold text-emerald-300 ring-1 ring-emerald-500/30 transition hover:bg-emerald-600/25 disabled:cursor-wait disabled:opacity-50"
+                                >
+                                  <Check className="h-3.5 w-3.5" />
+                                  {pendingActionId === registration.id ? "Working..." : "Approve"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handlePendingRegistration(registration.id, "reject")}
+                                  disabled={pendingActionId !== null}
+                                  className="inline-flex items-center gap-1.5 rounded-lg bg-red-600/10 px-3 py-2 text-xs font-semibold text-red-300 ring-1 ring-red-500/30 transition hover:bg-red-600/20 disabled:cursor-wait disabled:opacity-50"
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                  Reject
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="space-y-3 p-4 md:hidden">
+                    {pendingRegistrations.map((registration) => (
+                      <article key={registration.id} className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+                        <p className="font-medium text-zinc-100">{[registration.firstName, registration.lastName].filter(Boolean).join(" ")}</p>
+                        <p className="mt-1 break-all text-xs text-zinc-500">{registration.email}</p>
+                        <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                          <div><dt className="text-xs text-zinc-500">ID Number</dt><dd className="mt-1 text-zinc-300">{registration.libraryId}</dd></div>
+                          <div><dt className="text-xs text-zinc-500">Department</dt><dd className="mt-1 text-zinc-300">{registration.department}</dd></div>
+                          <div><dt className="text-xs text-zinc-500">Year &amp; Section</dt><dd className="mt-1 text-zinc-300">{registration.yearSection}</dd></div>
+                        </dl>
+                        <div className="mt-4 flex gap-2 border-t border-zinc-800 pt-3">
+                          <button
+                            type="button"
+                            onClick={() => handlePendingRegistration(registration.id, "approve")}
+                            disabled={pendingActionId !== null}
+                            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-emerald-600/15 px-3 py-2 text-sm font-semibold text-emerald-300 ring-1 ring-emerald-500/30 disabled:opacity-50"
+                          >
+                            <Check className="h-4 w-4" />
+                            {pendingActionId === registration.id ? "Working..." : "Approve"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handlePendingRegistration(registration.id, "reject")}
+                            disabled={pendingActionId !== null}
+                            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-red-600/10 px-3 py-2 text-sm font-semibold text-red-300 ring-1 ring-red-500/30 disabled:opacity-50"
+                          >
+                            <X className="h-4 w-4" />
+                            Reject
+                          </button>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </>
+              )}
+            </section>
+          )}
 
           {/* Loading */}
           {loading && (

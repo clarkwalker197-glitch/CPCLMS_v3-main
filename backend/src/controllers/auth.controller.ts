@@ -84,10 +84,8 @@ export const resetPassword = asyncHandler(async (req: Request, res: Response) =>
  * POST /api/auth/register
  */
 export const register = asyncHandler(async (req: Request, res: Response) => {
-  const ipAddress = req.ip;
-  const result = await authService.register(req.body, ipAddress, req.get('user-agent'));
-  setRefreshCookie(res, result.refreshToken, new Date(Date.now() + REFRESH_TOKEN_TTL_MS));
-  sendSuccess(res, result, 'Registration successful', 201);
+  const result = await authService.register(req.body);
+  sendSuccess(res, result, 'Registration submitted for librarian verification', 201);
 });
 
 /**
@@ -201,6 +199,31 @@ export const updateNotificationPreferences = asyncHandler(async (req: Authentica
 export const listUsers = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const result = await authService.listUsers(req.query as Record<string, unknown>);
   sendSuccess(res, result.users, undefined, 200, result.meta);
+});
+
+export const listPendingStudentRegistrations = asyncHandler(async (_req: AuthenticatedRequest, res: Response) => {
+  const registrations = await authService.listPendingStudentRegistrations();
+  sendSuccess(res, registrations);
+});
+
+export const approveStudentRegistration = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const user = await authService.approveStudentRegistration(
+    req.params.id,
+    req.user!.userId,
+    req.ip,
+    req.get('user-agent'),
+  );
+  sendSuccess(res, user, 'Student registration approved');
+});
+
+export const rejectStudentRegistration = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const result = await authService.rejectStudentRegistration(
+    req.params.id,
+    req.user!.userId,
+    req.ip,
+    req.get('user-agent'),
+  );
+  sendSuccess(res, result, 'Student registration rejected');
 });
 
 /**

@@ -427,6 +427,22 @@ const response = await this.request<any>('/auth/register', {
     return response;
   }
 
+  async getPendingStudentRegistrations(): Promise<ApiResponse<any[]>> {
+    return this.request<any[]>('/auth/pending-student-registrations');
+  }
+
+  async approveStudentRegistration(id: string): Promise<ApiResponse<any>> {
+    return this.request<any>(`/auth/pending-student-registrations/${encodeURIComponent(id)}/approve`, {
+      method: 'POST',
+    });
+  }
+
+  async rejectStudentRegistration(id: string): Promise<ApiResponse<any>> {
+    return this.request<any>(`/auth/pending-student-registrations/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+  }
+
   async logout(): Promise<void> {
     try {
       await this.request('/auth/logout', {
@@ -878,6 +894,12 @@ async payFine(id: string, amount: number): Promise<ApiResponse<any>> {
 
   async getTopBorrowedBooks(range = 'all', limit = 10): Promise<ApiResponse<any>> {
     return this.get(`/analytics/top-borrowed-books?range=${encodeURIComponent(range)}&limit=${limit}`);
+  }
+
+  async getTopViewedEBooks(range = 'all', department = '', limit = 10): Promise<ApiResponse<any>> {
+    const query = new URLSearchParams({ range, limit: String(limit) });
+    if (department) query.set('department', department);
+    return this.get(`/analytics/top-viewed-ebooks?${query.toString()}`);
   }
 
   async getReturnPerformance(range = 'all'): Promise<ApiResponse<any>> {

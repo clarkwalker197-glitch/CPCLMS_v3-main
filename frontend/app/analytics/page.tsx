@@ -63,9 +63,11 @@ export default function AnalyticsPage() {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<any>(null);
   const [trends, setTrends] = useState<any[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
   const [topBooks, setTopBooks] = useState<any[]>([]);
+  const [topEBooks, setTopEBooks] = useState<any[]>([]);
+  const [topEBooksLoading, setTopEBooksLoading] = useState(false);
+  const [topEBooksError, setTopEBooksError] = useState("");
   const [fines, setFines] = useState<any>({ paid: 0, unpaid: 0, monthly: [] });
   const [returns, setReturns] = useState<any>({ onTimeRate: 0 });
   const [requests, setRequests] = useState<any>({});
@@ -107,7 +109,6 @@ export default function AnalyticsPage() {
         const results = await Promise.all([
           api.getDashboardStats(),
           api.get(`/analytics/monthly-trends?months=6&range=${encodeURIComponent(range)}`),
-          api.get(`/analytics/most-borrowed-categories?range=${encodeURIComponent(range)}&limit=10`),
           api.getDepartmentDistribution(range),
           api.getTopBorrowedBooks(range, 10),
           api.getOverdueFinesSummary(range),
@@ -115,13 +116,12 @@ export default function AnalyticsPage() {
           api.getRequestPipeline(range),
           api.getInventoryHealth(),
         ]);
-        const [dashboard, trend, category, department, books, fine, performance, pipeline, health] = results;
-        if (!dashboard.success || !trend.success || !category.success || !department.success || !books.success || !fine.success || !performance.success || !pipeline.success || !health.success) {
+        const [dashboard, trend, department, books, fine, performance, pipeline, health] = results;
+        if (!dashboard.success || !trend.success || !department.success || !books.success || !fine.success || !performance.success || !pipeline.success || !health.success) {
           setError("Some analytics could not be loaded. Try refreshing the page.");
         }
         if (dashboard.success) setStats(dashboard.data);
         if (trend.success) setTrends(Array.isArray(trend.data) ? trend.data : []);
-        if (category.success) setCategories((category.data as any)?.data || []);
         if (department.success) setDepartments(Array.isArray(department.data) ? department.data : []);
         if (books.success) setTopBooks(Array.isArray(books.data) ? books.data : []);
         if (fine.success) setFines(fine.data || {});
@@ -187,6 +187,46 @@ export default function AnalyticsPage() {
     };
   }, [departmentFilter, range]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadTopViewedEBooks() {
+      if (!navigator.onLine) {
+        setTopEBooks([]);
+        setTopEBooksLoading(false);
+        return;
+      }
+
+      setTopEBooksLoading(true);
+      setTopEBooksError("");
+      try {
+        const response = await api.getTopViewedEBooks(range, departmentFilter, 10);
+        if (cancelled) return;
+        if (!response.success) {
+          setTopEBooks([]);
+          setTopEBooksError(response.error || "Unable to load e-book view rankings.");
+        } else {
+          setTopEBooks(Array.isArray(response.data) ? response.data : []);
+        }
+      } catch {
+        if (!cancelled) {
+          setTopEBooks([]);
+          setTopEBooksError("Unable to load e-book view rankings.");
+        }
+      } finally {
+        if (!cancelled) setTopEBooksLoading(false);
+      }
+    }
+
+    void loadTopViewedEBooks();
+    const handleOnline = () => { void loadTopViewedEBooks(); };
+    window.addEventListener("online", handleOnline);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("online", handleOnline);
+    };
+  }, [departmentFilter, range]);
+
   const overview = stats?.overview || {};
   const overdueRate = overview.activeBorrows
     ? (overview.overdueBooks / overview.activeBorrows) * 100
@@ -214,7 +254,6 @@ export default function AnalyticsPage() {
   const lowStockItems = (inventory.lowStock || []).slice(0, showAllInventory ? undefined : 3);
   const neverBorrowedItems = (inventory.neverBorrowed || []).slice(0, showAllInventory ? undefined : 3);
   const hasMoreInventoryItems = (inventory.lowStock || []).length > 3 || (inventory.neverBorrowed || []).length > 3;
-  const categoryColors = ["#34d399", "#60a5fa", "#fbbf24", "#f472b6", "#a78bfa", "#f87171", "#2dd4bf", "#f59e0b", "#38bdf8", "#c084fc"];
   const selectedDepartmentBooks = departmentBooks.find((group) => group.department === departmentFilter)?.topBooks || [];
   const displayedTopBooks = departmentFilter ? selectedDepartmentBooks : topBooks;
 
@@ -313,11 +352,48 @@ export default function AnalyticsPage() {
                   </ol>
                 )}
               </section>
-              <Panel title="Most Borrowed Categories">
-                {categories.length === 0 ? <p className="text-sm text-zinc-500">No category data for this range</p> : <div className="h-72"><ResponsiveContainer width="100%" height="100%"><BarChart data={categories} layout="vertical" margin={{ left: 8, right: 28 }}><CartesianGrid strokeDasharray="3 3" stroke="#27272a" horizontal={false} /><XAxis type="number" allowDecimals={false} stroke="#71717a" fontSize={11} tickLine={false} axisLine={false} /><YAxis type="category" dataKey="name" width={110} stroke="#a1a1aa" fontSize={11} tickLine={false} axisLine={false} /><Tooltip contentStyle={chartStyle} /><Bar dataKey="borrowCount" radius={[0, 6, 6, 0]}>{categories.map((category, index) => (
-                    <Cell key={`${category.name}-${index}`} fill={categoryColors[index % categoryColors.length]} />
-                  ))}<LabelList dataKey="borrowCount" position="right" fill="#a1a1aa" fontSize={11} /></Bar></BarChart></ResponsiveContainer></div>}
-              </Panel>
+              <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-6">
+                <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <h2 className="text-base font-semibold text-white">Top 10 Most Viewed E-Books</h2>
+                  <select
+                    value={departmentFilter}
+                    onChange={(event) => setDepartmentFilter(event.target.value)}
+                    aria-label="Filter top viewed e-books by department"
+                    className="rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-xs text-zinc-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">All departments</option>
+                    {departments.map((department) => (
+                      <option key={department.code} value={department.code}>{department.name}</option>
+                    ))}
+                  </select>
+                </div>
+                {topEBooksError ? (
+                  <p role="alert" className="text-sm text-amber-300">{topEBooksError}</p>
+                ) : topEBooksLoading ? (
+                  <p className="text-sm text-zinc-500">Loading e-book rankings...</p>
+                ) : topEBooks.length === 0 ? (
+                  <p className="text-sm text-zinc-500">
+                    {departmentFilter ? "No e-book views for this department and range." : "No e-book views for this range."}
+                  </p>
+                ) : (
+                  <ol className="space-y-3">
+                    {topEBooks.map((ebook, index) => (
+                      <li key={ebook.id} className="flex items-center gap-3 border-b border-zinc-800/60 pb-3 last:border-0 last:pb-0">
+                        <span className="w-7 shrink-0 text-center text-sm font-semibold text-zinc-500">
+                          {String(index + 1).padStart(2, "0")}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-zinc-100">{ebook.title}</p>
+                          <p className="truncate text-xs text-zinc-500">{ebook.author || "Unknown author"}</p>
+                        </div>
+                        <span className="shrink-0 text-sm font-semibold text-blue-400">
+                          {ebook.viewCount} <span className="text-xs font-normal text-zinc-500">views</span>
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </section>
             </div>
 
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">

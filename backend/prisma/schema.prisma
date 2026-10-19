@@ -123,6 +123,23 @@ model User {
   @@map("users")
 }
 
+/// Student self-registration awaiting librarian verification
+model PendingStudentRegistration {
+  id          String   @id @default(cuid())
+  libraryId   String   @unique @map("library_id") @db.VarChar(30)
+  firstName   String   @map("first_name") @db.VarChar(100)
+  lastName    String   @map("last_name") @db.VarChar(100)
+  email       String   @unique @db.VarChar(255)
+  password    String   @db.VarChar(255)
+  department  String   @db.VarChar(150)
+  yearSection String   @map("year_section") @db.VarChar(50)
+  phone       String?  @db.VarChar(30)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("pending_student_registrations")
+}
+
 /// Book categories with optional parent-child hierarchy
 model Category {
   id          String     @id @default(cuid())

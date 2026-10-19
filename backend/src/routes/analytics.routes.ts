@@ -17,6 +17,7 @@ router.get('/most-borrowed-categories', authorize('LIBRARIAN'), analyticsControl
 router.get('/department-distribution', authorize('LIBRARIAN'), analyticsController.getDepartmentDistribution);
 router.get('/overdue-fines', authorize('LIBRARIAN'), analyticsController.getOverdueFinesSummary);
 router.get('/top-borrowed-books', authorize('LIBRARIAN'), analyticsController.getTopBorrowedBooks);
+router.get('/top-viewed-ebooks', authorize('LIBRARIAN'), analyticsController.getTopViewedEBooks);
 router.get('/return-performance', authorize('LIBRARIAN'), analyticsController.getReturnPerformance);
 router.get('/request-pipeline', authorize('LIBRARIAN'), analyticsController.getRequestPipelineStats);
 router.get('/inventory-health', authorize('LIBRARIAN'), analyticsController.getInventoryHealth);
@@ -24,4 +25,3 @@ router.get('/member-engagement', authorize('LIBRARIAN'), analyticsController.get
 router.get('/most-borrowed-by-department', authorize('LIBRARIAN'), analyticsController.getMostBorrowedByDepartment);
 
 export default router;
-

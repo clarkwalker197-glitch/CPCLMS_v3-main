@@ -52,7 +52,7 @@ const navItems = [
   { href: "/archive", label: "Archive", icon: Archive },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({ showCopyright = true }: { showCopyright?: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
   const { user } = useAuth();
@@ -295,21 +295,23 @@ export default function Sidebar() {
 
       {renderNav()}
 
-      <div className="mt-auto shrink-0 border-t border-zinc-800 px-4 py-3">
-        <div className={`relative overflow-hidden transition-[height] duration-300 ease-in-out ${isCollapsed ? "h-4" : "h-10"}`}>
-          <p className={`absolute inset-x-0 top-0 text-[11px] leading-5 text-zinc-500 transition-opacity duration-150 ${isCollapsed ? "opacity-0" : "opacity-100"}`}>
-            © 2026 Cordova Public College. All rights reserved.
-          </p>
-          <p
-            aria-hidden={!isCollapsed}
-            className={`absolute inset-0 flex items-center justify-center text-[11px] text-zinc-500 transition-opacity duration-150 ${isCollapsed ? "opacity-100 delay-100" : "opacity-0"}`}
-            title="© 2026 Cordova Public College. All rights reserved."
-          >
-            ©
-            <span className="sr-only"> 2026 Cordova Public College. All rights reserved.</span>
-          </p>
+      {showCopyright && (
+        <div className="mt-auto shrink-0 border-t border-zinc-800 px-4 py-3">
+          <div className={`relative overflow-hidden transition-[height] duration-300 ease-in-out ${isCollapsed ? "h-4" : "h-10"}`}>
+            <p className={`absolute inset-x-0 top-0 text-[11px] leading-5 text-zinc-500 transition-opacity duration-150 ${isCollapsed ? "opacity-0" : "opacity-100"}`}>
+              © 2026 Cordova Public College. All rights reserved.
+            </p>
+            <p
+              aria-hidden={!isCollapsed}
+              className={`absolute inset-0 flex items-center justify-center text-[11px] text-zinc-500 transition-opacity duration-150 ${isCollapsed ? "opacity-100 delay-100" : "opacity-0"}`}
+              title="© 2026 Cordova Public College. All rights reserved."
+            >
+              ©
+              <span className="sr-only"> 2026 Cordova Public College. All rights reserved.</span>
+            </p>
+          </div>
         </div>
-      </div>
+      )}
       </aside>
 
       <nav className="fixed inset-x-3 bottom-[calc(0.75rem+min(env(safe-area-inset-bottom),2rem))] z-40 flex items-stretch justify-evenly gap-1 rounded-2xl border border-zinc-800 bg-zinc-900/95 p-2 shadow-2xl shadow-black/50 backdrop-blur lg:hidden" aria-label="Mobile navigation">

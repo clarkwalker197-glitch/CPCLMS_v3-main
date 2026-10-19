@@ -28,6 +28,7 @@ const [formData, setFormData] = useState({
   const [showConfirm, setShowConfirm] = useState(false);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [registrationSubmitted, setRegistrationSubmitted] = useState(false);
   const [departments, setDepartments] = useState<Array<{ code: string; name: string }>>([]);
   const passwordStatus = analyzePassword(formData.password);
 
@@ -97,9 +98,7 @@ const result = await register({
       });
 
 if (result.success) {
-        // Account created — do not auto-login. Redirect to login so the
-        // user can sign in with their new credentials.
-        router.push('/login');
+        setRegistrationSubmitted(true);
       } else {
         setError(result.error || 'Registration failed');
       }
@@ -191,10 +190,29 @@ if (result.success) {
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src="/CPClogo.png" alt="Cordova Public College Logo" className="w-16 h-16 sm:w-20 sm:h-20 object-contain mb-2 sm:mb-4" />
                 </Link>
-                <h2 className="text-2xl sm:text-3xl font-bold text-white">Create Account</h2>
-                <p className="text-zinc-400 mt-2">Join the Library System to get started.</p>
+                <h2 className="text-2xl sm:text-3xl font-bold text-white">
+                  {registrationSubmitted ? 'Request Submitted' : 'Create Account'}
+                </h2>
+                <p className="text-zinc-400 mt-2">
+                  {registrationSubmitted ? 'Your student account is awaiting librarian verification.' : 'Join the Library System to get started.'}
+                </p>
               </div>
 
+              {registrationSubmitted ? (
+                <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 p-5 text-center">
+                  <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-300">
+                    <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <p className="text-sm leading-6 text-zinc-200">
+                    Your registration request has been sent to the librarian. You can log in after your account is approved.
+                  </p>
+                  <Link href="/login" className="mt-5 inline-flex w-full justify-center rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white transition hover:bg-blue-700">
+                    Go to Login
+                  </Link>
+                </div>
+              ) : (
               <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
                 {error && (
                   <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-sm text-red-400">
@@ -475,6 +493,7 @@ if (result.success) {
                   {submitting ? 'Creating account...' : 'Create Account'}
                 </button>
               </form>
+              )}
 
               {/* Back to login */}
               <div className="mt-6 text-center">

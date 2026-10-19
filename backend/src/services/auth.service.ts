@@ -304,65 +304,151 @@ export class AuthService {
   // ────────────────────────────────────────
   //  PUBLIC: REGISTER (self-registration → STUDENT role)
   // ────────────────────────────────────────
-async register(input: RegisterInput, ipAddress?: string, userAgent?: string) {
+  async register(input: RegisterInput) {
+    const libraryId = input.libraryId.trim();
+    const email = input.email.toLowerCase().trim();
     const existing = await prisma.user.findFirst({
       where: {
-        OR: [{ email: input.email }, { libraryId: input.libraryId }],
+        OR: [{ email }, { libraryId }],
       },
     });
     if (existing) {
       throw new ConflictError(
-        existing.email === input.email
+        existing.email === email
           ? 'An account with this email already exists'
           : 'An account with this ID Number already exists'
       );
     }
 
-    const libraryId = input.libraryId;
-    if (input.department && !isDepartmentCode(input.department)) {
+    const existingPending = await prisma.pendingStudentRegistration.findFirst({
+      where: { OR: [{ email }, { libraryId }] },
+      select: { email: true, libraryId: true },
+    });
+    if (existingPending) {
+      throw new ConflictError(
+        existingPending.email === email
+          ? 'A registration request with this email is already pending'
+          : 'A registration request with this ID Number is already pending'
+      );
+    }
+
+    if (!input.department || !isDepartmentCode(input.department)) {
       throw new BadRequestError('Department must be one of the official programs');
     }
+    if (!input.yearSection || !/^[1-4]-[A-Z]$/.test(input.yearSection)) {
+      throw new BadRequestError('A valid year and section is required');
+    }
+    const department = input.department;
+    const yearSection = input.yearSection;
     const hashedPassword = await bcrypt.hash(input.password, 12);
 
-    const user = await prisma.$transaction(async (tx) => {
-      const createdUser = await tx.user.create({
+    const request = await prisma.$transaction(async (tx) => {
+      const pendingRegistration = await tx.pendingStudentRegistration.create({
         data: {
           libraryId,
           firstName: input.firstName,
           lastName: input.lastName,
-          email: input.email,
+          email,
           password: hashedPassword,
-          role: 'STUDENT',
-          department: input.department,
-          yearSection: input.yearSection,
+          department,
+          yearSection,
           phone: input.phone,
         },
       });
-      await this.logActivity(
-        createdUser.id,
-        'REGISTER',
-        'User',
-        createdUser.id,
-        ipAddress,
-        userAgent ? { userAgent } : undefined,
-        tx,
-      );
-      return createdUser;
+
+      const librarians = await tx.user.findMany({
+        where: { role: 'LIBRARIAN', isActive: true, notificationsEnabled: true },
+        select: { id: true },
+      });
+      if (librarians.length > 0) {
+        const name = [input.firstName, input.lastName].filter(Boolean).join(' ');
+        await tx.notification.createMany({
+          data: librarians.map(({ id }) => ({
+            userId: id,
+            type: 'SYSTEM',
+            title: 'New student registration request',
+            message: `New student registration request from ${name} – please verify`,
+            link: '/members',
+          })),
+        });
+      }
+
+      return pendingRegistration;
     }).catch((error: unknown) => {
       const conflict = getUserUniqueConflict(error);
       if (conflict) throw conflict;
       throw error;
     });
 
-    const accessToken = this.generateAccessToken(user.id, user.libraryId, user.role);
-    const refreshToken = await this.generateRefreshToken(user.id);
-
     return {
-      accessToken,
-      refreshToken: refreshToken.token,
-      expiresIn: ACCESS_TOKEN_TTL_SECONDS,
-      user: this.sanitizeUser(user),
+      pendingApproval: true,
+      requestId: request.id,
     };
+  }
+
+  async listPendingStudentRegistrations() {
+    return prisma.pendingStudentRegistration.findMany({
+      select: {
+        id: true,
+        libraryId: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        department: true,
+        yearSection: true,
+        phone: true,
+        createdAt: true,
+      },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    });
+  }
+
+  async approveStudentRegistration(registrationId: string, adminId: string, ipAddress?: string, userAgent?: string) {
+    return prisma.$transaction(async (tx) => {
+      const registration = await tx.pendingStudentRegistration.findUnique({ where: { id: registrationId } });
+      if (!registration) throw new NotFoundError('Pending student registration');
+
+      const user = await tx.user.create({
+        data: {
+          libraryId: registration.libraryId,
+          firstName: registration.firstName,
+          lastName: registration.lastName,
+          email: registration.email,
+          password: registration.password,
+          role: 'STUDENT',
+          department: registration.department,
+          yearSection: registration.yearSection,
+          phone: registration.phone,
+          isActive: true,
+        },
+      });
+      await tx.pendingStudentRegistration.delete({ where: { id: registrationId } });
+      await this.logActivity(adminId, 'APPROVE_REGISTRATION', 'User', user.id, ipAddress, {
+        memberName: `${user.firstName} ${user.lastName}`,
+        createdUserLibraryId: user.libraryId,
+        ...(userAgent ? { userAgent } : {}),
+      }, tx);
+      return this.sanitizeUser(user);
+    }).catch((error: unknown) => {
+      const conflict = getUserUniqueConflict(error);
+      if (conflict) throw conflict;
+      throw error;
+    });
+  }
+
+  async rejectStudentRegistration(registrationId: string, adminId: string, ipAddress?: string, userAgent?: string) {
+    return prisma.$transaction(async (tx) => {
+      const registration = await tx.pendingStudentRegistration.findUnique({ where: { id: registrationId } });
+      if (!registration) throw new NotFoundError('Pending student registration');
+
+      await tx.pendingStudentRegistration.delete({ where: { id: registrationId } });
+      await this.logActivity(adminId, 'REJECT_REGISTRATION', 'PendingStudentRegistration', registration.id, ipAddress, {
+        memberName: `${registration.firstName} ${registration.lastName}`,
+        createdUserLibraryId: registration.libraryId,
+        ...(userAgent ? { userAgent } : {}),
+      }, tx);
+      return { id: registrationId };
+    });
   }
 
   // ────────────────────────────────────────

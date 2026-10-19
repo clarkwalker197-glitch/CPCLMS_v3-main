@@ -1294,7 +1294,7 @@ async listBorrowRequests(query: Record<string, unknown>, userId?: string) {
           },
         }),
         tx.book.updateMany({
-          where: { id: bookId, status: { not: 'LOST' } },
+          where: { id: bookId, status: { notIn: ['LOST', 'MAINTENANCE'] } },
           data: { availableCopies: { increment: 1 }, status: 'AVAILABLE' },
         }),
       ]);

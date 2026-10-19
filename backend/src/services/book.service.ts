@@ -208,10 +208,31 @@ export class BookService {
     input: UpdateBookInput,
     actor: { userId: string; ipAddress?: string; userAgent?: string },
   ) {
-    const book = await prisma.book.findUnique({ where: { id } });
-    if (!book) throw new NotFoundError('Book');
-
     const updated = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM books WHERE id = ${id} FOR UPDATE
+      `;
+      const book = await tx.book.findUnique({ where: { id } });
+      if (!book) throw new NotFoundError('Book');
+
+      const copies = input.copies ?? book.copies;
+      const effectiveStatus = input.status ?? book.status;
+      const isUnavailable = effectiveStatus === 'MAINTENANCE' || effectiveStatus === 'LOST';
+      const restoringAvailability = input.status === 'AVAILABLE'
+        && (book.status === 'MAINTENANCE' || book.status === 'LOST');
+      let availableCopies = input.availableCopies ?? book.availableCopies;
+
+      if (isUnavailable) {
+        availableCopies = 0;
+      } else if (restoringAvailability) {
+        const checkedOutCopies = await tx.borrowTransaction.count({
+          where: { bookId: id, status: { in: ['ACTIVE', 'OVERDUE'] } },
+        });
+        availableCopies = Math.max(0, copies - checkedOutCopies);
+      } else if (input.copies !== undefined) {
+        availableCopies = Math.max(0, copies - (book.copies - book.availableCopies));
+      }
+
       const updatedBook = await tx.book.update({
         where: { id },
         data: {
@@ -219,13 +240,10 @@ export class BookService {
           ...(input.publishYear !== undefined && { publishYear: Number(input.publishYear) }),
           ...(input.pages !== undefined && { pages: Number(input.pages) }),
           ...(input.copies !== undefined && { copies: Number(input.copies) }),
-          ...(input.availableCopies !== undefined && { availableCopies: Number(input.availableCopies) }),
+          availableCopies,
           ...(input.replacementValue !== undefined && { replacementValue: new Prisma.Decimal(Number(input.replacementValue)) }),
           ...(input.classificationNumber !== undefined && {
             classificationNumber: normalizeClassificationNumber(input.classificationNumber),
-          }),
-          ...(input.copies !== undefined && {
-            availableCopies: Number(input.copies) - (book.copies - book.availableCopies),
           }),
         },
         include: {

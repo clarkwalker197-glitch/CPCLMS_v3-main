@@ -139,8 +139,8 @@ export class EBookService {
       this.getViewSummaries([id]),
       prisma.eBookView.findMany({
         where: { ebookId: id },
-        orderBy: { viewedAt: 'desc' },
-        take: 20,
+        orderBy: [{ viewedAt: 'desc' }, { id: 'desc' }],
+        take: 3,
         select: {
           viewedAt: true,
           user: { select: { id: true, firstName: true, lastName: true, libraryId: true } },

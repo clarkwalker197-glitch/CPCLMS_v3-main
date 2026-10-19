@@ -59,6 +59,12 @@ router.get(
   authController.listUsers
 );
 router.get(
+  '/users/:id/profile',
+  authenticate,
+  authorize('LIBRARIAN'),
+  authController.getMemberProfile
+);
+router.get(
   '/pending-student-registrations',
   authenticate,
   authorize('LIBRARIAN'),

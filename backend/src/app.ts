@@ -237,6 +237,10 @@ void archiveRetentionService.purgeExpiredArchives().catch((error) => {
   console.error('Archive retention check failed at startup:', error);
 });
 
+void archiveRetentionService.archiveInactiveUsers().catch((error) => {
+  console.error('Inactive user archive check failed at startup:', error);
+});
+
 void notificationService.sendDueDateReminders().catch((error) => {
   console.error('Due-date reminder check failed at startup:', error);
 });
@@ -252,6 +256,12 @@ void purgeExpiredActivityLogs().catch((error) => {
 setInterval(() => {
   void archiveRetentionService.purgeExpiredArchives().catch((error) => {
     console.error('Scheduled archive retention check failed:', error);
+  });
+}, ARCHIVE_RETENTION_INTERVAL_MS);
+
+setInterval(() => {
+  void archiveRetentionService.archiveInactiveUsers().catch((error) => {
+    console.error('Scheduled inactive user archive check failed:', error);
   });
 }, ARCHIVE_RETENTION_INTERVAL_MS);
 

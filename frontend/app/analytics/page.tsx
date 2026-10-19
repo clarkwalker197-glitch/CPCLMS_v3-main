@@ -25,11 +25,10 @@ import api from "@/lib/api";
 import { getDepartmentColor } from "@/lib/department-colors";
 
 const ranges = [
-  ["7d", "Last 7 days"],
-  ["30d", "Last 30 days"],
-  ["90d", "Last 90 days"],
-  ["semester", "This semester"],
-  ["all", "All time"],
+  ["monthly", "Monthly"],
+  ["quarterly", "Quarterly"],
+  ["semester", "Semestral"],
+  ["annual", "Annual"],
 ] as const;
 
 const chartStyle = {
@@ -58,7 +57,7 @@ function Panel({ title, children, className = "" }: { title: string; children: R
 export default function AnalyticsPage() {
   const { user } = useAuth();
   const router = useRouter();
-  const [range, setRange] = useState("all");
+  const [range, setRange] = useState("monthly");
   const [isDownloading, setIsDownloading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<any>(null);
@@ -83,9 +82,9 @@ export default function AnalyticsPage() {
     setIsDownloading(true);
     setError("");
     try {
-      await api.downloadReport("monthly", "xlsx");
-    } catch {
-      setError("Unable to download the monthly report right now.");
+      await api.downloadReport("monthly", "xlsx", { range, department: departmentFilter });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to download the analytics report right now.");
     } finally {
       setIsDownloading(false);
     }
@@ -108,7 +107,7 @@ export default function AnalyticsPage() {
       try {
         const results = await Promise.all([
           api.getDashboardStats(),
-          api.get(`/analytics/monthly-trends?months=6&range=${encodeURIComponent(range)}`),
+          api.get(`/analytics/monthly-trends?months=${range === "monthly" ? 1 : range === "quarterly" ? 3 : range === "semester" ? 6 : 12}&range=${encodeURIComponent(range)}`),
           api.getDepartmentDistribution(range),
           api.getTopBorrowedBooks(range, 10),
           api.getOverdueFinesSummary(range),
@@ -274,7 +273,7 @@ export default function AnalyticsPage() {
                 </select>
                 <button type="button" onClick={handleDownloadReport} disabled={isDownloading} className="inline-flex items-center gap-2 rounded-xl border border-blue-500/40 bg-blue-500/10 px-3 py-2 text-xs font-medium text-blue-300 transition-colors hover:bg-blue-500/20 disabled:cursor-wait disabled:opacity-60">
                   <Download className="h-4 w-4" aria-hidden="true" />
-                  {isDownloading ? "Preparing report..." : "Download Monthly Report"}
+                  {isDownloading ? "Preparing report..." : `Download ${ranges.find(([value]) => value === range)?.[1] || "Analytics"} Report`}
                 </button>
                 <HeaderUserActions />
               </div>

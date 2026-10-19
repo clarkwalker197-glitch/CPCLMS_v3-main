@@ -431,6 +431,10 @@ const response = await this.request<any>('/auth/register', {
     return this.request<any[]>('/auth/pending-student-registrations');
   }
 
+  async getMemberProfile(id: string): Promise<ApiResponse<any>> {
+    return this.request<any>(`/auth/users/${encodeURIComponent(id)}/profile`);
+  }
+
   async approveStudentRegistration(id: string): Promise<ApiResponse<any>> {
     return this.request<any>(`/auth/pending-student-registrations/${encodeURIComponent(id)}/approve`, {
       method: 'POST',
@@ -591,6 +595,10 @@ async put<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
 
   async restoreArchiveItem(type: 'books' | 'ebooks' | 'users', id: string): Promise<ApiResponse<any>> {
     return this.patch(`/archive/${type}/${id}/restore`);
+  }
+
+  async permanentlyDeleteArchivedUser(id: string): Promise<ApiResponse<any>> {
+    return this.delete(`/archive/users/${encodeURIComponent(id)}`);
   }
 
   async createBook(data: {
@@ -1011,13 +1019,20 @@ async payFine(id: string, amount: number): Promise<ApiResponse<any>> {
   }
 
   // Reports
-  getReportUrl(type: string, format: 'pdf' | 'xlsx' = 'pdf'): string {
+  getReportUrl(type: string, format: 'pdf' | 'xlsx' = 'pdf', options?: { range?: string; department?: string }): string {
     const token = this.getToken();
-    return `${this.baseUrl}/reports/${type}?format=${format}&token=${token}`;
+    const query = new URLSearchParams({ format });
+    if (options?.range) query.set('range', options.range);
+    if (options?.department) query.set('department', options.department);
+    query.set('token', token || '');
+    return `${this.baseUrl}/reports/${encodeURIComponent(type)}?${query.toString()}`;
   }
 
-  async downloadReport(type: string, format: 'pdf' | 'xlsx' = 'pdf'): Promise<void> {
-    const endpoint = `/reports/${encodeURIComponent(type)}?format=${format}`;
+  async downloadReport(type: string, format: 'pdf' | 'xlsx' = 'pdf', options?: { range?: string; department?: string }): Promise<void> {
+    const query = new URLSearchParams({ format });
+    if (options?.range) query.set('range', options.range);
+    if (options?.department) query.set('department', options.department);
+    const endpoint = `/reports/${encodeURIComponent(type)}?${query.toString()}`;
     const request = (token: string | null) => fetch(`${this.baseUrl}${endpoint}`, {
       credentials: 'include',
       headers: token ? { Authorization: `Bearer ${token}` } : {},

@@ -97,6 +97,7 @@ model User {
   systemNotificationsEnabled Boolean @default(true) @map("system_notifications_enabled")
   isActive             Boolean   @default(true) @map("is_active")
   archivedAt           DateTime? @map("archived_at")
+  lastLoginAt           DateTime? @map("last_login_at")
   maxBorrowDays        Int?      @map("max_borrow_days") /// Per-user override (overrides policy)
   maxBooksAllowed      Int?      @map("max_books_allowed") /// Per-user override
   createdAt            DateTime  @default(now()) @map("created_at")

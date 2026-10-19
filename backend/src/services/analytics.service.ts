@@ -6,7 +6,7 @@ import { prisma } from '../config';
 import { DEPARTMENTS } from '../constants/departments';
 import { transactionService } from './transaction.service';
 
-type AnalyticsRange = '7d' | '30d' | '90d' | 'semester' | 'month' | 'all';
+type AnalyticsRange = '7d' | '30d' | '90d' | 'monthly' | 'quarterly' | 'semester' | 'annual' | 'all';
 
 function getRangeStart(range: string = 'all'): Date | undefined {
   const selectedRange = range as AnalyticsRange;
@@ -17,17 +17,19 @@ function getRangeStart(range: string = 'all'): Date | undefined {
   if (selectedRange === '7d') start.setDate(start.getDate() - 7);
   else if (selectedRange === '30d') start.setDate(start.getDate() - 30);
   else if (selectedRange === '90d') start.setDate(start.getDate() - 90);
+  else if (selectedRange === 'monthly') start.setDate(1);
+  else if (selectedRange === 'quarterly') start.setMonth(Math.floor(now.getMonth() / 3) * 3, 1);
   else if (selectedRange === 'semester') start.setMonth(now.getMonth() < 6 ? 0 : 6, 1);
-  else if (selectedRange === 'month') start.setDate(1);
+  else if (selectedRange === 'annual') start.setMonth(0, 1);
   else return undefined;
   start.setHours(0, 0, 0, 0);
   return start;
 }
 
 function normalizeRange(range?: string): AnalyticsRange {
-  return ['7d', '30d', '90d', 'semester', 'all'].includes(range || '')
-    ? range as AnalyticsRange
-    : 'all';
+  if (range === 'month') return 'monthly';
+  return ['7d', '30d', '90d', 'monthly', 'quarterly', 'semester', 'annual', 'all'].includes(range || '')
+    ? range as AnalyticsRange : 'all';
 }
 
 export interface DashboardStats {
@@ -319,13 +321,21 @@ export class AnalyticsService {
    * Get monthly borrow trends for charts
    */
   async getMonthlyTrends(months: number = 6, range: string = 'all') {
-    const since = new Date();
-    since.setMonth(since.getMonth() - months);
-    const rangeStart = getRangeStart(normalizeRange(range));
-    if (rangeStart && rangeStart > since) since.setTime(rangeStart.getTime());
+    const selectedRange = normalizeRange(range);
+    const rangeStart = getRangeStart(selectedRange);
+    const lookbackStart = new Date();
+    lookbackStart.setMonth(lookbackStart.getMonth() - months);
+    const since = ['monthly', 'quarterly', 'semester', 'annual'].includes(selectedRange)
+      ? rangeStart || lookbackStart
+      : rangeStart && rangeStart > lookbackStart ? rangeStart : lookbackStart;
 
     const transactions = await prisma.borrowTransaction.findMany({
-      where: { borrowDate: { gte: since } },
+      where: {
+        borrowDate: {
+          gte: since,
+          lte: new Date(),
+        },
+      },
       select: { borrowDate: true, status: true },
       orderBy: { borrowDate: 'asc' },
     });
@@ -351,8 +361,7 @@ export class AnalyticsService {
    * Get the most borrowed Dewey categories.
    */
   async getMostBorrowedCategories(range: string = 'all', requestedLimit: number = 10) {
-    const validRanges = new Set(['all', '30d', '90d', 'semester', 'month']);
-    const selectedRange = validRanges.has(range) ? range : 'all';
+    const selectedRange = normalizeRange(range);
     const limit = Math.min(50, Math.max(1, Number.isFinite(requestedLimit) ? Math.floor(requestedLimit) : 10));
     const mainCategories: Record<string, { name: string; slug: string }> = {
       '000': { name: 'Generalities', slug: 'dewey-000' },

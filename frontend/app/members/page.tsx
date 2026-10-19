@@ -23,6 +23,10 @@ import {
   Check,
   X,
   Clock3,
+  Eye,
+  BookOpen,
+  CalendarDays,
+  DollarSign,
 } from "lucide-react";
 
 const PAGE_SIZE = 10;
@@ -88,6 +92,10 @@ export default function MembersPage() {
   const [memberForm, setMemberForm] = useState<AddMemberFormState>(emptyAddMemberForm);
   const [submittingMember, setSubmittingMember] = useState(false);
   const [memberFormError, setMemberFormError] = useState("");
+  const [profileMember, setProfileMember] = useState<any>(null);
+  const [memberProfile, setMemberProfile] = useState<any>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileError, setProfileError] = useState("");
 
   const debouncedSearch = useDebounce(search, 300);
   const debouncedStatus = useDebounce(statusFilter, 300);
@@ -215,6 +223,31 @@ export default function MembersPage() {
     } finally {
       setPendingActionId(null);
     }
+  };
+
+  const openMemberProfile = async (member: any) => {
+    setProfileMember(member);
+    setMemberProfile(null);
+    setProfileError("");
+    setProfileLoading(true);
+    try {
+      const response = await api.getMemberProfile(member.id);
+      if (!response.success || !response.data) {
+        setProfileError(response.error || "Failed to load this member's profile.");
+        return;
+      }
+      setMemberProfile(response.data);
+    } catch {
+      setProfileError("Failed to load this member's profile. Please try again.");
+    } finally {
+      setProfileLoading(false);
+    }
+  };
+
+  const closeMemberProfile = () => {
+    setProfileMember(null);
+    setMemberProfile(null);
+    setProfileError("");
   };
 
   const handleAddMemberChange = (
@@ -557,6 +590,146 @@ export default function MembersPage() {
             </div>
           )}
 
+          {/* Member profile side panel */}
+          <BookFormSidePanel
+            open={profileMember !== null}
+            onClose={closeMemberProfile}
+            ariaLabel="Member profile"
+          >
+            <DialogHeader className="pr-10">
+              <DialogTitle className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-blue-400" />
+                Member Profile
+              </DialogTitle>
+              <DialogDescription>
+                Borrowing activity and outstanding fines.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain pr-1">
+              {profileLoading && (
+                <div className="space-y-3" role="status" aria-label="Loading member profile">
+                  <div className="h-24 animate-pulse rounded-2xl bg-zinc-900" />
+                  <div className="h-28 animate-pulse rounded-2xl bg-zinc-900" />
+                  <div className="h-48 animate-pulse rounded-2xl bg-zinc-900" />
+                </div>
+              )}
+
+              {!profileLoading && profileError && (
+                <div role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
+                  {profileError}
+                </div>
+              )}
+
+              {!profileLoading && memberProfile && (
+                <>
+                  <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4">
+                    <div className="flex items-center gap-3">
+                      <UserAvatar
+                        firstName={memberProfile.member.firstName}
+                        lastName={memberProfile.member.lastName}
+                        avatar={memberProfile.member.avatar}
+                        className="h-12 w-12"
+                      />
+                      <div className="min-w-0">
+                        <h3 className="truncate font-semibold text-white">
+                          {getFullName(memberProfile.member)}
+                        </h3>
+                        <p className="mt-0.5 text-xs text-zinc-500">
+                          {memberProfile.member.libraryId} · {memberProfile.member.role}
+                        </p>
+                      </div>
+                    </div>
+                    <dl className="mt-4 space-y-3 border-t border-zinc-800 pt-4 text-sm">
+                      <div className="flex items-start justify-between gap-4">
+                        <dt className="text-zinc-500">Department</dt>
+                        <dd className="text-right text-zinc-200">{memberProfile.member.department || "—"}</dd>
+                      </div>
+                      {memberProfile.member.role === "STUDENT" && (
+                        <div className="flex items-start justify-between gap-4">
+                          <dt className="text-zinc-500">Year &amp; Section</dt>
+                          <dd className="text-right text-zinc-200">{memberProfile.member.yearSection || "—"}</dd>
+                        </div>
+                      )}
+                    </dl>
+                  </section>
+
+                  <section className="grid grid-cols-2 gap-3">
+                    <div className="rounded-2xl border border-blue-500/20 bg-blue-500/10 p-4">
+                      <div className="flex items-center gap-2 text-blue-300">
+                        <BookOpen className="h-4 w-4" />
+                        <span className="text-xs font-medium">Books borrowed</span>
+                      </div>
+                      <p className="mt-2 text-2xl font-bold text-white">{memberProfile.totalBorrowed}</p>
+                    </div>
+                    <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4">
+                      <div className="flex items-center gap-2 text-amber-300">
+                        <DollarSign className="h-4 w-4" />
+                        <span className="text-xs font-medium">Outstanding fine</span>
+                      </div>
+                      <p className="mt-2 text-xl font-bold text-white">
+                        ₱{Number(memberProfile.fines.total || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                      </p>
+                    </div>
+                  </section>
+
+                  <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4">
+                    <div className="mb-3 flex items-center gap-2">
+                      <DollarSign className="h-4 w-4 text-amber-400" />
+                      <h3 className="text-sm font-semibold text-white">Fine breakdown</h3>
+                    </div>
+                    <dl className="space-y-2 text-sm">
+                      <div className="flex justify-between gap-3">
+                        <dt className="text-zinc-400">Overdue fines</dt>
+                        <dd className="text-zinc-200">₱{Number(memberProfile.fines.overdue || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</dd>
+                      </div>
+                      <div className="flex justify-between gap-3">
+                        <dt className="text-zinc-400">Other penalties</dt>
+                        <dd className="text-zinc-200">₱{Number(memberProfile.fines.otherPenalties || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</dd>
+                      </div>
+                    </dl>
+                  </section>
+
+                  <section>
+                    <div className="mb-3 flex items-center gap-2">
+                      <CalendarDays className="h-4 w-4 text-blue-400" />
+                      <h3 className="text-sm font-semibold text-white">Recently borrowed</h3>
+                    </div>
+                    {memberProfile.recentTransactions.length === 0 ? (
+                      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-6 text-center text-sm text-zinc-500">
+                        No borrowing history yet.
+                      </div>
+                    ) : (
+                      <ul className="space-y-2">
+                        {memberProfile.recentTransactions.map((transaction: any) => (
+                          <li key={transaction.id} className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
+                            <p className="line-clamp-2 text-sm font-medium text-zinc-100">
+                              {transaction.book?.title || "Book no longer available"}
+                            </p>
+                            <div className="mt-2 flex items-center justify-between gap-2">
+                              <time className="text-xs text-zinc-500">
+                                {formatDate(transaction.borrowDate)}
+                              </time>
+                              <span className={`rounded-full px-2 py-1 text-[11px] font-medium ${
+                                transaction.status === "OVERDUE" || transaction.status === "MISSING"
+                                  ? "bg-red-500/10 text-red-300"
+                                  : transaction.status === "ACTIVE"
+                                    ? "bg-blue-500/10 text-blue-300"
+                                    : "bg-zinc-800 text-zinc-300"
+                              }`}>
+                                {String(transaction.status).toLowerCase().replace(/_/g, " ")}
+                              </span>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </section>
+                </>
+              )}
+            </div>
+          </BookFormSidePanel>
+
           {/* Table */}
           <BookFormSidePanel
             open={showAddMemberModal}
@@ -877,7 +1050,13 @@ export default function MembersPage() {
                           <div className="flex items-center gap-3">
                             <UserAvatar firstName={m.firstName} lastName={m.lastName} avatar={m.avatar} />
                             <div className="min-w-0">
-                              <p className="text-zinc-100 font-medium truncate">{getFullName(m)}</p>
+                              <button
+                                type="button"
+                                onClick={() => void openMemberProfile(m)}
+                                className="truncate text-left font-medium text-zinc-100 transition-colors hover:text-blue-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                              >
+                                {getFullName(m)}
+                              </button>
                               <p className="text-xs text-zinc-500">{m.libraryId || "—"}</p>
                             </div>
                           </div>
@@ -907,6 +1086,14 @@ export default function MembersPage() {
                         <td className="px-6 py-4 text-right">
                           <div className="inline-flex items-center gap-1">
                             <button
+                              onClick={() => void openMemberProfile(m)}
+                              className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-blue-500/10 hover:text-blue-300"
+                              aria-label={`View profile for ${getFullName(m)}`}
+                              title="View Profile"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </button>
+                            <button
                               onClick={() => handleDelete(m)}
                               disabled={deletingId !== null}
                               className="p-2 rounded-lg text-zinc-400 hover:bg-red-500/10 hover:text-red-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -927,7 +1114,7 @@ export default function MembersPage() {
                 <article key={m.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-lg shadow-black/10">
                   <div className="flex items-center gap-3 border-b border-zinc-800/80 pb-3">
                     <UserAvatar firstName={m.firstName} lastName={m.lastName} avatar={m.avatar} className="h-10 w-10" />
-                    <div className="min-w-0"><p className="truncate font-semibold text-zinc-100">{getFullName(m)}</p><p className="text-xs text-zinc-500">{m.libraryId || "—"}</p></div>
+                    <div className="min-w-0"><button type="button" onClick={() => void openMemberProfile(m)} className="truncate text-left font-semibold text-zinc-100 hover:text-blue-300">{getFullName(m)}</button><p className="text-xs text-zinc-500">{m.libraryId || "—"}</p></div>
                   </div>
                   <div className="grid grid-cols-2 gap-3 py-4 text-sm">
                     <div><p className="text-xs text-zinc-500">Email</p><p className="mt-1 break-words text-zinc-300">{m.email || "—"}</p></div>
@@ -938,6 +1125,7 @@ export default function MembersPage() {
                   <div className="flex items-center justify-between gap-3 border-t border-zinc-800/80 pt-3">
                     <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${m.isActive ? "bg-emerald-500/15 text-emerald-400 ring-emerald-500/30" : "bg-red-500/15 text-red-400 ring-red-500/30"}`}>{m.isActive ? "Active" : "Inactive"}</span>
                     <div className="flex items-center gap-2">
+                      <button onClick={() => void openMemberProfile(m)} className="rounded-lg p-2 text-zinc-400 hover:bg-blue-500/10 hover:text-blue-300" aria-label={`View profile for ${getFullName(m)}`}><Eye className="h-4 w-4" /></button>
                       <button onClick={() => handleDelete(m)} disabled={deletingId !== null} className="rounded-lg p-2 text-zinc-400 hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40" aria-label="Delete"><Trash2 className={`h-4 w-4 ${deletingId === m.id ? "animate-spin" : ""}`} /></button>
                     </div>
                   </div>

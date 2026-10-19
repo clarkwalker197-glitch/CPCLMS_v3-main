@@ -201,6 +201,11 @@ export const listUsers = asyncHandler(async (req: AuthenticatedRequest, res: Res
   sendSuccess(res, result.users, undefined, 200, result.meta);
 });
 
+export const getMemberProfile = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const profile = await authService.getMemberProfile(req.params.id);
+  sendSuccess(res, profile);
+});
+
 export const listPendingStudentRegistrations = asyncHandler(async (_req: AuthenticatedRequest, res: Response) => {
   const registrations = await authService.listPendingStudentRegistrations();
   sendSuccess(res, registrations);

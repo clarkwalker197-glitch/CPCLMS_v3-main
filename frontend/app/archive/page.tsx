@@ -6,7 +6,7 @@ import api from "@/lib/api";
 import Sidebar from "@/components/Sidebar";
 import HeaderUserActions from "@/components/HeaderUserActions";
 import { useConfirmDialog } from "@/components/ui/ConfirmModal";
-import { Archive as ArchiveIcon, Users, RotateCcw, Search } from "lucide-react";
+import { Archive as ArchiveIcon, Users, RotateCcw, Search, Trash2 } from "lucide-react";
 
 const tabs = [
   { key: "users", label: "Users", icon: Users },
@@ -35,6 +35,7 @@ export default function ArchivePage() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [restoringId, setRestoringId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -88,6 +89,35 @@ export default function ArchivePage() {
     });
   };
 
+  const permanentlyDelete = async (item: any) => {
+    await confirm({
+      title: 'Permanently delete this user?',
+      description: `This will permanently remove ${item.firstName} ${item.lastName}'s account. Borrowing and activity history will be retained without linking it to the account. This cannot be undone.`,
+      confirmLabel: 'Delete permanently',
+      variant: 'danger',
+      onConfirm: async () => {
+        setDeletingId(item.id);
+        setError("");
+        try {
+          const response = await api.permanentlyDeleteArchivedUser(item.id);
+          if (!response.success) {
+            const message = response.error || 'Failed to permanently delete user';
+            setError(message);
+            throw new Error(message);
+          }
+          setArchive((current) => ({
+            ...current,
+            users: current.users.filter((userItem) => userItem.id !== item.id),
+          }));
+          setMessage("User permanently deleted");
+          setTimeout(() => setMessage(""), 3500);
+        } finally {
+          setDeletingId(null);
+        }
+      },
+    });
+  };
+
   const items = archive.users.filter((item) =>
     `${item.firstName} ${item.lastName} ${item.email} ${item.libraryId}`.toLowerCase().includes(search.toLowerCase())
   );
@@ -106,7 +136,7 @@ export default function ArchivePage() {
               <div className="flex items-center gap-3"><ArchiveIcon className="w-7 h-7 text-blue-400" /><h1 className="text-2xl font-bold text-white">Archive</h1></div>
               <HeaderUserActions />
             </div>
-            <p className="text-sm text-zinc-400 mt-1">Restore user accounts removed from the active list.</p>
+            <p className="text-sm text-zinc-400 mt-1">Inactive student and faculty accounts are archived after 90 days. Restore them or permanently delete them before automatic cleanup.</p>
           </div>
           {message && <div className="p-4 mb-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-sm text-emerald-400">{message}</div>}
           {error && (
@@ -133,7 +163,10 @@ export default function ArchivePage() {
             return <div key={item.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5"><div><p className="font-medium text-zinc-100">{`${item.firstName} ${item.lastName}`}</p><p className="text-sm text-zinc-500 mt-1">{`${item.email} · ${item.libraryId}`}</p><div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-zinc-400">
               <span>Archived {archivedDate.toLocaleDateString()}</span>
               {countdown !== null && <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-amber-300">Auto-delete in {countdown} day{countdown === 1 ? "" : "s"}</span>}
-            </div></div><button onClick={() => restore(activeTab, item.id)} disabled={restoringId === item.id} className="inline-flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg disabled:opacity-40"><RotateCcw className="w-4 h-4" />{restoringId === item.id ? "Restoring..." : "Restore"}</button></div>;
+            </div></div><div className="flex flex-col gap-2 sm:flex-row">
+              <button onClick={() => restore(activeTab, item.id)} disabled={restoringId === item.id || deletingId === item.id} className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-40"><RotateCcw className="h-4 w-4" />{restoringId === item.id ? "Restoring..." : "Restore"}</button>
+              <button onClick={() => void permanentlyDelete(item)} disabled={deletingId === item.id || restoringId === item.id} className="inline-flex items-center justify-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-300 transition hover:bg-red-500/20 disabled:cursor-wait disabled:opacity-40"><Trash2 className="h-4 w-4" />{deletingId === item.id ? "Deleting..." : "Delete permanently"}</button>
+            </div></div>;
           })}</div></div>}
         </div>
       </main>

@@ -101,7 +101,7 @@ export default function BooksPage() {
   const [isDesktop, setIsDesktop] = useState(false);
 
   const isLibrarian = user?.role === "LIBRARIAN";
-  const view = viewPreference ?? (isLibrarian ? "list" : "grid");
+  const view = viewPreference ?? "grid";
 
   // Debounced search/filter values (300ms) to avoid per-keystroke API spam
   const debouncedSearch = useDebounce(search, 300);
@@ -843,15 +843,16 @@ export default function BooksPage() {
           {/* LIST VIEW */}
           {!loading && view === "list" && visibleBooks.length > 0 && (
             <>
-              <div className="hidden md:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
-                <table className="w-full text-sm">
+              <div className="hidden overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/70 shadow-xl shadow-black/10 md:block">
+                <div className="overflow-x-auto">
+                <table className="w-full min-w-[800px] table-fixed text-sm">
                   <thead>
-                    <tr className="bg-zinc-900 text-left text-xs uppercase tracking-wide text-zinc-500">
-                      <th className="px-6 py-3 font-medium"><SortHeader field="title" sort={sort} order={sortOrder} onSort={(field) => changeSort(field, nextSortOrder(sort, sortOrder, field))}>Book</SortHeader></th>
-                      <th className="px-6 py-3 font-medium hidden md:table-cell">Genre</th>
-                      <th className="px-6 py-3 font-medium hidden sm:table-cell">Year</th>
-                      <th className="px-6 py-3 font-medium">Status</th>
-                      <th className="px-6 py-3 font-medium text-right">Actions</th>
+                    <tr className="bg-zinc-900/95 text-left text-[11px] uppercase tracking-wider text-zinc-400">
+                      <th className="w-[370px] px-6 py-3 font-medium"><SortHeader field="title" sort={sort} order={sortOrder} onSort={(field) => changeSort(field, nextSortOrder(sort, sortOrder, field))}>Book</SortHeader></th>
+                      <th className="w-[170px] px-6 py-3 font-medium">Genre</th>
+                      <th className="w-[100px] px-6 py-3 font-medium">Year</th>
+                      <th className="w-[190px] px-6 py-3 font-medium">Status</th>
+                      <th className="w-[130px] px-6 py-3 text-right font-medium">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -861,7 +862,7 @@ export default function BooksPage() {
                         tabIndex={0}
                         onClick={() => openBookDetails(book)}
                         onKeyDown={(event) => openDetailsFromCard(event, book)}
-                        className="cursor-pointer border-t border-zinc-800/60 hover:bg-zinc-800/40 transition-colors focus:outline-none focus:bg-zinc-800/40"
+                        className="cursor-pointer border-t border-zinc-800/70 transition-colors even:bg-zinc-950/20 hover:bg-blue-500/[0.04] focus:outline-none focus:bg-zinc-800/40"
                       >
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
@@ -869,15 +870,15 @@ export default function BooksPage() {
                               <MediaImage src={book.coverImage} alt={book.title} className="w-full h-full object-cover" fallback={<div className="flex h-full w-full items-center justify-center"><ImageIcon className="h-5 w-5 text-zinc-600" /></div>} />
                             </div>
                             <div className="min-w-0">
-                              <div className="flex items-center gap-2"><p className="text-zinc-100 font-medium truncate">{book.title}</p><span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${typeBadge(book)}`}>{typeLabel(book)}</span></div>
-                              <p className="text-xs text-zinc-500">{book.author}</p>
+                              <div className="flex min-w-0 items-center gap-2"><p className="line-clamp-2 break-words font-medium leading-5 text-zinc-100">{book.title}</p><span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${typeBadge(book)}`}>{typeLabel(book)}</span></div>
+                              <p className="mt-1 truncate text-xs text-zinc-500">{book.author}</p>
                             </div>
                           </div>
                         </td>
-                        <td className="px-6 py-4 text-zinc-300 hidden md:table-cell">
-                          {book.category?.name || "General"}
+                        <td className="px-6 py-4 text-zinc-300">
+                          <span className="block truncate" title={book.category?.name || "General"}>{book.category?.name || "General"}</span>
                         </td>
-                        <td className="px-6 py-4 text-zinc-400 hidden sm:table-cell">
+                        <td className="px-6 py-4 text-zinc-400">
                           {book.publishYear || "—"}
                         </td>
                         <td className="px-6 py-4">
@@ -930,6 +931,7 @@ export default function BooksPage() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               </div>
               <ResponsiveTable mobile={
                 paginatedBooks.map((book: any) => (

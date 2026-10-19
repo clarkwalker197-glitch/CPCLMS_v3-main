@@ -8,5 +8,6 @@ router.get('/', archiveController.listArchive);
 router.patch('/books/:id/restore', archiveController.restoreBook);
 router.patch('/ebooks/:id/restore', archiveController.restoreEBook);
 router.patch('/users/:id/restore', archiveController.restoreUser);
+router.delete('/users/:id', archiveController.permanentlyDeleteUser);
 
 export default router;

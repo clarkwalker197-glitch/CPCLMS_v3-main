@@ -1,11 +1,73 @@
-import { Prisma } from '@prisma/client';
 import { prisma } from '../config';
 import { tryDeleteUnreferencedCoverImage } from './cover-image-storage.service';
 import { tryDeleteUnreferencedEBookFile } from './ebook-file-storage.service';
 
 export const ARCHIVE_RETENTION_DAYS = 15;
+export const INACTIVE_USER_ARCHIVE_DAYS = 90;
 
 export class ArchiveRetentionService {
+  async archiveInactiveUsers(now = new Date()) {
+    const cutoff = new Date(now.getTime() - INACTIVE_USER_ARCHIVE_DAYS * 24 * 60 * 60 * 1000);
+    const archivedAt = now;
+    const archivedCount = await prisma.$transaction(async (tx) => {
+      const inactiveUsers = await tx.user.findMany({
+        where: {
+          role: { in: ['STUDENT', 'FACULTY'] },
+          isActive: true,
+          archivedAt: null,
+          OR: [
+            { lastLoginAt: { lte: cutoff } },
+            { lastLoginAt: null, createdAt: { lte: cutoff } },
+          ],
+        },
+        select: { id: true },
+      });
+      if (inactiveUsers.length === 0) return 0;
+
+      const result = await tx.user.updateMany({
+        where: {
+          id: { in: inactiveUsers.map(({ id }) => id) },
+          role: { in: ['STUDENT', 'FACULTY'] },
+          isActive: true,
+          archivedAt: null,
+          OR: [
+            { lastLoginAt: { lte: cutoff } },
+            { lastLoginAt: null, createdAt: { lte: cutoff } },
+          ],
+        },
+        data: { isActive: false, archivedAt },
+      });
+      if (result.count === 0) return 0;
+
+      const archivedUsers = await tx.user.findMany({
+        where: {
+          id: { in: inactiveUsers.map(({ id }) => id) },
+          isActive: false,
+          archivedAt,
+        },
+        select: { id: true, firstName: true, lastName: true, libraryId: true },
+      });
+      const userIds = archivedUsers.map(({ id }) => id);
+      await tx.refreshToken.updateMany({
+        where: { userId: { in: userIds }, revokedAt: null },
+        data: { revokedAt: now },
+      });
+      await tx.activityLog.createMany({
+        data: archivedUsers.map((user) => ({
+          actorName: 'System',
+          action: 'AUTO_ARCHIVE_INACTIVE_USER',
+          description: `Automatically archived inactive account: ${user.firstName} ${user.lastName}`,
+          entity: 'User',
+          entityId: user.id,
+          details: { libraryId: user.libraryId, inactivityDays: INACTIVE_USER_ARCHIVE_DAYS },
+        })),
+      });
+      return archivedUsers.length;
+    });
+
+    return { archived: archivedCount };
+  }
+
   async purgeExpiredArchives() {
     const cutoff = new Date();
     cutoff.setTime(cutoff.getTime() - ARCHIVE_RETENTION_DAYS * 24 * 60 * 60 * 1000);

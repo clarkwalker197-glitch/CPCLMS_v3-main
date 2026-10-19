@@ -16,7 +16,7 @@ export class ReportService {
   /**
    * Generate a report based on type and format
    */
-  async generateReport(type: ReportType, format: ExportFormat): Promise<Buffer> {
+  async generateReport(type: ReportType, format: ExportFormat, range = 'monthly', department?: string): Promise<Buffer> {
     switch (type) {
       case 'books':
         return format === 'pdf' ? this.generateBooksPDF() : this.generateBooksExcel();
@@ -30,7 +30,7 @@ export class ReportService {
         return format === 'pdf' ? this.generateReservationsPDF() : this.generateReservationsExcel();
       case 'monthly':
         if (format !== 'xlsx') throw new Error('Monthly reports are available as Excel workbooks only.');
-        return this.generateMonthlyExcel();
+        return this.generateMonthlyExcel(range, department);
       default:
         throw new Error(`Unknown report type: ${type}`);
     }
@@ -447,13 +447,14 @@ export class ReportService {
     return this.createExcel('Active Reservations', headers, rows, [10, 25, 15, 30, 40, 15, 14, 14]);
   }
 
-  private addMonthlyReportSheet(
+  private addReportSheet(
     workbook: ExcelJS.Workbook,
     sheetName: string,
     title: string,
     headers: string[],
     rows: (string | number | boolean | Date)[][],
-    columnWidths: number[]
+    columnWidths: number[],
+    periodLabel: string
   ): ExcelJS.Worksheet {
     const sheet = workbook.addWorksheet(sheetName);
     sheet.addRow([title]);
@@ -464,7 +465,7 @@ export class ReportService {
       alignment: { vertical: 'middle' },
     };
     sheet.getRow(1).height = 28;
-    sheet.addRow([`Reporting month: ${new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })}`]);
+    sheet.addRow([`Reporting period: ${periodLabel}`]);
     sheet.mergeCells(2, 1, 2, headers.length);
     sheet.getCell(2, 1).font = { italic: true, color: { argb: 'FF52525B' } };
     sheet.addRow([]);
@@ -500,85 +501,104 @@ export class ReportService {
     return sheet;
   }
 
-  private async generateMonthlyExcel(): Promise<Buffer> {
-    const [dashboard, trends, categories, departments, topBooks, fines, returns, requests, inventory, departmentBooks] = await Promise.all([
+  private async generateMonthlyExcel(range: string, department?: string): Promise<Buffer> {
+    const now = new Date();
+    const periodNames: Record<string, string> = {
+      monthly: `Monthly (${now.toLocaleString('en-US', { month: 'long', year: 'numeric' })})`,
+      quarterly: `Quarterly (Q${Math.floor(now.getMonth() / 3) + 1} ${now.getFullYear()})`,
+      semester: `Semestral (Semester ${now.getMonth() < 6 ? 1 : 2}, ${now.getFullYear()})`,
+      annual: `Annual (${now.getFullYear()})`,
+    };
+    const periodLabel = periodNames[range] || periodNames.monthly;
+    const departmentLabel = department || 'All departments';
+    const reportLabel = `${periodLabel}; ranking department: ${departmentLabel}`;
+    const trendMonths = range === 'monthly' ? 1 : range === 'quarterly' ? 3 : range === 'semester' ? 6 : 12;
+    const [dashboard, trends, departments, topBooks, departmentBooks, topEBooks, fines, returns, requests, inventory] = await Promise.all([
       analyticsService.getDashboardStats(),
-      analyticsService.getMonthlyTrends(12, 'all'),
-      analyticsService.getMostBorrowedCategories('month', 10),
-      analyticsService.getDepartmentDistribution('month'),
-      analyticsService.getTopBorrowedBooks('month', 10),
-      analyticsService.getOverdueFinesSummary('month'),
-      analyticsService.getReturnPerformance('month'),
-      analyticsService.getRequestPipelineStats('month'),
+      analyticsService.getMonthlyTrends(trendMonths, range),
+      analyticsService.getDepartmentDistribution(range),
+      department
+        ? Promise.resolve([])
+        : analyticsService.getTopBorrowedBooks(range, 10),
+      department
+        ? analyticsService.getMostBorrowedByDepartment(range, department, 10)
+        : Promise.resolve([]),
+      analyticsService.getTopViewedEBooks(range, department, 10),
+      analyticsService.getOverdueFinesSummary(range),
+      analyticsService.getReturnPerformance(range),
+      analyticsService.getRequestPipelineStats(range),
       analyticsService.getInventoryHealth(),
-      analyticsService.getMostBorrowedByDepartment('month', undefined, 10),
     ]);
     const overview = dashboard.overview;
     const overdueRate = overview.activeBorrows ? overview.overdueBooks / overview.activeBorrows : 0;
+    const selectedDepartmentBooks = departmentBooks.find((group) => group.department === department)?.topBooks || [];
+    const rankedBooks = department ? selectedDepartmentBooks : topBooks;
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'CPC Library System';
     workbook.created = new Date();
+    const addSheet = (
+      sheetName: string,
+      title: string,
+      headers: string[],
+      rows: (string | number | boolean | Date)[][],
+      columnWidths: number[],
+    ) => this.addReportSheet(workbook, sheetName, title, headers, rows, columnWidths, reportLabel);
 
-    this.addMonthlyReportSheet(workbook, 'Active Borrows', 'Active Borrows', ['Metric', 'Value'], [
-      ['Active borrows at report generation', overview.activeBorrows],
-    ], [38, 18]);
-    this.addMonthlyReportSheet(workbook, 'Overdue Books', 'Overdue Books', ['Metric', 'Value'], [
-      ['Overdue books at report generation', overview.overdueBooks],
-    ], [38, 18]);
-    const overdueRateSheet = this.addMonthlyReportSheet(workbook, 'Overdue Rate', 'Overdue Rate', ['Metric', 'Value'], [
-      ['Overdue books as a share of active borrows', overdueRate],
-    ], [44, 18]);
-    overdueRateSheet.getCell(5, 2).numFmt = '0.0%';
+    const summarySheet = addSheet('KPI Summary', 'Library Performance Summary', ['Metric', 'Value'], [
+      ['Active borrows', overview.activeBorrows],
+      ['Overdue books', overview.overdueBooks],
+      ['Overdue rate', overdueRate],
+      ['Unpaid fines', Number(fines.unpaid || 0)],
+      ['Pending requests', requests.pending || 0],
+      ['On-time return rate', returns.onTimeRate / 100],
+    ], [38, 22]);
+    summarySheet.getCell(7, 2).numFmt = '0.0%';
+    summarySheet.getCell(8, 2).numFmt = '₱#,##0.00';
+    summarySheet.getCell(10, 2).numFmt = '0.0%';
 
-    const unpaidFinesSheet = this.addMonthlyReportSheet(workbook, 'Unpaid Fines', 'Unpaid Fines', ['Metric', 'Amount (PHP)'], [
-      ['Unpaid fines for the reporting month', Number(fines.unpaid || 0)],
-    ], [38, 20]);
-    unpaidFinesSheet.getColumn(2).numFmt = '₱#,##0.00';
-
-    this.addMonthlyReportSheet(workbook, 'Pending Requests', 'Pending Requests', ['Metric', 'Value'], [
-      ['Pending requests created this month', requests.pending || 0],
-    ], [38, 18]);
-    const onTimeSheet = this.addMonthlyReportSheet(workbook, 'On-time Return Rate', 'On-time Return Rate', ['Metric', 'Value'], [
-      ['On-time returns this month', returns.onTimeRate / 100],
-      ['Returns evaluated', returns.totalReturned],
-      ['Returned on time', returns.onTime],
-      ['Returned late', returns.late],
-    ], [32, 18]);
-    onTimeSheet.getCell(5, 2).numFmt = '0.0%';
-
-    this.addMonthlyReportSheet(workbook, 'Monthly Trends', 'Monthly Borrow, Return & Overdue Trends', ['Month', 'Borrows', 'Returns', 'Overdue'], trends.map((item) => [
+    addSheet('Monthly Borrow Activity', 'Monthly Borrow Activity', ['Month', 'Books Borrowed', 'Returns', 'Overdue'], trends.map((item) => [
       item.month, item.borrows, item.returns, item.overdues,
-    ]), [18, 14, 14, 14]);
-    this.addMonthlyReportSheet(workbook, 'Department Compare', 'Department Borrowing Comparison', ['Department Code', 'Department', 'Borrows'], departments.map((item) => [
+    ]), [18, 18, 14, 14]);
+    addSheet('Department Comparison', 'Department Borrowing Comparison', ['Department Code', 'Department', 'Borrows'], departments.map((item) => [
       item.code, item.name, item.value,
     ]), [20, 36, 14]);
-    this.addMonthlyReportSheet(workbook, 'Top 10 Books', 'Top 10 Most Borrowed Books', ['Title', 'Author', 'Borrows'], topBooks.map((book) => [
-      book.title, book.author, book.borrowCount,
-    ]), [42, 30, 14]);
-    this.addMonthlyReportSheet(workbook, 'Borrowed Categories', 'Most Borrowed Categories', ['Category', 'Category Code', 'Borrows'], categories.data.map((item) => [
-      item.name, item.categoryCode, item.borrowCount,
-    ]), [34, 18, 14]);
-    this.addMonthlyReportSheet(workbook, 'Books by Department', 'Most Borrowed Books by Department', ['Department', 'Book Title', 'Author', 'Category', 'Borrows'], departmentBooks.flatMap((group) => group.topBooks.map((book) => [
-      group.department, book.title, book.author, book.category || '', book.borrowCount,
-    ])), [24, 42, 30, 24, 14]);
-    this.addMonthlyReportSheet(workbook, 'Request Pipeline', 'Request Pipeline', ['Metric', 'Value'], [
+    addSheet('Top 10 Books', `Top 10 Most Borrowed Books — ${departmentLabel}`, ['Rank', 'Title', 'Author', 'Borrows'], rankedBooks.map((book, index) => [
+      index + 1, book.title, book.author, book.borrowCount,
+    ]), [10, 42, 30, 14]);
+    addSheet('Top 10 E-Books', `Top 10 Most Viewed E-Books — ${departmentLabel}`, ['Rank', 'E-Book Title', 'Author', 'Views'], topEBooks.map((ebook, index) => [
+      index + 1, ebook.title, ebook.author || 'Unknown author', ebook.viewCount,
+    ]), [10, 42, 30, 14]);
+    const requestSheet = addSheet('Request Pipeline', 'Request Pipeline', ['Metric', 'Value'], [
       ['Pending', requests.pending],
       ['Approved', requests.approved],
       ['Rejected', requests.rejected],
       ['Approval rate', requests.approvalRate / 100],
       ['Average processing time (hours)', requests.averageApprovalHours],
-    ], [34, 20]).getCell(8, 2).numFmt = '0.0%';
-    this.addMonthlyReportSheet(workbook, 'Inventory Health', 'Inventory Health', ['Metric', 'Value'], [
+    ], [38, 22]);
+    requestSheet.getCell(8, 2).numFmt = '0.0%';
+    const onTimeSheet = addSheet('Return Performance', 'On-time Return Rate', ['Metric', 'Value'], [
+      ['On-time return rate', returns.onTimeRate / 100],
+      ['Returns evaluated', returns.totalReturned],
+      ['Returned on time', returns.onTime],
+      ['Returned late', returns.late],
+    ], [32, 22]);
+    onTimeSheet.getCell(5, 2).numFmt = '0.0%';
+    addSheet('Inventory Health', 'Inventory Health', ['Metric', 'Value'], [
       ['Low-stock books', inventory.lowStockCount],
       ['Unavailable books', inventory.unavailableCount],
       ['Never borrowed books', inventory.neverBorrowedCount],
     ], [28, 18]);
-    const fineDispositionSheet = this.addMonthlyReportSheet(workbook, 'Fine Disposition', 'Fine Disposition', ['Disposition', 'Amount (PHP)'], [
+    const fineDispositionSheet = addSheet('Fine Distribution', 'Fine Distribution', ['Disposition', 'Amount (PHP)'], [
       ['Unpaid', Number(fines.unpaid || 0)],
       ['Paid', Number(fines.paid || 0)],
       ['Total', Number(fines.total || 0)],
     ], [24, 20]);
     fineDispositionSheet.getColumn(2).numFmt = '₱#,##0.00';
+    const fineTrendsSheet = addSheet('Fines by Month', 'Fine Distribution by Month', ['Month', 'Unpaid (PHP)', 'Paid (PHP)'], fines.monthly.map((item) => [
+      item.month, Number(item.unpaid || 0), Number(item.paid || 0),
+    ]), [18, 20, 20]);
+    fineTrendsSheet.getColumn(2).numFmt = '₱#,##0.00';
+    fineTrendsSheet.getColumn(3).numFmt = '₱#,##0.00';
 
     return Buffer.from(await workbook.xlsx.writeBuffer());
   }

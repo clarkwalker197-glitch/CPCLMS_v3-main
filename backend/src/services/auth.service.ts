@@ -283,6 +283,14 @@ export class AuthService {
       throw new UnauthorizedError('Invalid ID Number or password');
     }
 
+    const loginRecorded = await prisma.user.updateMany({
+      where: { id: user.id, isActive: true, archivedAt: null },
+      data: { lastLoginAt: new Date() },
+    });
+    if (loginRecorded.count !== 1) {
+      throw new UnauthorizedError('Your account has been archived. Please contact the library.');
+    }
+
     // Generate token pair
     const accessToken = this.generateAccessToken(user.id, user.libraryId, user.role);
     const refreshToken = await this.generateRefreshToken(
@@ -880,6 +888,80 @@ export class AuthService {
     };
   }
 
+  async getMemberProfile(userId: string) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        libraryId: true,
+        firstName: true,
+        lastName: true,
+        suffix: true,
+        email: true,
+        role: true,
+        department: true,
+        yearSection: true,
+        phone: true,
+        avatar: true,
+        createdAt: true,
+      },
+    });
+    if (!user) throw new NotFoundError('User');
+
+    const [totalBorrowed, recentTransactions, unpaidFineGroups, unpaidMissingTransactions] = await Promise.all([
+      prisma.borrowTransaction.count({ where: { userId } }),
+      prisma.borrowTransaction.findMany({
+        where: { userId },
+        orderBy: [{ borrowDate: 'desc' }, { id: 'desc' }],
+        take: 10,
+        select: {
+          id: true,
+          borrowDate: true,
+          status: true,
+          book: { select: { title: true } },
+        },
+      }),
+      prisma.borrowTransaction.groupBy({
+        by: ['status'],
+        where: { userId, finePaid: false },
+        _sum: { fineAmount: true },
+      }),
+      prisma.borrowTransaction.findMany({
+        where: { userId, status: 'MISSING', finePaid: false },
+        select: {
+          fineAmount: true,
+          book: { select: { replacementValue: true } },
+        },
+      }),
+    ]);
+
+    const finesByStatus = new Map(
+      unpaidFineGroups.map(({ status, _sum }) => [status, Number(_sum.fineAmount ?? 0)]),
+    );
+    const missingOverdueFine = unpaidMissingTransactions.reduce((total, transaction) => {
+      const fine = Math.max(0, Number(transaction.fineAmount ?? 0));
+      const replacementValue = Math.max(0, Number(transaction.book?.replacementValue ?? 0));
+      return total + Math.max(0, fine - replacementValue);
+    }, 0);
+    const overdueFine = Number((finesByStatus.get('OVERDUE') ?? 0) + missingOverdueFine);
+    const otherPenalties = Number(
+      ((finesByStatus.get('MISSING') ?? 0) - missingOverdueFine
+        + (finesByStatus.get('ACTIVE') ?? 0)
+        + (finesByStatus.get('RETURNED') ?? 0)).toFixed(2),
+    );
+
+    return {
+      member: user,
+      totalBorrowed,
+      recentTransactions,
+      fines: {
+        total: Number((overdueFine + otherPenalties).toFixed(2)),
+        overdue: Number(overdueFine.toFixed(2)),
+        otherPenalties,
+      },
+    };
+  }
+
 // ────────────────────────────────────────
   //  TOGGLE USER ACTIVE STATUS (admin)
   // ────────────────────────────────────────
@@ -918,7 +1000,45 @@ export class AuthService {
   async restoreUser(targetUserId: string) {
     const user = await prisma.user.findUnique({ where: { id: targetUserId } });
     if (!user) throw new NotFoundError('User');
-    return prisma.user.update({ where: { id: targetUserId }, data: { isActive: true, archivedAt: null } });
+    return prisma.user.update({
+      where: { id: targetUserId },
+      data: { isActive: true, archivedAt: null, lastLoginAt: new Date() },
+    });
+  }
+
+  async permanentlyDeleteArchivedUser(targetUserId: string, adminId: string, ipAddress?: string, userAgent?: string) {
+    if (targetUserId === adminId) {
+      throw new BadRequestError('You cannot delete your own account');
+    }
+    const user = await prisma.user.findUnique({ where: { id: targetUserId } });
+    if (!user) throw new NotFoundError('User');
+    if (user.isActive) {
+      throw new BadRequestError('Only archived user accounts can be permanently deleted');
+    }
+
+    await prisma.$transaction(async (tx) => {
+      const [activeTransactions, activeReservations, pendingRequests] = await Promise.all([
+        tx.borrowTransaction.count({ where: { userId: targetUserId, status: { in: ['ACTIVE', 'OVERDUE'] } } }),
+        tx.reservation.count({ where: { userId: targetUserId, status: { in: ['ACTIVE', 'APPROVED'] } } }),
+        tx.borrowRequest.count({ where: { userId: targetUserId, status: 'PENDING' } }),
+      ]);
+      if (activeTransactions || activeReservations || pendingRequests) {
+        throw new BadRequestError('This account has active circulation records and cannot be permanently deleted yet');
+      }
+
+      await tx.faq.updateMany({ where: { createdById: targetUserId }, data: { createdById: null } });
+      await tx.borrowRequest.updateMany({ where: { processedById: targetUserId }, data: { processedById: null } });
+      await tx.activityLog.updateMany({ where: { userId: targetUserId }, data: { userId: null } });
+      await this.logActivity(adminId, 'PERMANENTLY_DELETE_USER', 'User', targetUserId, ipAddress, {
+        deletedUserName: `${user.firstName} ${user.lastName}`,
+        deletedUserLibraryId: user.libraryId,
+        deletedUserRole: user.role,
+        status: 'Permanently deleted',
+        ...(userAgent ? { userAgent } : {}),
+      }, tx);
+      await tx.user.delete({ where: { id: targetUserId } });
+    });
+    return { id: targetUserId };
   }
 
   async toggleUserStatus(targetUserId: string, adminId: string, ipAddress?: string, userAgent?: string) {

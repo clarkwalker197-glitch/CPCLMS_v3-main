@@ -44,14 +44,12 @@ type EBookRecord = {
   publisher?: string | null;
   coverImage?: string | null;
   totalViews?: number;
-  uniqueViewers?: number;
   fileSize?: number;
   category?: { name?: string | null } | null;
 };
 
 type EBookViewLogs = {
   totalViews: number;
-  uniqueViewers: number;
   recentActivity: Array<{
     viewedAt: string;
     user: { id: string; firstName: string; lastName: string; libraryId: string };
@@ -93,7 +91,7 @@ export default function EBooksPage() {
   const [viewLogsError, setViewLogsError] = useState('');
 
   const isLibrarian = user?.role === 'LIBRARIAN';
-  const view = viewPreference ?? (isLibrarian ? 'list' : 'grid');
+  const view = viewPreference ?? 'grid';
 
   useEffect(() => {
     const media = window.matchMedia("(min-width: 769px)");
@@ -259,9 +257,9 @@ export default function EBooksPage() {
     try {
       const response = await api.getEBookViewLogs(ebook.id);
       if (response.success) setViewLogs(response.data);
-      else setViewLogsError(response.error || 'Could not load e-book view logs.');
+      else setViewLogsError(response.error || 'Could not load e-book view activity.');
     } catch {
-      setViewLogsError('Could not load e-book view logs.');
+      setViewLogsError('Could not load e-book view activity.');
     } finally {
       setLoadingViewLogs(false);
     }
@@ -515,7 +513,7 @@ export default function EBooksPage() {
                     </div>
                     {isLibrarian && (
                       <p className="mt-2 text-xs text-zinc-400">
-                        {ebook.totalViews ?? 0} views · {ebook.uniqueViewers ?? 0} unique
+                        {ebook.totalViews ?? 0} total views
                       </p>
                     )}
                     <div className="mt-2 flex flex-col items-stretch gap-2 min-[400px]:flex-row">
@@ -542,7 +540,7 @@ export default function EBooksPage() {
                             onClick={() => void showViewLogs(ebook)}
                             className="inline-flex min-h-9 items-center justify-center gap-1 rounded-lg bg-zinc-800 px-2 text-xs text-zinc-200 hover:bg-zinc-700"
                           >
-                            <Eye className="h-4 w-4" /> Logs
+                            <Eye className="h-4 w-4" /> {ebook.totalViews ?? 0} views
                           </button>
                         </>
                       ) : (
@@ -566,57 +564,64 @@ export default function EBooksPage() {
           {/* LIST VIEW */}
           {!loading && view === 'list' && ebooks.length > 0 && (
             <>
-            <div className="hidden md:block rounded-2xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
+            <div className="hidden overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/70 shadow-xl shadow-black/10 md:block">
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className={`w-full table-fixed text-sm ${isLibrarian ? 'min-w-[1080px]' : 'min-w-[760px]'}`}>
                   <thead>
-                    <tr className="bg-zinc-900 text-left text-xs uppercase tracking-wide text-zinc-500">
-                      <th className="px-6 py-3 font-medium">Cover</th>
-                      <th className="px-6 py-3 font-medium"><SortHeader field="title" sort={sort} order={sortOrder} onSort={(field) => changeSort(field, nextSortOrder(sort, sortOrder, field))}>Title</SortHeader></th>
-                      <th className="px-6 py-3 font-medium hidden sm:table-cell"><SortHeader field="author" sort={sort} order={sortOrder} onSort={(field) => changeSort(field, nextSortOrder(sort, sortOrder, field))}>Author</SortHeader></th>
-                      <th className="px-6 py-3 font-medium hidden md:table-cell">Category</th>
-                      <th className="px-6 py-3 font-medium">Format</th>
-                      {isLibrarian && <th className="px-6 py-3 font-medium"><SortHeader field="views" sort={sort} order={sortOrder} onSort={(field) => changeSort(field, nextSortOrder(sort, sortOrder, field))}>Views</SortHeader></th>}
-                      {isLibrarian && <th className="px-6 py-3 font-medium">Status</th>}
-                      <th className="px-6 py-3 font-medium text-right">Actions</th>
+                    <tr className="bg-zinc-900/95 text-left text-[11px] uppercase tracking-wider text-zinc-400">
+                      <th className="w-[76px] px-4 py-3 font-medium">Cover</th>
+                      <th className="w-[240px] px-4 py-3 font-medium"><SortHeader field="title" sort={sort} order={sortOrder} onSort={(field) => changeSort(field, nextSortOrder(sort, sortOrder, field))}>Title</SortHeader></th>
+                      <th className="w-[190px] px-4 py-3 font-medium"><SortHeader field="author" sort={sort} order={sortOrder} onSort={(field) => changeSort(field, nextSortOrder(sort, sortOrder, field))}>Author</SortHeader></th>
+                      <th className="w-[170px] px-4 py-3 font-medium">Category</th>
+                      <th className="w-[100px] px-4 py-3 font-medium">Format</th>
+                      {isLibrarian && <th className="w-[130px] px-4 py-3 font-medium"><SortHeader field="views" sort={sort} order={sortOrder} onSort={(field) => changeSort(field, nextSortOrder(sort, sortOrder, field))}>Views</SortHeader></th>}
+                      {isLibrarian && <th className="w-[175px] px-4 py-3 font-medium">Status</th>}
+                      <th className="w-[120px] px-4 py-3 text-right font-medium">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {paginatedEBooks.map((ebook) => (
-                      <tr key={ebook.id} className="border-t border-zinc-800/60 hover:bg-zinc-800/40 transition-colors">
-                        <td className="px-6 py-4">
-                          <div className="w-11 h-14 rounded-lg overflow-hidden bg-zinc-800 shrink-0">
+                      <tr key={ebook.id} className="border-t border-zinc-800/70 transition-colors even:bg-zinc-950/20 hover:bg-blue-500/[0.04]">
+                        <td className="px-4 py-4">
+                          <div className="h-16 w-12 overflow-hidden rounded-lg bg-zinc-800 shadow-md shadow-black/20">
                             <MediaImage src={ebook.coverImage} alt={ebook.title || "E-book cover"} className="w-full h-full object-cover" fallback={<div className="flex h-full w-full items-center justify-center"><ImageIcon className="h-5 w-5 text-zinc-600" /></div>} />
                           </div>
                         </td>
-                        <td className="px-6 py-4">
-                          <p className="text-zinc-100 font-medium truncate">{ebook.title}</p>
-                          <p className="text-xs text-zinc-500">{ebook.publisher || ''}</p>
+                        <td className="px-4 py-4">
+                          <p className="line-clamp-2 break-words font-medium leading-5 text-zinc-100">{ebook.title}</p>
+                          <p className="mt-1 line-clamp-1 text-xs text-zinc-500">{ebook.publisher || '—'}</p>
                         </td>
-                        <td className="px-6 py-4">
-                          <span className="text-zinc-300">{ebook.author}</span>
+                        <td className="px-4 py-4">
+                          <span className="line-clamp-2 break-words text-sm leading-5 text-zinc-300">{ebook.author || '—'}</span>
                         </td>
-                        <td className="px-6 py-4 hidden md:table-cell">
+                        <td className="px-4 py-4">
                           {ebook.category ? (
-                            <span className="text-xs bg-blue-500/15 text-blue-300 px-2 py-0.5 rounded-full">{ebook.category.name}</span>
+                            <span title={ebook.category.name || ''} className="inline-block max-w-full truncate rounded-full bg-blue-500/10 px-2.5 py-1 text-xs text-blue-200 ring-1 ring-blue-500/20">{ebook.category.name}</span>
                           ) : (
-                            <span className="text-xs bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded-full">General</span>
+                            <span className="inline-flex rounded-full bg-zinc-800 px-2.5 py-1 text-xs text-zinc-400">General</span>
                           )}
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-4 py-4">
                           <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${formatBadge[ebook.format || ''] || 'bg-zinc-500/15 text-zinc-400 ring-zinc-500/30'}`}>
                             {ebook.format}
                           </span>
                         </td>
                         {isLibrarian && (
-                          <td className="px-6 py-4 whitespace-nowrap text-xs text-zinc-300">
-                            <span className="font-semibold text-white">{ebook.totalViews ?? 0}</span> total
-                            <span className="mt-1 block text-zinc-500">{ebook.uniqueViewers ?? 0} unique users</span>
+                          <td className="whitespace-nowrap px-4 py-4 text-xs text-zinc-300">
+                            <button
+                              type="button"
+                              onClick={() => void showViewLogs(ebook)}
+                              className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 font-semibold text-zinc-100 transition-colors hover:bg-blue-500/10 hover:text-blue-300"
+                              aria-label={`View ${ebook.totalViews ?? 0} views for ${ebook.title}`}
+                            >
+                              <Eye className="h-3.5 w-3.5 text-zinc-400" />
+                              {ebook.totalViews ?? 0} views
+                            </button>
                           </td>
                         )}
                         {isLibrarian && (
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-2">
+                          <td className="px-4 py-4">
+                            <div className="flex items-center gap-2 whitespace-nowrap">
                               <AvailabilitySwitch
                                 checked={ebook.status === 'AVAILABLE'}
                                 disabled={togglingStatusId !== null}
@@ -627,7 +632,7 @@ export default function EBooksPage() {
                             </div>
                           </td>
                         )}
-                        <td className="px-6 py-4 text-right">
+                        <td className="px-4 py-4 text-right">
                           {isLibrarian ? (
                             <div className="inline-flex items-center gap-1">
                               <button
@@ -636,14 +641,6 @@ export default function EBooksPage() {
                                 aria-label="Edit"
                               >
                                 <Pencil className="w-4 h-4" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => void showViewLogs(ebook)}
-                                className="rounded-lg p-2 text-zinc-400 hover:bg-zinc-800 hover:text-white"
-                                aria-label={`View logs for ${ebook.title}`}
-                              >
-                                <Eye className="h-4 w-4" />
                               </button>
                             </div>
                           ) : (
@@ -669,8 +666,8 @@ export default function EBooksPage() {
                 <article key={ebook.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-lg shadow-black/10">
                   <div className="flex items-start gap-3 border-b border-zinc-800/80 pb-3"><div className="h-14 w-11 shrink-0 overflow-hidden rounded-lg bg-zinc-800"><MediaImage src={ebook.coverImage} alt={ebook.title || "E-book cover"} className="h-full w-full object-cover" fallback={<ImageIcon className="m-3 h-5 w-5 text-zinc-600" />} /></div><div className="min-w-0"><p className="font-semibold text-zinc-100 break-words">{ebook.title}</p><p className="mt-1 text-sm text-zinc-500 break-words">{ebook.author}</p></div></div>
                   <div className="grid grid-cols-2 gap-3 py-4 text-sm"><div><p className="text-xs text-zinc-500">Category</p><p className="mt-1 text-zinc-300">{ebook.category?.name || "General"}</p></div><div><p className="text-xs text-zinc-500">Format</p><p className="mt-1 text-zinc-300">{ebook.format}</p></div></div>
-                  {isLibrarian && <p className="mt-2 text-xs text-zinc-400">{ebook.totalViews ?? 0} views · {ebook.uniqueViewers ?? 0} unique</p>}
-                  <div className="mt-3 flex items-center justify-between gap-3 border-t border-zinc-800/80 pt-3"><span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${isEBookAvailable(ebook) ? 'bg-emerald-500/15 text-emerald-400 ring-emerald-500/30' : 'bg-orange-500/15 text-orange-400 ring-orange-500/30'}`}>{isEBookAvailable(ebook) ? 'Available' : 'Unavailable'}</span>{isLibrarian ? <div className="flex items-center gap-3"><button onClick={() => handleEdit(ebook)} className="rounded-lg bg-zinc-800 px-3 py-2 text-xs text-zinc-200">Edit</button><AvailabilitySwitch checked={ebook.status === 'AVAILABLE'} disabled={togglingStatusId !== null} label={`Availability for ${ebook.title}`} onChange={(available) => void handleToggleAvailability(ebook, available)} /><button onClick={() => void showViewLogs(ebook)} className="rounded-lg p-2 text-zinc-300 hover:bg-zinc-800" aria-label={`View logs for ${ebook.title}`}><Eye className="h-4 w-4" /></button></div> : <button onClick={() => void openEBook(ebook)} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white" disabled={!isEBookAvailable(ebook)}>{isEBookAvailable(ebook) ? 'View' : 'Unavailable'}</button>}</div>
+                  {isLibrarian && <p className="mt-2 text-xs text-zinc-400">{ebook.totalViews ?? 0} total views</p>}
+                  <div className="mt-3 flex items-center justify-between gap-3 border-t border-zinc-800/80 pt-3"><span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${isEBookAvailable(ebook) ? 'bg-emerald-500/15 text-emerald-400 ring-emerald-500/30' : 'bg-orange-500/15 text-orange-400 ring-orange-500/30'}`}>{isEBookAvailable(ebook) ? 'Available' : 'Unavailable'}</span>{isLibrarian ? <div className="flex items-center gap-3"><button onClick={() => handleEdit(ebook)} className="rounded-lg bg-zinc-800 px-3 py-2 text-xs text-zinc-200">Edit</button><AvailabilitySwitch checked={ebook.status === 'AVAILABLE'} disabled={togglingStatusId !== null} label={`Availability for ${ebook.title}`} onChange={(available) => void handleToggleAvailability(ebook, available)} /><button onClick={() => void showViewLogs(ebook)} className="rounded-lg p-2 text-zinc-300 hover:bg-zinc-800" aria-label={`View recent visitors for ${ebook.title}`} title="Recent visitors"><Eye className="h-4 w-4" /></button></div> : <button onClick={() => void openEBook(ebook)} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white" disabled={!isEBookAvailable(ebook)}>{isEBookAvailable(ebook) ? 'View' : 'Unavailable'}</button>}</div>
                 </article>
               ))
             } />
@@ -750,19 +747,19 @@ export default function EBooksPage() {
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4">
           <button
             type="button"
-            aria-label="Close view logs"
+            aria-label="Close view activity"
             onClick={() => setViewLogEBook(null)}
             className="absolute inset-0"
           />
           <section
             role="dialog"
             aria-modal="true"
-            aria-labelledby="ebook-view-log-title"
+            aria-labelledby="ebook-view-activity-title"
             className="relative z-10 max-h-[85vh] w-full max-w-xl overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl"
           >
             <header className="flex items-center justify-between border-b border-zinc-800 px-5 py-4">
               <div>
-                <h2 id="ebook-view-log-title" className="font-semibold text-white">View logs</h2>
+                <h2 id="ebook-view-activity-title" className="font-semibold text-white">E-book views</h2>
                 <p className="mt-1 text-sm text-zinc-400">{viewLogEBook.title}</p>
               </div>
               <button
@@ -785,12 +782,8 @@ export default function EBooksPage() {
                       <p className="text-xs text-zinc-500">Total views</p>
                       <p className="mt-1 text-2xl font-semibold text-white">{viewLogs.totalViews}</p>
                     </div>
-                    <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
-                      <p className="text-xs text-zinc-500">Unique users</p>
-                      <p className="mt-1 text-2xl font-semibold text-white">{viewLogs.uniqueViewers}</p>
-                    </div>
                   </div>
-                  <h3 className="mt-6 text-sm font-semibold text-zinc-200">Recent activity</h3>
+                  <h3 className="mt-6 text-sm font-semibold text-zinc-200">Top 3 recent visitors</h3>
                   {viewLogs.recentActivity?.length ? (
                     <ul className="mt-3 divide-y divide-zinc-800">
                       {viewLogs.recentActivity.map((activity, index) => (

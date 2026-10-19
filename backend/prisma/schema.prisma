@@ -173,6 +173,7 @@ model Book {
   pages                Int?
   categoryId           String?    @map("category_id")
   category             Category?  @relation(fields: [categoryId], references: [id])
+  mainCategory         String?    @map("main_category") @db.VarChar(20)
   classificationNumber String?    @map("classification_number") @db.VarChar(50)
   replacementValue     Decimal    @default(0.00) @map("replacement_value") @db.Decimal(10, 2)
   description          String?    @db.VarChar(2000)
@@ -214,6 +215,7 @@ model EBook {
   edition              String?     @db.VarChar(100)
   categoryId           String?     @map("category_id")
   category             Category?   @relation(fields: [categoryId], references: [id])
+  mainCategory         String?     @map("main_category") @db.VarChar(20)
   classificationNumber String?     @map("classification_number") @db.VarChar(50)
   description          String?     @db.VarChar(2000)
   coverImage           String?     @map("cover_image") @db.VarChar(500)

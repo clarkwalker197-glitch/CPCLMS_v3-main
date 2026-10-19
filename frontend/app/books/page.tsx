@@ -21,7 +21,7 @@ import HeaderUserActions from "@/components/HeaderUserActions";
 import ResponsiveTable from "@/components/ResponsiveTable";
 import AvailabilitySwitch from "@/components/AvailabilitySwitch";
 import { SortHeader, SortSelect, nextSortOrder, type SortOption } from "@/components/SortControls";
-import { categoryDisplayName, DEWEY_MAIN_CATEGORIES, subcategoriesForMain } from "@/lib/categories";
+import { BOOK_MAIN_CATEGORIES, categoryDisplayName, subcategoriesForMain } from "@/lib/categories";
 import {
   Plus,
   Search,
@@ -179,7 +179,7 @@ export default function BooksPage() {
       };
       if (debouncedSearch) localParams.search = debouncedSearch;
       if (categoryFilter) localParams.categoryId = categoryFilter;
-      else if (mainCategoryFilter) localParams.categoryMain = mainCategoryFilter;
+      if (mainCategoryFilter) localParams.categoryMain = mainCategoryFilter;
       if (classificationFilter) localParams.classificationNumber = classificationFilter;
       if (cachedBooks.length) {
         const cachedResults = searchCachedBooks(cachedBooks, localParams, cachedCategories).map((book) => ({ ...book, bookType: "physical" }));
@@ -206,7 +206,7 @@ export default function BooksPage() {
       params.order = sortOrder;
       if (debouncedSearch) params.search = debouncedSearch;
       if (categoryFilter) params.categoryId = categoryFilter;
-      else if (mainCategoryFilter) params.categoryMain = mainCategoryFilter;
+      if (mainCategoryFilter) params.categoryMain = mainCategoryFilter;
       if (classificationFilter) params.classificationNumber = classificationFilter;
       const booksRes = await api.getBooks(params);
       if (requestId !== requestSequence.current) return;
@@ -237,7 +237,7 @@ export default function BooksPage() {
           const params: Record<string, string> = { sort, order: sortOrder };
           if (debouncedSearch) params.search = debouncedSearch;
           if (categoryFilter) params.categoryId = categoryFilter;
-          else if (mainCategoryFilter) params.categoryMain = mainCategoryFilter;
+          if (mainCategoryFilter) params.categoryMain = mainCategoryFilter;
           if (classificationFilter) params.classificationNumber = classificationFilter;
           setBooks(searchCachedBooks(cachedBooks, params, cachedCategories).map((book) => ({ ...book, bookType: "physical" })));
           setShowingCachedCatalog(true);
@@ -643,8 +643,8 @@ export default function BooksPage() {
                 className="min-h-[44px] w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-sm text-white outline-none transition focus:border-transparent focus:ring-2 focus:ring-blue-500 appearance-none sm:w-auto sm:min-w-[180px]"
               >
                 <option value="" className="bg-zinc-900 text-white">All Main Categories</option>
-                {DEWEY_MAIN_CATEGORIES.map((category) => (
-                  <option key={category.code} value={category.code} className="bg-zinc-900 text-white">{category.name} ({category.range})</option>
+                {BOOK_MAIN_CATEGORIES.map((category) => (
+                  <option key={category.code} value={category.code} className="bg-zinc-900 text-white">{category.name}{category.range ? ` (${category.range})` : ""}</option>
                 ))}
               </select>
 

@@ -30,7 +30,19 @@ export const DEWEY_MAIN_CATEGORIES = [
   { code: "900", name: "Geography & History", range: "900-999" },
 ] as const;
 
+export const BOOK_MAIN_CATEGORIES = [
+  ...DEWEY_MAIN_CATEGORIES,
+  { code: "FIL", name: "Filipiniana", range: "" },
+] as const;
+
 export function subcategoriesForMain(mainCode: string) {
+  if (mainCode === "FIL") {
+    return DEWEY_MAIN_CATEGORIES.flatMap((mainCategory) => {
+      const category = LIBRARY_CATEGORIES.find((item) => item.code === mainCategory.code);
+      return category ? [{ ...category, name: mainCategory.name }] : [];
+    });
+  }
+
   const start = Number(mainCode);
   return LIBRARY_CATEGORIES.filter((category) =>
     Number(category.code) >= start &&
@@ -99,7 +111,7 @@ export function categoryForClassification(value: string) {
 }
 
 export function mainCategoryForClassification(value: string) {
-  const match = value.trim().match(/^(\d)/);
-  if (!match) return null;
-  return DEWEY_MAIN_CATEGORIES.find((category) => category.code === `${match[1]}00`) || null;
+  const normalized = normalizeClassificationNumber(value);
+  if (!normalized) return null;
+  return DEWEY_MAIN_CATEGORIES.find((category) => category.code === `${normalized[0]}00`) || null;
 }

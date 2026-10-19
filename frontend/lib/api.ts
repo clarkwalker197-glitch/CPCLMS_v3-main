@@ -611,6 +611,7 @@ async put<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
     edition?: string;
     pages?: number;
     categoryId: string;
+    mainCategory?: string;
     classificationNumber: string;
     description?: string;
     coverImage?: string;
@@ -999,6 +1000,7 @@ async payFine(id: string, amount: number): Promise<ApiResponse<any>> {
     publishYear?: number;
     edition?: string;
     categoryId: string;
+    mainCategory?: string;
     classificationNumber?: string;
     description?: string;
     coverImage?: string;

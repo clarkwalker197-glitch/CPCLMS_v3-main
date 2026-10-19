@@ -47,13 +47,9 @@ export class BookService {
     if (query.categoryId) {
       const categoryIds = await this.getCategoryAndDescendantIds(String(query.categoryId));
       where.categoryId = { in: categoryIds };
-    } else if (query.categoryMain) {
-      const mainCode = String(query.categoryMain).padStart(3, '0').slice(0, 1);
-      const mainCategories = await prisma.category.findMany({
-        where: { slug: { startsWith: `dewey-${mainCode}` } },
-        select: { id: true },
-      });
-      where.categoryId = { in: mainCategories.map((category) => category.id) };
+    }
+    if (query.categoryMain) {
+      where.mainCategory = String(query.categoryMain);
     }
 
     if (query.classificationNumber) {
@@ -157,6 +153,7 @@ export class BookService {
           edition: data.edition || null,
           pages: data.pages ? Number(data.pages) : null,
           categoryId: data.categoryId,
+          mainCategory: data.mainCategory || null,
           classificationNumber: normalizeClassificationNumber(data.classificationNumber),
           replacementValue: new Prisma.Decimal(Number(data.replacementValue ?? 0)),
           description: data.description || null,

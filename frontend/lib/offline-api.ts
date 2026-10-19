@@ -37,9 +37,14 @@ export function searchCachedBooks(
     if (classification && !String(book.classificationNumber || '').toLocaleLowerCase().includes(classification)) return false;
     if (categoryId && !categoryIds.has(String(book.categoryId || ''))) return false;
     if (categoryMain) {
-      const mainCode = categoryMain.padStart(3, '0')[0];
+      const mainCode = categoryMain === 'FIL'
+        ? categoryMain
+        : `${categoryMain.padStart(3, '0')[0]}00`;
+      const storedMainCategory = String(book.mainCategory || '');
       const bookCode = String(book.classificationNumber || '').trim()[0];
-      if (bookCode !== mainCode) return false;
+      if (storedMainCategory
+        ? storedMainCategory !== mainCode
+        : mainCode === 'FIL' || `${bookCode}00` !== mainCode) return false;
     }
     return true;
   });

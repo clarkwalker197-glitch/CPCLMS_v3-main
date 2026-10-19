@@ -6,7 +6,7 @@ import { BookFormSidePanel } from "@/components/BookFormSidePanel";
 import api from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/api";
 import MediaImage from "@/components/MediaImage";
-import { categoryCodeForId, categoryDisplayName, categoryForClassification, categoryIdForDewey, DEWEY_MAIN_CATEGORIES, mainCategoryForClassification, mainCategoryForCode, normalizeClassificationNumber, sanitizeClassificationInput, subcategoriesForMain } from "@/lib/categories";
+import { BOOK_MAIN_CATEGORIES, categoryCodeForId, categoryDisplayName, categoryForClassification, categoryIdForDewey, LIBRARY_CATEGORIES, mainCategoryForClassification, normalizeClassificationNumber, sanitizeClassificationInput, subcategoriesForMain } from "@/lib/categories";
 import { BookOpen, FileText, Link2, Upload, X } from "lucide-react";
 
 interface Category {
@@ -23,6 +23,7 @@ interface EBook {
   publishYear?: number;
   edition?: string;
   categoryId?: string;
+  mainCategory?: string;
   classificationNumber?: string;
   description?: string;
   coverImage?: string;
@@ -88,6 +89,7 @@ export function EditEBookModal(props: {
     publishYear: "",
     edition: "",
     categoryId: "",
+    mainCategory: "",
     classificationNumber: "",
     description: "",
     coverImage: "",
@@ -108,6 +110,15 @@ export function EditEBookModal(props: {
   useEffect(() => {
     if (props.ebook) {
       // The selected record is the source of truth when opening or switching records.
+      const isFilipiniana = props.ebook.mainCategory === "FIL";
+      const detectedCategory = isFilipiniana ? null : categoryForClassification(props.ebook.classificationNumber || "");
+      const detectedMainCategory = isFilipiniana ? null : mainCategoryForClassification(props.ebook.classificationNumber || "");
+      const savedCategoryCode = categoryCodeForId(props.ebook.categoryId, props.categories)
+        || props.ebook.categoryId?.match(/^dewey-(\d{3})$/)?.[1]
+        || "";
+      const filipinianaCategory = isFilipiniana
+        ? LIBRARY_CATEGORIES.find((category) => category.code === (detectedMainCategory?.code || `${savedCategoryCode[0]}00`))
+        : null;
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setForm({
         isbn: props.ebook.isbn || "",
@@ -116,7 +127,12 @@ export function EditEBookModal(props: {
         publisher: props.ebook.publisher || "",
         publishYear: props.ebook.publishYear ? String(props.ebook.publishYear) : "",
         edition: props.ebook.edition || "",
-        categoryId: props.ebook.categoryId || "",
+        categoryId: isFilipiniana && filipinianaCategory
+          ? categoryIdForDewey(filipinianaCategory, props.categories)
+          : detectedCategory
+            ? categoryIdForDewey(detectedCategory, props.categories)
+            : props.ebook.categoryId || "",
+        mainCategory: isFilipiniana ? "FIL" : detectedMainCategory?.code || props.ebook.mainCategory || "",
         classificationNumber: props.ebook.classificationNumber || "",
         description: props.ebook.description || "",
         coverImage: props.ebook.coverImage || "",
@@ -124,8 +140,7 @@ export function EditEBookModal(props: {
         fileUrl: props.ebook.fileUrl || "",
         format: (props.ebook.format || "PDF") as 'PDF' | 'EPUB' | 'MOBI',
       });
-      const categoryCode = categoryCodeForId(props.ebook.categoryId, props.categories);
-      setMainCategoryCode((mainCategoryForCode(categoryCode) || mainCategoryForCode(props.ebook.classificationNumber?.slice(0, 3)))?.code || "");
+      setMainCategoryCode(isFilipiniana ? "FIL" : detectedMainCategory?.code || props.ebook.mainCategory || "");
       setError("");
       setEbookFile(null);
       setFileMode("link");
@@ -134,28 +149,31 @@ export function EditEBookModal(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.ebook, props.open]);
 
-  useEffect(() => {
-    if (!props.open || !props.ebook?.categoryId || mainCategoryCode) return;
-    const categoryCode = categoryCodeForId(props.ebook.categoryId, props.categories);
-    const resolvedMainCategory = mainCategoryForCode(categoryCode);
-    if (resolvedMainCategory) {
-      // Fill the main category once category data becomes available; never replace a user selection.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setMainCategoryCode(resolvedMainCategory.code);
-    }
-  }, [mainCategoryCode, props.ebook?.categoryId, props.open, props.categories]);
-
   const update = (field: keyof typeof form) => (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => setForm((f) => ({ ...f, [field]: e.target.value }));
 
   const updateClassificationNumber = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = sanitizeClassificationInput(e.target.value);
+    if (mainCategoryCode === "FIL") {
+      const detectedMain = mainCategoryForClassification(value);
+      const detectedCategory = detectedMain
+        ? LIBRARY_CATEGORIES.find((category) => category.code === detectedMain.code)
+        : null;
+      const categoryId = detectedCategory ? categoryIdForDewey(detectedCategory, props.categories) : "";
+      setForm((current) => ({ ...current, classificationNumber: value, categoryId }));
+      return;
+    }
     const detected = categoryForClassification(value);
     const mainCategory = mainCategoryForClassification(value);
     const categoryId = detected ? categoryIdForDewey(detected, props.categories) : undefined;
     setMainCategoryCode(mainCategory?.code || "");
-    setForm((current) => ({ ...current, classificationNumber: value, categoryId: categoryId || "" }));
+    setForm((current) => ({
+      ...current,
+      classificationNumber: value,
+      mainCategory: mainCategory?.code || "",
+      categoryId: categoryId || "",
+    }));
   };
 
   const normalizeClassification = () => setForm((current) => ({
@@ -214,8 +232,8 @@ export function EditEBookModal(props: {
     }
 
     const classificationNumber = normalizeClassificationNumber(form.classificationNumber);
-    if (!form.title.trim() || !form.author.trim() || !form.categoryId || !classificationNumber) {
-      setError("Title, author, category, and a valid Dewey classification number are required.");
+    if (!form.title.trim() || !form.author.trim() || !form.mainCategory || !form.categoryId || !classificationNumber) {
+      setError("Title, author, main category, subcategory, and a valid Dewey classification number are required.");
       return;
     }
     if (form.coverImage.trim() && !isValidFileUrl(form.coverImage.trim())) {
@@ -241,6 +259,7 @@ export function EditEBookModal(props: {
         publishYear: form.publishYear ? Number(form.publishYear) : undefined,
         edition: form.edition.trim() || undefined,
         categoryId: form.categoryId || undefined,
+        mainCategory: form.mainCategory,
         classificationNumber,
         description: form.description.trim() || undefined,
         coverImage: form.coverImage.trim() || undefined,
@@ -353,30 +372,48 @@ export function EditEBookModal(props: {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className={labelClass}>Classification Number *</label>
-            <input className={inputClass} value={form.classificationNumber} onChange={updateClassificationNumber} onBlur={normalizeClassification} inputMode="decimal" maxLength={9} placeholder="e.g., 812.54" required />
-          </div>
-          <div>
-            <label className={labelClass}>Category *</label>
-            <select className={inputClass} value={mainCategoryCode} onChange={(e) => {
-              setMainCategoryCode(e.target.value);
-              setForm((current) => ({ ...current, categoryId: "" }));
-            }} required>
-              <option value="">Select a main category</option>
-              {DEWEY_MAIN_CATEGORIES.map((category) => (
-                <option key={category.code} value={category.code}>{category.name} ({category.range})</option>
-              ))}
-            </select>
-            <select className={`${inputClass} mt-2`} value={form.categoryId} onChange={update("categoryId")} disabled={!mainCategoryCode} required>
-              <option value="">Select a subcategory</option>
-              {subcategoriesForMain(mainCategoryCode).map((category) => {
-                const categoryId = categoryIdForDewey(category, props.categories);
-                return <option key={category.code} value={categoryId}>{categoryDisplayName(category.name)}</option>;
-              })}
-            </select>
-          </div>
+        <div>
+          <label className={labelClass}>Classification Number *</label>
+          <input className={inputClass} value={form.classificationNumber} onChange={updateClassificationNumber} onBlur={normalizeClassification} inputMode="decimal" maxLength={9} placeholder="e.g., 812.54" required />
+        </div>
+
+        <div>
+          <label className={labelClass}>Main Category *</label>
+          <select className={inputClass} value={mainCategoryCode} onChange={(e) => {
+              const selectedCode = e.target.value;
+              if (selectedCode === "FIL") {
+                setMainCategoryCode(selectedCode);
+                const detectedMain = mainCategoryForClassification(form.classificationNumber);
+                const detectedCategory = detectedMain
+                  ? LIBRARY_CATEGORIES.find((category) => category.code === detectedMain.code)
+                  : null;
+                const categoryId = detectedCategory ? categoryIdForDewey(detectedCategory, props.categories) : "";
+                setForm((current) => ({ ...current, mainCategory: selectedCode, categoryId }));
+                return;
+              }
+              const detected = categoryForClassification(form.classificationNumber);
+              const detectedMain = mainCategoryForClassification(form.classificationNumber);
+              const resolvedMain = detectedMain?.code || selectedCode;
+              setMainCategoryCode(resolvedMain);
+              setForm((current) => ({
+                ...current,
+                mainCategory: resolvedMain,
+                categoryId: detected ? categoryIdForDewey(detected, props.categories) : "",
+              }));
+          }} required>
+            <option value="">Select a main category</option>
+            {BOOK_MAIN_CATEGORIES.map((category) => (
+              <option key={category.code} value={category.code}>{category.name}{category.range ? ` (${category.range})` : ""}</option>
+            ))}
+          </select>
+          <label className={`${labelClass} mt-3`}>{mainCategoryCode === "FIL" ? "Select Category" : "Select Sub Category"} *</label>
+          <select className={inputClass} value={form.categoryId} onChange={update("categoryId")} disabled={mainCategoryCode !== "FIL"} required>
+            <option value="">{mainCategoryCode === "FIL" ? "Select Category" : "Select Sub Category"}</option>
+            {(mainCategoryCode === "FIL" ? subcategoriesForMain("FIL") : LIBRARY_CATEGORIES).map((category) => {
+              const categoryId = categoryIdForDewey(category, props.categories);
+              return <option key={category.code} value={categoryId}>{categoryDisplayName(category.name)}</option>;
+            })}
+          </select>
         </div>
 
         <div>

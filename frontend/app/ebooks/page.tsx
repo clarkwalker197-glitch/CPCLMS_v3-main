@@ -14,7 +14,7 @@ import { AddEBookModal } from '@/components/AddEBookModal';
 import { EditEBookModal } from '@/components/EditEBookModal';
 import MobileBookTypeSelect from '@/components/MobileBookTypeSelect';
 import MobileSearchInput from '@/components/MobileSearchInput';
-import { DEWEY_MAIN_CATEGORIES, subcategoriesForMain } from '@/lib/categories';
+import { BOOK_MAIN_CATEGORIES, subcategoriesForMain } from '@/lib/categories';
 import { offlineDb } from '@/lib/offline-db';
 import { searchCachedBooks } from '@/lib/offline-api';
 import { syncCatalogForOffline } from '@/lib/catalog-cache';
@@ -110,7 +110,7 @@ export default function EBooksPage() {
       const cachedParams: Record<string, string> = { sort, order: sortOrder };
       if (search) cachedParams.search = search;
       if (categoryFilter) cachedParams.categoryId = categoryFilter;
-      else if (mainCategoryFilter) cachedParams.categoryMain = mainCategoryFilter;
+      if (mainCategoryFilter) cachedParams.categoryMain = mainCategoryFilter;
       if (classificationFilter) cachedParams.classificationNumber = classificationFilter;
       if (cachedBooks.length) {
         setEbooks(searchCachedBooks(cachedBooks, cachedParams, cachedCategories));
@@ -131,7 +131,7 @@ export default function EBooksPage() {
       params.order = sortOrder;
       if (search) params.search = search;
       if (categoryFilter) params.categoryId = categoryFilter;
-      else if (mainCategoryFilter) params.categoryMain = mainCategoryFilter;
+      if (mainCategoryFilter) params.categoryMain = mainCategoryFilter;
       if (classificationFilter) params.classificationNumber = classificationFilter;
       const [ebooksRes, catsRes] = await Promise.all([
         api.getEBooks(params),
@@ -403,8 +403,8 @@ export default function EBooksPage() {
                 className="min-h-[44px] w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-sm text-white outline-none transition focus:border-transparent focus:ring-2 focus:ring-blue-500 appearance-none sm:w-auto sm:min-w-[180px]"
               >
                 <option value="" className="bg-zinc-900 text-white">All Main Categories</option>
-                {DEWEY_MAIN_CATEGORIES.map((category) => (
-                  <option key={category.code} value={category.code} className="bg-zinc-900 text-white">{category.name} ({category.range})</option>
+                {BOOK_MAIN_CATEGORIES.map((category) => (
+                  <option key={category.code} value={category.code} className="bg-zinc-900 text-white">{category.name}{category.range ? ` (${category.range})` : ""}</option>
                 ))}
               </select>
 

@@ -32,8 +32,9 @@ export class EBookService {
     // Filter by category
     if (query.categoryId) {
       where.categoryId = query.categoryId;
-    } else if (query.categoryMain) {
-      where.category = { slug: { startsWith: `dewey-${String(query.categoryMain).slice(0, 1)}` } };
+    }
+    if (query.categoryMain) {
+      where.mainCategory = String(query.categoryMain);
     }
 
     if (query.classificationNumber) {
@@ -164,6 +165,7 @@ export class EBookService {
     publishYear?: number;
     edition?: string;
     categoryId?: string;
+    mainCategory?: string;
     classificationNumber?: string;
     description?: string;
     coverImage?: string;
@@ -189,6 +191,7 @@ export class EBookService {
         publishYear: data.publishYear ? Number(data.publishYear) : null,
         edition: data.edition || null,
         categoryId: data.categoryId,
+        mainCategory: data.mainCategory || null,
         classificationNumber: data.classificationNumber ? normalizeClassificationNumber(data.classificationNumber) : null,
         description: data.description || null,
         coverImage: data.coverImage || null,
@@ -218,6 +221,7 @@ export class EBookService {
       publishYear: number;
       edition: string;
       categoryId: string;
+      mainCategory?: string;
       classificationNumber?: string;
       description: string;
       coverImage: string;

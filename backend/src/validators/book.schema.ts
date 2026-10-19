@@ -17,6 +17,19 @@ const accessionNumberSchema = z
   .max(100, 'Accession number must be 100 characters or fewer');
 
 const categoryIdSchema = z.string().trim().min(1, 'Sub category is required');
+const mainCategorySchema = z.enum([
+  '000',
+  '100',
+  '200',
+  '300',
+  '400',
+  '500',
+  '600',
+  '700',
+  '800',
+  '900',
+  'FIL',
+]);
 
 const classificationNumberSchema = z
   .string()
@@ -44,6 +57,7 @@ export const createBookSchema = z.object({
     edition: z.string().optional(),
     pages: z.coerce.number().int().positive().optional(),
     categoryId: categoryIdSchema,
+    mainCategory: mainCategorySchema,
     classificationNumber: classificationNumberSchema,
     replacementValue: z.coerce.number({ invalid_type_error: 'Replacement value must be a valid number' }).min(0, 'Replacement value must be zero or greater').max(1000000000, 'Replacement value is too large').refine((value) => Number.isFinite(value), 'Replacement value must be a valid number'),
     description: z.string().optional(),
@@ -66,6 +80,7 @@ export const updateBookSchema = z.object({
     edition: z.string().optional(),
     pages: z.coerce.number().int().positive().optional(),
     categoryId: z.string().optional(),
+    mainCategory: mainCategorySchema.optional(),
     classificationNumber: classificationNumberSchema.optional(),
     replacementValue: z.coerce.number({ invalid_type_error: 'Replacement value must be a valid number' }).min(0, 'Replacement value must be zero or greater').max(1000000000, 'Replacement value is too large').refine((value) => Number.isFinite(value), 'Replacement value must be a valid number').optional(),
     description: z.string().optional(),
@@ -104,7 +119,8 @@ export const createEBookSchema = z.object({
     publishYear: z.coerce.number().int().min(1000).max(9999).optional(),
     edition: z.string().optional(),
     categoryId: categoryIdSchema,
-    classificationNumber: classificationNumberSchema.optional(),
+    mainCategory: mainCategorySchema,
+    classificationNumber: classificationNumberSchema,
     description: z.string().optional(),
     coverImage: z.string().url().optional(),
     language: z.string().default('English'),
@@ -127,6 +143,7 @@ export const updateEBookSchema = z.object({
     publishYear: z.coerce.number().int().min(1000).max(9999).optional(),
     edition: z.string().optional(),
     categoryId: z.string().optional(),
+    mainCategory: mainCategorySchema.optional(),
     classificationNumber: classificationNumberSchema.optional(),
     description: z.string().optional(),
     coverImage: z.string().url().optional(),

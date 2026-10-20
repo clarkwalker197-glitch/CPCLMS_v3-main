@@ -1,7 +1,8 @@
 import webpush from 'web-push';
+import { Prisma } from '@prisma/client';
 import { env } from '../config/env';
 import { prisma } from '../config';
-import { BadRequestError, ForbiddenError } from '../utils/errors';
+import { ForbiddenError } from '../utils/errors';
 
 export interface PushPayload {
   title: string;
@@ -20,29 +21,60 @@ export interface PushSubscriptionInput {
 
 export type PushPreference = 'notificationsEnabled' | 'systemNotificationsEnabled';
 
-const vapidPublicKey = env.VAPID_PUBLIC_KEY;
-const vapidPrivateKey = env.VAPID_PRIVATE_KEY;
-const isConfigured = Boolean(vapidPublicKey && vapidPrivateKey);
+type VapidKeyPair = { publicKey: string; privateKey: string };
 
-if (vapidPublicKey && vapidPrivateKey) {
+let cachedVapidKeys: VapidKeyPair | null = env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY
+  ? { publicKey: env.VAPID_PUBLIC_KEY, privateKey: env.VAPID_PRIVATE_KEY }
+  : null;
+
+async function getVapidKeys(): Promise<VapidKeyPair> {
+  if (!cachedVapidKeys) {
+    const storedKeys = await prisma.webPushConfig.findUnique({ where: { id: 'default' } });
+    if (storedKeys) {
+      cachedVapidKeys = { publicKey: storedKeys.publicKey, privateKey: storedKeys.privateKey };
+    } else {
+      const generatedKeys = webpush.generateVAPIDKeys();
+      try {
+        const stored = await prisma.webPushConfig.create({
+          data: {
+            id: 'default',
+            publicKey: generatedKeys.publicKey,
+            privateKey: generatedKeys.privateKey,
+          },
+        });
+        cachedVapidKeys = { publicKey: stored.publicKey, privateKey: stored.privateKey };
+      } catch (error) {
+        if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
+          throw error;
+        }
+        const concurrentlyStoredKeys = await prisma.webPushConfig.findUnique({ where: { id: 'default' } });
+        if (!concurrentlyStoredKeys) throw error;
+        cachedVapidKeys = {
+          publicKey: concurrentlyStoredKeys.publicKey,
+          privateKey: concurrentlyStoredKeys.privateKey,
+        };
+      }
+    }
+  }
+
   webpush.setVapidDetails(
     env.VAPID_SUBJECT,
-    vapidPublicKey,
-    vapidPrivateKey,
+    cachedVapidKeys.publicKey,
+    cachedVapidKeys.privateKey,
   );
+  return cachedVapidKeys;
 }
 
 export async function getPushPublicKey(): Promise<{ enabled: boolean; publicKey?: string }> {
-  return vapidPublicKey && vapidPrivateKey
-    ? { enabled: true, publicKey: vapidPublicKey }
-    : { enabled: false };
+  const keys = await getVapidKeys();
+  return { enabled: true, publicKey: keys.publicKey };
 }
 
 export async function savePushSubscription(
   userId: string,
   subscription: PushSubscriptionInput,
 ): Promise<void> {
-  if (!isConfigured) throw new BadRequestError('Web Push is not configured on this server.');
+  await getVapidKeys();
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -90,9 +122,10 @@ export async function sendPushToMany(
   payload: PushPayload,
   preference: PushPreference = 'notificationsEnabled',
 ): Promise<void> {
-  if (!isConfigured || userIds.length === 0) return;
+  if (userIds.length === 0) return;
 
   try {
+    await getVapidKeys();
     const users = await prisma.user.findMany({
       where: {
         id: { in: [...new Set(userIds)] },

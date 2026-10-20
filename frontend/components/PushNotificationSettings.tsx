@@ -38,13 +38,18 @@ export default function PushNotificationSettings({
   useEffect(() => {
     let active = true;
     const syncExistingSubscription = async () => {
-      const supported = "serviceWorker" in navigator && "PushManager" in window;
+      const supported = typeof window !== "undefined" &&
+        window.isSecureContext &&
+        "serviceWorker" in navigator &&
+        "PushManager" in window &&
+        "Notification" in window;
       if (!supported || (!notificationsEnabled && !systemNotificationsEnabled)) {
         if (active) setSubscribed(false);
         return;
       }
 
-      const registration = await navigator.serviceWorker.ready;
+      const registration = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+      await navigator.serviceWorker.ready;
       const subscription = await registration.pushManager.getSubscription();
       if (!subscription) {
         if (active) setSubscribed(false);
@@ -108,9 +113,6 @@ export default function PushNotificationSettings({
     } catch (error) {
       console.error("Unable to update notification preferences:", error);
       setMessage(error instanceof Error ? error.message : "Unable to update notification preferences.");
-      if (enabled) {
-        setMessage((current) => current || "Your preference is saved, but browser push could not be enabled.");
-      }
     } finally {
       setBusyPreference(null);
     }

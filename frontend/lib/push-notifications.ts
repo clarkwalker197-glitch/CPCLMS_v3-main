@@ -10,14 +10,40 @@ function decodeVapidPublicKey(value: string): ArrayBuffer {
   return key;
 }
 
-export async function subscribeCurrentBrowserToPush(): Promise<string | null> {
-  if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
-    return "Browser push is not supported here; your in-app notification preference is saved.";
+function browserPushUnavailableMessage(): string {
+  if (!window.isSecureContext) {
+    return "Browser push requires a secure HTTPS connection; your in-app notification preference is saved.";
   }
+  const isAppleMobile = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  if (isAppleMobile) {
+    return "On iPhone or iPad, install this site to your Home Screen and use iOS/iPadOS 16.4 or later for browser push; your in-app preference is saved.";
+  }
+  return "Browser push is not supported by this browser or device; your in-app notification preference is saved.";
+}
 
-  const keyResponse = await api.getPushPublicKey();
-  if (!keyResponse.success || !keyResponse.data?.enabled || !keyResponse.data.publicKey) {
-    return "Your in-app notification preference is saved, but browser push is currently unavailable.";
+function supportsBrowserPush(): boolean {
+  return window.isSecureContext &&
+    "serviceWorker" in navigator &&
+    "PushManager" in window &&
+    "Notification" in window;
+}
+
+async function registerPushServiceWorker(): Promise<ServiceWorkerRegistration> {
+  await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+  await navigator.serviceWorker.ready;
+  const activeRegistration = await navigator.serviceWorker.getRegistration("/");
+  if (!activeRegistration?.active) {
+    throw new Error("The browser notification service worker could not be activated. Reload the page and try again.");
+  }
+  return activeRegistration;
+}
+
+export async function subscribeCurrentBrowserToPush(): Promise<string | null> {
+  if (typeof window === "undefined" || !supportsBrowserPush()) {
+    return typeof window === "undefined"
+      ? "Browser push is only available in a browser; your in-app notification preference is saved."
+      : browserPushUnavailableMessage();
   }
 
   let permission = Notification.permission;
@@ -28,7 +54,12 @@ export async function subscribeCurrentBrowserToPush(): Promise<string | null> {
       : "Notification permission was not granted. Your in-app preference is saved.";
   }
 
-  const registration = await navigator.serviceWorker.ready;
+  const keyResponse = await api.getPushPublicKey();
+  if (!keyResponse.success || !keyResponse.data?.enabled || !keyResponse.data.publicKey) {
+    throw new Error(keyResponse.error || "Could not load browser push settings from the server.");
+  }
+
+  const registration = await registerPushServiceWorker();
   let subscription = await registration.pushManager.getSubscription();
   let createdSubscription = false;
   if (!subscription) {
@@ -63,8 +94,8 @@ export async function subscribeCurrentBrowserToPush(): Promise<string | null> {
 }
 
 export async function unsubscribeCurrentBrowserFromPush(): Promise<void> {
-  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
-  const registration = await navigator.serviceWorker.ready;
+  if (typeof window === "undefined" || !supportsBrowserPush()) return;
+  const registration = await registerPushServiceWorker();
   const subscription = await registration.pushManager.getSubscription();
   if (!subscription) return;
 

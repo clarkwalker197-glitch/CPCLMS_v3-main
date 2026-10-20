@@ -133,7 +133,7 @@ export default function EditProfileModal({ onClose, onSaved }: EditProfileModalP
                 <ImagePlus className="h-4 w-4" /> Choose picture
                 <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => handlePictureChange(event.target.files?.[0])} />
               </label>
-              {(preview || picture) && <button type="button" onClick={() => { setPicture(null); setPreview(""); setRemovePicture(true); }} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-red-300 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /> Remove</button>}
+              {!success && (preview || picture) && <button type="button" onClick={() => { setPicture(null); setPreview(""); setRemovePicture(true); }} className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-red-300 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /> Remove</button>}
             </div>
           </div>
 

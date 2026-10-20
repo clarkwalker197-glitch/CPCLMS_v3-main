@@ -736,9 +736,6 @@ export default function RequestsPage() {
       <Sidebar />
       <div className="flex-1 min-w-0">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-[calc(7rem+min(env(safe-area-inset-bottom),2rem))] lg:pb-8 flex flex-col">
-          <div className="mb-4 flex justify-end">
-            <HeaderUserActions />
-          </div>
           {successMsg && (
             <div className="p-4 mb-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-sm text-emerald-400">
               {successMsg}
@@ -751,18 +748,19 @@ export default function RequestsPage() {
           )}
 
           {!isLibrarian && (
-                      <div className="order-2">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-                          <div>
-                            <h1 className="text-2xl font-bold text-white">My Borrowed Books</h1>
-                            <p className="text-sm text-zinc-400 mt-1">Your currently borrowed and recently returned books · {txnTotal} record{txnTotal !== 1 ? "s" : ""}</p>
-                            {showingCachedTransactions && (
-                              <p className="mt-2 text-xs text-amber-300">
-                                Offline — showing your last synchronized borrowed books.
-                              </p>
-                            )}
-                          </div>
-                        </div>
+            <div className="order-2">
+              <div className="mb-4 flex items-start justify-between gap-4">
+                <div>
+                  <h1 className="text-2xl font-bold text-white">My Borrowed Books</h1>
+                  <p className="text-sm text-zinc-400 mt-1">Your currently borrowed and recently returned books · {txnTotal} record{txnTotal !== 1 ? "s" : ""}</p>
+                  {showingCachedTransactions && (
+                    <p className="mt-2 text-xs text-amber-300">
+                      Offline — showing your last synchronized borrowed books.
+                    </p>
+                  )}
+                </div>
+                <HeaderUserActions />
+              </div>
 
                         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 mb-4">
                           <div className="flex flex-col sm:flex-row gap-3">
@@ -1139,12 +1137,13 @@ export default function RequestsPage() {
           </div>
 
           {isLibrarian && (
-            <div className="order-1 mt-8 mb-8">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+            <div className="order-1 mb-8">
+              <div className="mb-4 flex items-start justify-between gap-4">
                 <div>
                   <h2 className="text-2xl font-bold text-white">Borrowed & Missing Books</h2>
                   <p className="text-sm text-zinc-400 mt-1">Currently borrowed books and missing-book records · {activeTxnTotal} records</p>
                 </div>
+                <HeaderUserActions />
               </div>
 
               <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 mb-4">

@@ -33,8 +33,8 @@ E-book files can be added or replaced by uploading a PDF, EPUB, or MOBI (maximum
 
 ### Web Push Notifications
 
-Web Push is an additional delivery channel for in-app notifications. Generate a VAPID
-key pair from the `backend/` directory:
+Web Push is an additional delivery channel for in-app notifications. VAPID keys can
+be provided in the backend environment:
 
 ```powershell
 npx web-push generate-vapid-keys
@@ -48,13 +48,18 @@ VAPID_PRIVATE_KEY=your_generated_private_key
 VAPID_SUBJECT=https://cpc-library.online
 ```
 
-Keep `VAPID_PRIVATE_KEY` secret; do not add it to the frontend or a `NEXT_PUBLIC_*`
-variable. Configure the same key pair for every backend instance and keep it stable
-after users subscribe. Apply the `add_web_push_subscriptions` Prisma migration before
-starting the updated backend. On a secure origin (HTTPS, or localhost for development),
-users can opt in per browser from **Profile → Account Settings → System Notifications**.
-The browser permission prompt is shown only after the user turns that setting on.
-System notifications also require **Notification Preferences** to be enabled.
+`VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` are optional. If omitted, the backend
+generates a key pair once and stores it in the database. Keep any explicitly configured
+`VAPID_PRIVATE_KEY` secret, use the same pair across backend instances, and keep it
+stable after users subscribe. Apply the `20261010000000_add_web_push_subscriptions` and
+`20261020000000_add_web_push_config` Prisma migrations before starting the updated
+backend. On a secure origin (HTTPS, or localhost for development), users can opt in per
+browser from **Profile → Account Settings**. The service worker is registered when
+setting up the device, and browser permission is requested only after a user action.
+If permission is blocked, users must allow notifications in browser settings and retry.
+On iPhone/iPad, Web Push requires iOS/iPadOS 16.4+ and the site to be installed on the
+Home Screen. In-app notifications remain available when browser push is unsupported or
+permission is denied.
 
 Archived users, books, and e-books are automatically purged after 15 days. The backend checks on startup and every 24 hours, so the actual purge can occur up to a day after the retention period. Completed borrowing and audit history is kept with its user/book references detached; expired e-book uploads and unreferenced cover images are also cleaned up. Purging waits while an archived user or book has an active loan, reservation, or pending borrow request.
 

@@ -441,6 +441,17 @@ model PushSubscription {
   @@map("push_subscriptions")
 }
 
+/// Server-managed VAPID keys used when environment keys are not configured
+model WebPushConfig {
+  id        String   @id @default("default") @db.VarChar(32)
+  publicKey String   @map("public_key") @db.VarChar(255)
+  privateKey String  @map("private_key") @db.VarChar(255)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("web_push_config")
+}
+
 /// Stored refresh tokens for JWT authentication
 model RefreshToken {
   id        String    @id @default(cuid())

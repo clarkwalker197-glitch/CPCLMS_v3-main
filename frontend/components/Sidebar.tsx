@@ -46,7 +46,7 @@ const navItems = [
   { href: "/reservations", label: "Reservations", icon: BookOpenText },
   { href: "/faq", label: "FAQ", icon: HelpCircle },
   { href: "/suggestions", label: "Suggestions", icon: MessageSquare },
-  { href: "/acquisition-requests", label: "Request a Book", icon: LibraryBig },
+  { href: "/acquisition-requests", label: "Acquisition Requests", icon: LibraryBig },
   { href: "/activities", label: "Activity Logs", icon: ScrollText },
   { href: "/policies", label: "Policies", icon: Shield },
   { href: "/archive", label: "Archive", icon: Archive },

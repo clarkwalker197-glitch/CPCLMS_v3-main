@@ -6,20 +6,17 @@ import Sidebar from "@/components/Sidebar";
 import HeaderUserActions from "@/components/HeaderUserActions";
 import ResponsiveTable from "@/components/ResponsiveTable";
 import MobileSearchInput from "@/components/MobileSearchInput";
+import Pagination from "@/components/Pagination";
 import { useDebounce } from "@/lib/useDebounce";
 import { useAuth } from "@/lib/auth-context";
 import {
   Search,
   ScrollText,
-  ChevronLeft,
-  ChevronRight,
   Filter,
   Download,
   X,
 } from "lucide-react";
 import { ModalLayer } from "@/components/ModalLayer";
-
-const PAGE_SIZE = 15;
 
 const ACTION_OPTIONS = [
   "LOGIN",
@@ -61,6 +58,7 @@ export default function ActivitiesPage() {
   const [actionFilter, setActionFilter] = useState("");
   const [dateFilter, setDateFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(15);
   const [selectedActivity, setSelectedActivity] = useState<any>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
@@ -83,7 +81,7 @@ export default function ActivitiesPage() {
     try {
       const params: Record<string, string> = {
         page: String(currentPage),
-        limit: String(PAGE_SIZE),
+        limit: String(pageSize),
       };
       if (effectiveSearch) params.search = effectiveSearch;
       if (actionFilter) params.action = actionFilter;
@@ -114,7 +112,7 @@ export default function ActivitiesPage() {
     } finally {
       setLoading(false);
     }
-  }, [effectiveSearch, actionFilter, dateFilter, currentPage]);
+  }, [effectiveSearch, actionFilter, dateFilter, currentPage, pageSize]);
 
   useEffect(() => {
     loadData();
@@ -269,13 +267,6 @@ export default function ActivitiesPage() {
         return summary || "Activity recorded";
       }
     }
-  };
-
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const getPageNumbers = () => {
-    const pages: number[] = [];
-    for (let i = 1; i <= totalPages; i++) pages.push(i);
-    return pages;
   };
 
   return (
@@ -470,47 +461,16 @@ export default function ActivitiesPage() {
 
           {/* Pagination */}
           {!loading && activities.length > 0 && (
-            <div className="flex items-center justify-between mt-6">
-              <p className="text-sm text-zinc-500">
-                Showing{" "}
-                <span className="text-zinc-300">
-                  {(currentPage - 1) * PAGE_SIZE + 1}–
-                  {Math.min(currentPage * PAGE_SIZE, total)}
-                </span>{" "}
-                of <span className="text-zinc-300">{total}</span> logs
-              </p>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                  className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  aria-label="Previous page"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                {getPageNumbers().map((page) => (
-                  <button
-                    key={page}
-                    onClick={() => setCurrentPage(page)}
-                    className={`w-9 h-9 rounded-lg text-sm font-medium transition-colors ${
-                      page === currentPage
-                        ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30"
-                        : "bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700"
-                    }`}
-                  >
-                    {page}
-                  </button>
-                ))}
-                <button
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                  className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  aria-label="Next page"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
+            <Pagination
+              currentPage={currentPage}
+              totalItems={total}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={(size) => {
+                setPageSize(size);
+                setCurrentPage(1);
+              }}
+            />
           )}
 
           {selectedActivity && (

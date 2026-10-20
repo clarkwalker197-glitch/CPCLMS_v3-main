@@ -56,14 +56,28 @@ export default function DashboardPage() {
         }
         if (user?.id) {
           const cachedTransactions = await offlineDb.transactions
-            .where("userId").equals(user.id).reverse().limit(5).toArray();
-          if (cachedTransactions.length) setRecentTransactions(cachedTransactions);
+            .where("userId").equals(user.id).toArray();
+          if (cachedTransactions.length) {
+            const getBorrowTimestamp = (borrowDate: unknown) => {
+              if (typeof borrowDate !== "string" && typeof borrowDate !== "number") return 0;
+              const timestamp = new Date(borrowDate).getTime();
+              return Number.isNaN(timestamp) ? 0 : timestamp;
+            };
+            setRecentTransactions(
+              cachedTransactions
+                .sort((a, b) =>
+                  getBorrowTimestamp(b.borrowDate) - getBorrowTimestamp(a.borrowDate) ||
+                  a.id.localeCompare(b.id),
+                )
+                .slice(0, 5),
+            );
+          }
         }
         if (!navigator.onLine) return;
 
         const [statsRes, txRes] = await Promise.all([
           api.getDashboardStats(),
-          api.getTransactions({ limit: "5" }),
+          api.getTransactions({ limit: "5", sort: "borrowDate", order: "desc" }),
         ]);
         if (statsRes.success) {
           setStats(statsRes.data);

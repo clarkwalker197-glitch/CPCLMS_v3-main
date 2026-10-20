@@ -792,8 +792,10 @@ export class AuthService {
     const skip = (page - 1) * limit;
     const { sort, order } = getSortParams(query, ['name', 'joinDate', 'fines', 'libraryId'] as const, 'name', 'asc');
 
-    const where: Record<string, unknown> = {};
-    if (query.role) where.role = query.role;
+    const selectedRole = typeof query.role === 'string' && query.role ? query.role : null;
+    const where: Record<string, unknown> = {
+      role: selectedRole ?? { not: 'LIBRARIAN' },
+    };
     if (query.isActive !== undefined) where.isActive = query.isActive === 'true';
     else where.isActive = true;
     if (query.search) {
@@ -817,7 +819,8 @@ export class AuthService {
             GROUP BY bt.user_id
           ) fines ON fines.user_id = u.id
           WHERE u.is_active = ${query.isActive === undefined ? true : query.isActive === 'true'}
-            AND (${query.role ?? null}::text IS NULL OR u.role::text = ${query.role ?? null})
+            AND ((${selectedRole}::text IS NOT NULL AND u.role::text = ${selectedRole}) OR
+              (${selectedRole}::text IS NULL AND u.role::text != 'LIBRARIAN'))
             AND (${query.search ? `%${String(query.search)}%` : null}::text IS NULL OR
               u.first_name ILIKE ${query.search ? `%${String(query.search)}%` : null} OR
               u.last_name ILIKE ${query.search ? `%${String(query.search)}%` : null} OR
@@ -831,7 +834,8 @@ export class AuthService {
             SELECT u.id
             FROM users u
             WHERE u.is_active = ${query.isActive === undefined ? true : query.isActive === 'true'}
-              AND (${query.role ?? null}::text IS NULL OR u.role::text = ${query.role ?? null})
+              AND ((${selectedRole}::text IS NOT NULL AND u.role::text = ${selectedRole}) OR
+                (${selectedRole}::text IS NULL AND u.role::text != 'LIBRARIAN'))
               AND (${query.search ? `%${String(query.search)}%` : null}::text IS NULL OR
                 u.first_name ILIKE ${query.search ? `%${String(query.search)}%` : null} OR
                 u.last_name ILIKE ${query.search ? `%${String(query.search)}%` : null} OR

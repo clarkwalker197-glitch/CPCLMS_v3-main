@@ -415,7 +415,7 @@ export default function ActivitiesPage() {
                         <td className="px-6 py-4 text-zinc-400 whitespace-nowrap">{formatTimestamp(log.createdAt)}</td>
                         <td className="px-6 py-4">
                           <p className="text-zinc-100 font-medium">{actorName(log)}</p>
-                          <p className="text-xs text-zinc-500">ID: {log.userId || "—"}{log.user?.libraryId ? ` · ${log.user.libraryId}` : ""}</p>
+                          <p className="text-xs text-zinc-500">ID: {log.user?.libraryId || "—"}</p>
                         </td>
                         <td className="px-6 py-4">
                           <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${actionBadge[log.action] || "bg-zinc-500/15 text-zinc-400 ring-zinc-500/30"}`}>
@@ -443,7 +443,7 @@ export default function ActivitiesPage() {
                 <article key={log.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-lg shadow-black/10">
                   <div className="border-b border-zinc-800/80 pb-3">
                     <p className="font-semibold text-zinc-100 break-words">{actorName(log)}</p>
-                    <p className="mt-1 text-xs text-zinc-500">ID: {log.userId || "—"}{log.user?.libraryId ? ` · ${log.user.libraryId}` : ""}</p>
+                    <p className="mt-1 text-xs text-zinc-500">ID: {log.user?.libraryId || "—"}</p>
                   </div>
                   <div className="grid grid-cols-2 gap-3 py-4 text-sm">
                     <div><p className="text-xs text-zinc-500">Timestamp</p><p className="mt-1 text-zinc-300">{formatTimestamp(log.createdAt)}</p></div>
@@ -511,7 +511,7 @@ export default function ActivitiesPage() {
                     return <>
                       <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         <div><dt className="text-xs font-medium uppercase tracking-wide text-zinc-500">Full timestamp</dt><dd className="mt-1 text-sm text-zinc-200">{selectedActivity.createdAt ? new Date(selectedActivity.createdAt).toLocaleString("en-PH", { dateStyle: "full", timeStyle: "long" }) : "—"}</dd></div>
-                        <div><dt className="text-xs font-medium uppercase tracking-wide text-zinc-500">User</dt><dd className="mt-1 break-all text-sm text-zinc-200">{actorName(selectedActivity)} <span className="text-zinc-400">(ID: {selectedActivity.userId || "—"}{selectedActivity.user?.libraryId ? ` · ${selectedActivity.user.libraryId}` : ""})</span></dd></div>
+                        <div><dt className="text-xs font-medium uppercase tracking-wide text-zinc-500">User</dt><dd className="mt-1 break-all text-sm text-zinc-200">{actorName(selectedActivity)} <span className="text-zinc-400">(ID: {selectedActivity.user?.libraryId || "—"})</span></dd></div>
                         <div><dt className="text-xs font-medium uppercase tracking-wide text-zinc-500">Action</dt><dd className="mt-1 text-sm text-zinc-200">{formatAction(selectedActivity.action)}</dd></div>
                         <div className="sm:col-span-2"><dt className="text-xs font-medium uppercase tracking-wide text-zinc-500">Description</dt><dd className="mt-1 break-words text-sm text-zinc-200">{selectedActivity.description || formatDetails(selectedActivity.action, details)}</dd></div>
                         <div><dt className="text-xs font-medium uppercase tracking-wide text-zinc-500">Status</dt><dd className="mt-1 text-sm text-emerald-400">{formatAction(String(statusLabel))}</dd></div>

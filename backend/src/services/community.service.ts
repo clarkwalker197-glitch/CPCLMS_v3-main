@@ -3,7 +3,7 @@ import { BadRequestError, NotFoundError } from '../utils/errors';
 import { notificationService } from './notification.service';
 
 const suggestionStatuses = new Set(['PENDING', 'REVIEWED', 'ACCEPTED', 'REJECTED', 'FULFILLED']);
-const acquisitionStatuses = new Set(['PENDING', 'ACCEPTED', 'REJECTED', 'FULFILLED']);
+const acquisitionStatuses = new Set(['PENDING', 'PROCESSING', 'ACCEPTED', 'REJECTED', 'FULFILLED', 'CANCELED']);
 
 export class CommunityService {
   async listFaqs(includeUnpublished = false) {

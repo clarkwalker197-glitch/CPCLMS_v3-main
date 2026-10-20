@@ -126,8 +126,8 @@ export default function RequestsPage() {
   const [reqSearch, setReqSearch] = useState("");
   const [reqStatusFilter, setReqStatusFilter] = useState("");
   const [reqPage, setReqPage] = useState(1);
-  const [reqSort, setReqSort] = useState("status");
-  const [reqSortOrder, setReqSortOrder] = useState<"asc" | "desc">("asc");
+  const [reqSort, setReqSort] = useState("requestDate");
+  const [reqSortOrder, setReqSortOrder] = useState<"asc" | "desc">("desc");
   const [cancellingRequestId, setCancellingRequestId] = useState<string | null>(null);
 
   const [successMsg, setSuccessMsg] = useState("");

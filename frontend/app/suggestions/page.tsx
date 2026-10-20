@@ -149,11 +149,9 @@ export default function SuggestionsPage() {
             ) : (
               <div className="space-y-3">
                 {items.map((item) => {
-                  const visibleActions = item.status === "FULFILLED"
-                    ? ["FULFILLED"]
-                    : item.status === "REJECTED"
-                      ? ["REJECTED"]
-                      : ["ACCEPTED", "FULFILLED", "REJECTED"];
+                  const visibleActions = item.status === "FULFILLED" || item.status === "REJECTED"
+                    ? []
+                    : ["FULFILLED", "REJECTED"];
                   return (
                     <article key={item.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5">
                       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -174,14 +172,12 @@ export default function SuggestionsPage() {
                                 onClick={() => void update(item.id, status)}
                                 disabled={item.status === status}
                                 className={`rounded-lg border px-3 py-1.5 text-xs disabled:cursor-default disabled:opacity-50 ${
-                                  status === "ACCEPTED"
-                                    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
-                                    : status === "FULFILLED"
-                                      ? "border-violet-500/40 bg-violet-500/10 text-violet-300"
-                                      : "border-red-500/40 bg-red-500/10 text-red-300"
+                                  status === "FULFILLED"
+                                    ? "border-violet-500/40 bg-violet-500/10 text-violet-300"
+                                    : "border-red-500/40 bg-red-500/10 text-red-300"
                                 }`}
                               >
-                                {status === "ACCEPTED" ? "Accept" : status === "FULFILLED" ? "Mark fulfilled" : "Reject"}
+                                {status === "FULFILLED" ? "Fulfill" : "Reject"}
                               </button>
                             ))}
                           </div>

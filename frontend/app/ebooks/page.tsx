@@ -316,7 +316,7 @@ export default function EBooksPage() {
           )}
 
           {/* Header */}
-          <div className={`flex items-start justify-between gap-4 ${isLibrarian ? "mb-3" : "mb-6"}`}>
+          <div className="mb-6 flex items-start justify-between gap-4">
             <div>
               <h1 className="text-2xl font-bold text-white">E-Books</h1>
               <p className="mt-1 text-sm text-zinc-400">Browse and access digital books</p>
@@ -328,18 +328,6 @@ export default function EBooksPage() {
             </div>
             <HeaderUserActions />
           </div>
-          {isLibrarian && (
-            <div className="mb-6 flex justify-end">
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-600/30 transition-colors hover:bg-blue-700"
-              >
-                <Plus className="h-4 w-4" />
-                Add E-Book
-              </button>
-            </div>
-          )}
-
           {/* Toolbar */}
           <div className="mobile-search-toolbar mb-6 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3 sm:p-4">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
@@ -713,6 +701,18 @@ export default function EBooksPage() {
           )}
         </div>
       </div>
+
+      {isLibrarian && (
+        <button
+          type="button"
+          onClick={() => setShowAddModal(true)}
+          aria-label="Add E-Book"
+          title="Add E-Book"
+          className="fixed bottom-[calc(5.75rem+env(safe-area-inset-bottom))] right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-blue-600 text-white shadow-xl shadow-blue-600/30 transition-transform hover:bg-blue-700 active:scale-95 lg:bottom-6"
+        >
+          <Plus className="h-6 w-6" />
+        </button>
+      )}
 
       <AddEBookModal
         open={showAddModal}

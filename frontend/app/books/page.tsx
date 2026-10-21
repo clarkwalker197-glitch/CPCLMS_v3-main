@@ -567,7 +567,7 @@ export default function BooksPage() {
             <HeaderUserActions />
           </div>
           {/* Toolbar */}
-          <div className={`mobile-search-toolbar rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3 sm:p-4 ${isLibrarian ? "mb-3" : "mb-6"}`}>
+          <div className="mobile-search-toolbar mb-6 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3 sm:p-4">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
               <div className="hidden relative w-full sm:flex-1 md:block">
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
@@ -668,18 +668,6 @@ export default function BooksPage() {
             </div>
             </details>
           </div>
-          {isLibrarian && (
-            <div className="mb-6 flex justify-end">
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-600/30 transition-colors hover:bg-blue-700"
-              >
-                <Plus className="h-4 w-4" />
-                Add Book
-              </button>
-            </div>
-          )}
-
           {/* Loading */}
           {loading && (
             <div className={view === "grid" ? "grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" : "space-y-3"}>
@@ -1047,6 +1035,18 @@ export default function BooksPage() {
               onSuccess={handleBorrowSuccess}
               onError={handleBorrowRequestError}
             />
+          )}
+
+          {isLibrarian && (
+            <button
+              type="button"
+              onClick={() => setShowAddModal(true)}
+              aria-label="Add Book"
+              title="Add Book"
+              className="fixed bottom-[calc(5.75rem+env(safe-area-inset-bottom))] right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-blue-600 text-white shadow-xl shadow-blue-600/30 transition-transform hover:bg-blue-700 active:scale-95 lg:bottom-6"
+            >
+              <Plus className="h-6 w-6" />
+            </button>
           )}
 
           {detailsBook && (

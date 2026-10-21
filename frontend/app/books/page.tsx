@@ -21,7 +21,7 @@ import HeaderUserActions from "@/components/HeaderUserActions";
 import ResponsiveTable from "@/components/ResponsiveTable";
 import AvailabilitySwitch from "@/components/AvailabilitySwitch";
 import { SortHeader, SortSelect, nextSortOrder, type SortOption } from "@/components/SortControls";
-import { BOOK_MAIN_CATEGORIES, categoryDisplayName, subcategoriesForMain } from "@/lib/categories";
+import { BOOK_MAIN_CATEGORIES, categoryDisplayName, categoryIdForDewey, subcategoriesForMain } from "@/lib/categories";
 import {
   Plus,
   Search,
@@ -73,7 +73,6 @@ export default function BooksPage() {
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [mainCategoryFilter, setMainCategoryFilter] = useState("");
-  const [classificationFilter, setClassificationFilter] = useState("");
   const [viewPreference, setViewPreference] = useState<"grid" | "list" | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [sort, setSort] = useState("title");
@@ -172,7 +171,7 @@ export default function BooksPage() {
     try {
       const cachedBooks = await offlineDb.books.toArray();
       const cachedCategories = await offlineDb.categories.toArray();
-      const hasServerFilters = Boolean(debouncedSearch || categoryFilter || mainCategoryFilter || classificationFilter);
+      const hasServerFilters = Boolean(debouncedSearch || categoryFilter || mainCategoryFilter);
       const localParams: Record<string, string> = {
         sort,
         order: sortOrder,
@@ -180,7 +179,6 @@ export default function BooksPage() {
       if (debouncedSearch) localParams.search = debouncedSearch;
       if (categoryFilter) localParams.categoryId = categoryFilter;
       if (mainCategoryFilter) localParams.categoryMain = mainCategoryFilter;
-      if (classificationFilter) localParams.classificationNumber = classificationFilter;
       if (cachedBooks.length) {
         const cachedResults = searchCachedBooks(cachedBooks, localParams, cachedCategories).map((book) => ({ ...book, bookType: "physical" }));
         setBooks(cachedResults);
@@ -207,7 +205,6 @@ export default function BooksPage() {
       if (debouncedSearch) params.search = debouncedSearch;
       if (categoryFilter) params.categoryId = categoryFilter;
       if (mainCategoryFilter) params.categoryMain = mainCategoryFilter;
-      if (classificationFilter) params.classificationNumber = classificationFilter;
       const booksRes = await api.getBooks(params);
       if (requestId !== requestSequence.current) return;
       if (booksRes.success) {
@@ -238,7 +235,6 @@ export default function BooksPage() {
           if (debouncedSearch) params.search = debouncedSearch;
           if (categoryFilter) params.categoryId = categoryFilter;
           if (mainCategoryFilter) params.categoryMain = mainCategoryFilter;
-          if (classificationFilter) params.classificationNumber = classificationFilter;
           setBooks(searchCachedBooks(cachedBooks, params, cachedCategories).map((book) => ({ ...book, bookType: "physical" })));
           setShowingCachedCatalog(true);
         } else {
@@ -248,7 +244,7 @@ export default function BooksPage() {
     } finally {
       if (requestId === requestSequence.current) setLoading(false);
     }
-  }, [categoryFilter, classificationFilter, currentPage, debouncedSearch, mainCategoryFilter, sort, sortOrder]);
+  }, [categoryFilter, currentPage, debouncedSearch, mainCategoryFilter, sort, sortOrder]);
 
   const visibleBooks = books;
 
@@ -325,7 +321,7 @@ export default function BooksPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearch, categoryFilter, mainCategoryFilter, classificationFilter, sort, sortOrder]);
+  }, [debouncedSearch, categoryFilter, mainCategoryFilter, sort, sortOrder]);
 
   const inCart = (id: string) => activeCart.some((b) => b.id === id);
 
@@ -513,7 +509,7 @@ export default function BooksPage() {
     openBookDetails(book);
   };
 
-  const hasActiveFilters = Boolean(search.trim() || mainCategoryFilter || categoryFilter || classificationFilter);
+  const hasActiveFilters = Boolean(search.trim() || mainCategoryFilter || categoryFilter);
   const clearFilters = () => {
     setSearch("");
     setCategoryFilter("");
@@ -571,20 +567,8 @@ export default function BooksPage() {
             </div>
             <HeaderUserActions />
           </div>
-          {isLibrarian && (
-            <div className="mb-6 flex justify-end">
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-600/30 transition-colors hover:bg-blue-700"
-              >
-                <Plus className="h-4 w-4" />
-                Add Book
-              </button>
-            </div>
-          )}
-
           {/* Toolbar */}
-          <div className="mobile-search-toolbar mb-6 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3 sm:p-4">
+          <div className={`mobile-search-toolbar rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3 sm:p-4 ${isLibrarian ? "mb-3" : "mb-6"}`}>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
               <div className="hidden relative w-full sm:flex-1 md:block">
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
@@ -654,21 +638,12 @@ export default function BooksPage() {
                 disabled={!mainCategoryFilter}
                 className="min-h-[44px] w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-sm text-white outline-none transition focus:border-transparent focus:ring-2 focus:ring-blue-500 appearance-none disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:min-w-[180px]"
               >
-                <option value="">All Subcategories</option>
+                <option value="">{mainCategoryFilter === "FIL" ? "All Main Categories" : "All Subcategories"}</option>
                 {subcategoriesForMain(mainCategoryFilter).map((category) => {
-                  const record = categories.find((item: any) => item.name === category.name);
-                  return record ? <option key={record.id} value={record.id}>{categoryDisplayName(category.name)}</option> : null;
+                  const categoryId = categoryIdForDewey(category, categories);
+                  return <option key={category.code} value={categoryId}>{categoryDisplayName(category.name)}</option>;
                 })}
               </select>
-
-              <input
-                type="text"
-                value={classificationFilter}
-                onChange={(e) => setClassificationFilter(e.target.value)}
-                placeholder="Dewey no."
-                inputMode="decimal"
-                className="min-h-[44px] w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-sm text-white placeholder:text-zinc-500 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 sm:w-[150px]"
-              />
 
               <div className="hidden items-center gap-1 rounded-xl border border-zinc-700 bg-zinc-950 p-1 sm:flex">
                 <button
@@ -694,6 +669,17 @@ export default function BooksPage() {
             </div>
             </details>
           </div>
+          {isLibrarian && (
+            <div className="mb-6 flex justify-end">
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-600/30 transition-colors hover:bg-blue-700"
+              >
+                <Plus className="h-4 w-4" />
+                Add Book
+              </button>
+            </div>
+          )}
 
           {/* Loading */}
           {loading && (

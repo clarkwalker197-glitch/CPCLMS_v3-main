@@ -14,7 +14,7 @@ import { AddEBookModal } from '@/components/AddEBookModal';
 import { EditEBookModal } from '@/components/EditEBookModal';
 import MobileBookTypeSelect from '@/components/MobileBookTypeSelect';
 import MobileSearchInput from '@/components/MobileSearchInput';
-import { BOOK_MAIN_CATEGORIES, subcategoriesForMain } from '@/lib/categories';
+import { BOOK_MAIN_CATEGORIES, categoryIdForDewey, subcategoriesForMain } from '@/lib/categories';
 import { offlineDb } from '@/lib/offline-db';
 import { searchCachedBooks } from '@/lib/offline-api';
 import { syncCatalogForOffline } from '@/lib/catalog-cache';
@@ -73,7 +73,6 @@ export default function EBooksPage() {
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [mainCategoryFilter, setMainCategoryFilter] = useState('');
-  const [classificationFilter, setClassificationFilter] = useState('');
   const [viewPreference, setViewPreference] = useState<'grid' | 'list' | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [sort, setSort] = useState('title');
@@ -111,7 +110,6 @@ export default function EBooksPage() {
       if (search) cachedParams.search = search;
       if (categoryFilter) cachedParams.categoryId = categoryFilter;
       if (mainCategoryFilter) cachedParams.categoryMain = mainCategoryFilter;
-      if (classificationFilter) cachedParams.classificationNumber = classificationFilter;
       if (cachedBooks.length) {
         setEbooks(searchCachedBooks(cachedBooks, cachedParams, cachedCategories));
         setLoading(false);
@@ -132,7 +130,6 @@ export default function EBooksPage() {
       if (search) params.search = search;
       if (categoryFilter) params.categoryId = categoryFilter;
       if (mainCategoryFilter) params.categoryMain = mainCategoryFilter;
-      if (classificationFilter) params.classificationNumber = classificationFilter;
       const [ebooksRes, catsRes] = await Promise.all([
         api.getEBooks(params),
         api.getCategories(),
@@ -157,7 +154,7 @@ export default function EBooksPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, mainCategoryFilter, categoryFilter, classificationFilter, sort, sortOrder]);
+  }, [search, mainCategoryFilter, categoryFilter, sort, sortOrder]);
 
   useEffect(() => {
     const timer = setTimeout(loadData, 300);
@@ -177,7 +174,7 @@ export default function EBooksPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, categoryFilter, classificationFilter, ebooks.length]);
+  }, [search, categoryFilter, ebooks.length]);
 
   const totalPages = Math.max(1, Math.ceil(ebooks.length / PAGE_SIZE));
   const paginatedEBooks = ebooks.slice(
@@ -414,21 +411,12 @@ export default function EBooksPage() {
                 disabled={!mainCategoryFilter}
                 className="min-h-[44px] w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-sm text-white outline-none transition focus:border-transparent focus:ring-2 focus:ring-blue-500 appearance-none disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:min-w-[180px]"
               >
-                <option value="">All Subcategories</option>
+                <option value="">{mainCategoryFilter === "FIL" ? "All Main Categories" : "All Subcategories"}</option>
                 {subcategoriesForMain(mainCategoryFilter).map((category) => {
-                  const record = categories.find((item: any) => item.name === category.name);
-                  return record ? <option key={record.id} value={record.id}>{category.name}</option> : null;
+                  const categoryId = categoryIdForDewey(category, categories);
+                  return <option key={category.code} value={categoryId}>{category.name}</option>;
                 })}
               </select>
-
-              <input
-                type="text"
-                value={classificationFilter}
-                onChange={(e) => setClassificationFilter(e.target.value)}
-                placeholder="Dewey no."
-                inputMode="decimal"
-                className="min-h-[44px] w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-sm text-white placeholder:text-zinc-500 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 sm:w-[150px]"
-              />
 
               <div className="hidden items-center gap-1 rounded-xl border border-zinc-700 bg-zinc-950 p-1 sm:flex">
                 <button

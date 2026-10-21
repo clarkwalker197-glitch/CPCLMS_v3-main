@@ -61,6 +61,7 @@ export class BookService {
         where,
         include: {
           category: { select: { id: true, name: true, slug: true } },
+          _count: { select: { borrowTransactions: true } },
         },
         orderBy: sort === 'availability'
           ? [{ availableCopies: order === 'asc' ? 'desc' : 'asc' }, { title: 'asc' }, { id: 'asc' }]

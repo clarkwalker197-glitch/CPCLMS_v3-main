@@ -17,6 +17,7 @@ export type BookDetailsBook = {
   accessionNo?: string | null;
   classificationNumber?: string | null;
   category?: { name?: string | null } | null;
+  _count?: { borrowTransactions: number };
   shelf?: string | null;
   row?: string | null;
 };
@@ -161,6 +162,7 @@ export function BookDetailsPanel({
                 <Detail label="Shelf location" value={[book.shelf, book.row].filter(Boolean).join(" · ")} />
               )}
               <Detail label="Copies" value={`${availableCopies} of ${copies} available`} />
+              {book._count && <Detail label="Times Borrowed" value={String(book._count.borrowTransactions)} />}
             </dl>
 
             {error && (

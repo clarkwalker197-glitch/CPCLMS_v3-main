@@ -14,6 +14,8 @@ export type BookDetailsBook = {
   availableCopies?: number | null;
   copies?: number | null;
   isbn?: string | null;
+  publisher?: string | null;
+  edition?: string | null;
   accessionNo?: string | null;
   classificationNumber?: string | null;
   category?: { name?: string | null } | null;
@@ -155,6 +157,8 @@ export function BookDetailsPanel({
 
             <dl className="mt-6 divide-y divide-zinc-800 rounded-xl border border-zinc-800 bg-zinc-900/60 px-4">
               {book.isbn && <Detail label="ISBN" value={book.isbn} />}
+              {book.edition && <Detail label="Edition" value={book.edition} />}
+              {book.publisher && <Detail label="Publisher" value={book.publisher} />}
               {book.accessionNo && <Detail label="Accession number" value={book.accessionNo} />}
               {book.classificationNumber && <Detail label="Dewey number" value={book.classificationNumber} />}
               <Detail label="Category" value={book.category?.name || "General"} />

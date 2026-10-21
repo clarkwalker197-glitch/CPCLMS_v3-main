@@ -54,7 +54,7 @@ export function subcategoriesForMain(mainCode: string) {
 
   const start = Number(normalizedMainCode);
   return LIBRARY_CATEGORIES.filter((category) =>
-    Number(category.code) >= start &&
+    Number(category.code) > start &&
     Number(category.code) < start + 100 &&
     !category.name.includes("[Unassigned]")
   );
@@ -73,6 +73,18 @@ export function categoryIdForDewey(
     normalizeName(item.name.replace(/^\d{3}\s+/, "")) === normalizeName(categoryDisplayName(category.name))
   );
   return record?.id || `dewey-${category.code}`;
+}
+
+export function isCategoryInMain(
+  categoryId: string,
+  mainCode: string,
+  categories: Array<{ id: string; name: string; slug?: string }>
+): boolean {
+  if (!mainCode) return false;
+
+  return subcategoriesForMain(mainCode).some(
+    (category) => categoryIdForDewey(category, categories) === categoryId
+  );
 }
 
 export function categoryDisplayName(name: string): string {

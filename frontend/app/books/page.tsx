@@ -542,12 +542,15 @@ export default function BooksPage() {
       <div className="flex-1 min-w-0">
         <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-[calc(7rem+min(env(safe-area-inset-bottom),2rem))] lg:pb-8 ${!isLibrarian && activeCart.length > 0 ? "lg:pb-44" : ""}`}>
           {successMsg && (
-            <div className="p-4 mb-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-sm text-emerald-400">
+            <div role="status" className="cpc-feedback-success mb-4 flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-400">
+              <svg className="cpc-success-icon h-4 w-4 shrink-0" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path d="m5 12 4 4L19 6" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+              </svg>
               {successMsg}
             </div>
           )}
           {error && (
-            <div className="p-4 mb-4 bg-red-500/10 border border-red-500/30 rounded-xl text-sm text-red-400">
+            <div role="alert" className="cpc-feedback-error mb-4 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-400">
               {error}
             </div>
           )}
@@ -672,7 +675,7 @@ export default function BooksPage() {
           {loading && (
             <div className={view === "grid" ? "grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" : "space-y-3"}>
               {Array.from({ length: view === "grid" ? 8 : 5 }).map((_, i) => (
-                <div key={i} className={view === "grid" ? "h-72 rounded-2xl border border-zinc-800 bg-zinc-900/70 animate-pulse" : "h-20 rounded-xl border border-zinc-800 bg-zinc-900/70 animate-pulse"} />
+                <div key={i} className={view === "grid" ? "cpc-skeleton h-72 rounded-2xl border border-zinc-800 bg-zinc-900/70" : "cpc-skeleton h-20 rounded-xl border border-zinc-800 bg-zinc-900/70"} />
               ))}
             </div>
           )}
@@ -692,7 +695,7 @@ export default function BooksPage() {
           {/* GRID VIEW */}
           {!loading && view === "grid" && visibleBooks.length > 0 && (
             <>
-              <div className="grid grid-cols-2 items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <div className="cpc-stagger-list grid grid-cols-2 items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {paginatedBooks.map((book: any) => (
                   <div
                     key={book.id}
@@ -701,7 +704,7 @@ export default function BooksPage() {
                     onClick={() => openBookDetails(book)}
                     onKeyDown={(event) => openDetailsFromCard(event, book)}
                     aria-label={`View details for ${book.title}`}
-                    className="flex h-full min-w-0 flex-col cursor-pointer overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/70 transition-colors hover:border-zinc-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="cpc-book-card flex h-full min-w-0 flex-col cursor-pointer overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/70 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     {/* Cover */}
                     <div className="relative aspect-[3/4] w-full shrink-0 overflow-hidden bg-zinc-800">
@@ -828,7 +831,7 @@ export default function BooksPage() {
                       <th className="w-[130px] px-6 py-3 text-right font-medium">Actions</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="cpc-stagger-list">
                     {paginatedBooks.map((book: any) => (
                       <tr
                         key={book.id}
@@ -915,7 +918,7 @@ export default function BooksPage() {
                     onClick={() => openBookDetails(book)}
                     onKeyDown={(event) => openDetailsFromCard(event, book)}
                     aria-label={`View details for ${book.title}`}
-                    className="cursor-pointer rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-lg shadow-black/10 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="cpc-book-card cursor-pointer rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-lg shadow-black/10 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <div className="flex items-start gap-3 border-b border-zinc-800/80 pb-3">
                       <div className="h-14 w-11 shrink-0 overflow-hidden rounded-lg bg-zinc-800"><MediaImage src={book.coverImage} alt={book.title} className="h-full w-full object-cover" fallback={<ImageIcon className="m-3 h-5 w-5 text-zinc-600" />} /></div>

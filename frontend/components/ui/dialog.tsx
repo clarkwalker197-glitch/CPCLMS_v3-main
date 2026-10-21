@@ -12,8 +12,8 @@ export function Dialog(props: {
   return (
     <ModalLayer>
       <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4" role="presentation">
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm" onClick={() => props.onOpenChange(false)} />
-        <div className="mobile-sheet-dialog relative z-50 flex w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 p-4 shadow-2xl shadow-black/50 max-h-[min(90dvh,52rem)] sm:p-6" role="dialog" aria-modal="true">
+        <div className="cpc-dialog-backdrop-enter fixed inset-0 bg-black/70" onClick={() => props.onOpenChange(false)} />
+        <div className="cpc-dialog-enter mobile-sheet-dialog relative z-50 flex w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 p-4 shadow-2xl shadow-black/50 max-h-[min(90dvh,52rem)] sm:p-6" role="dialog" aria-modal="true">
           <button
             onClick={() => props.onOpenChange(false)}
             className="absolute right-4 top-4 rounded-sm opacity-70 hover:opacity-100 focus:outline-none z-10"

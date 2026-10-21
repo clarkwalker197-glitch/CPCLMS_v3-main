@@ -1,5 +1,5 @@
 export function Skeleton({ className }: { className?: string }) {
-  return <div className={`animate-pulse rounded-md bg-zinc-200 ${className || ""}`} />;
+  return <div className={`cpc-skeleton rounded-md bg-zinc-200 ${className || ""}`} />;
 }
 
 export function CardSkeleton() {

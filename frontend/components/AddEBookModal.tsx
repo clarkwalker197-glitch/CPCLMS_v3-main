@@ -5,7 +5,7 @@ import { DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/di
 import { Button } from "@/components/ui/button";
 import { BookFormSidePanel } from "@/components/BookFormSidePanel";
 import api from "@/lib/api";
-import { BOOK_MAIN_CATEGORIES, categoryDisplayName, categoryForClassification, categoryIdForDewey, LIBRARY_CATEGORIES, mainCategoryForClassification, normalizeClassificationNumber, sanitizeClassificationInput, subcategoriesForMain } from "@/lib/categories";
+import { BOOK_MAIN_CATEGORIES, categoryDisplayName, categoryForClassification, categoryIdForDewey, isCategoryInMain, LIBRARY_CATEGORIES, mainCategoryForClassification, normalizeClassificationNumber, sanitizeClassificationInput, subcategoriesForMain } from "@/lib/categories";
 import { BookOpen, Upload, Link2, FileText, X } from "lucide-react";
 
 interface Category {
@@ -342,24 +342,13 @@ export function AddEBookModal(props: {
           <label className={labelClass}>Main Category *</label>
           <select className={inputClass} value={mainCategoryCode} onChange={(e) => {
             const selectedCode = e.target.value;
-            if (selectedCode === "FIL") {
-              setMainCategoryCode(selectedCode);
-              const detectedMain = mainCategoryForClassification(form.classificationNumber);
-              const detectedCategory = detectedMain
-                ? LIBRARY_CATEGORIES.find((category) => category.code === detectedMain.code)
-                : null;
-              const categoryId = detectedCategory ? categoryIdForDewey(detectedCategory, props.categories) : "";
-              setForm((current) => ({ ...current, mainCategory: selectedCode, categoryId }));
-              return;
-            }
-            const detected = categoryForClassification(form.classificationNumber);
-            const detectedMain = mainCategoryForClassification(form.classificationNumber);
-            const resolvedMain = detectedMain?.code || selectedCode;
-            setMainCategoryCode(resolvedMain);
+            setMainCategoryCode(selectedCode);
             setForm((current) => ({
               ...current,
-              mainCategory: resolvedMain,
-              categoryId: detected ? categoryIdForDewey(detected, props.categories) : "",
+              mainCategory: selectedCode,
+              categoryId: isCategoryInMain(current.categoryId, selectedCode, props.categories)
+                ? current.categoryId
+                : "",
             }));
           }} aria-label="Main category" required>
             <option value="">Select a main category</option>
@@ -368,9 +357,9 @@ export function AddEBookModal(props: {
             ))}
           </select>
           <label className={`${labelClass} mt-3`}>{mainCategoryCode === "FIL" ? "Select Category" : "Select Sub Category"} *</label>
-          <select className={inputClass} value={form.categoryId} onChange={update("categoryId")} disabled={mainCategoryCode !== "FIL"} aria-label="Subcategory" required>
+          <select className={inputClass} value={form.categoryId} onChange={update("categoryId")} disabled={!mainCategoryCode} aria-label="Subcategory" required>
             <option value="">{mainCategoryCode === "FIL" ? "Select Category" : "Select Sub Category"}</option>
-            {(mainCategoryCode === "FIL" ? subcategoriesForMain("FIL") : LIBRARY_CATEGORIES).map((category) => {
+            {subcategoriesForMain(mainCategoryCode).map((category) => {
               const categoryId = categoryIdForDewey(category, props.categories);
               return <option key={category.code} value={categoryId}>{categoryDisplayName(category.name)}</option>;
             })}

@@ -556,8 +556,8 @@ export default function BooksPage() {
           )}
 
           {/* Header */}
-          <div className={`flex items-start justify-between gap-4 ${isLibrarian ? "mb-3" : "mb-6"}`}>
-            <div>
+          <div className={`flex flex-wrap items-start justify-between gap-4 ${isLibrarian ? "mb-3" : "mb-6"}`}>
+            <div className="min-w-0 flex-1 basis-48">
               <h1 className="text-2xl font-bold text-white">Books Collection</h1>
               <p className="mt-1 text-sm text-zinc-400">Manage your library&apos;s book collection</p>
               {showingCachedCatalog && (
@@ -567,7 +567,19 @@ export default function BooksPage() {
                 </p>
               )}
             </div>
-            <HeaderUserActions />
+            <div className="ml-auto flex shrink-0 items-center gap-2">
+              {isLibrarian && (
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(true)}
+                  className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 transition-colors hover:bg-blue-700 active:scale-95"
+                >
+                  <Plus className="h-5 w-5" />
+                  Add Book
+                </button>
+              )}
+              <HeaderUserActions />
+            </div>
           </div>
           {/* Toolbar */}
           <div className="mobile-search-toolbar mb-6 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3 sm:p-4">
@@ -1038,18 +1050,6 @@ export default function BooksPage() {
               onSuccess={handleBorrowSuccess}
               onError={handleBorrowRequestError}
             />
-          )}
-
-          {isLibrarian && (
-            <button
-              type="button"
-              onClick={() => setShowAddModal(true)}
-              aria-label="Add Book"
-              title="Add Book"
-              className="fixed bottom-[calc(5.75rem+env(safe-area-inset-bottom))] right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-blue-600 text-white shadow-xl shadow-blue-600/30 transition-transform hover:bg-blue-700 active:scale-95 lg:bottom-6"
-            >
-              <Plus className="h-6 w-6" />
-            </button>
           )}
 
           {detailsBook && (

@@ -759,7 +759,6 @@ export default function RequestsPage() {
                     </p>
                   )}
                 </div>
-                <HeaderUserActions />
               </div>
 
                         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 mb-4">
@@ -854,8 +853,8 @@ export default function RequestsPage() {
                     {/* Borrow Requests */}
           {/* ===================================================== */}
           <div className={isLibrarian ? "order-2" : "order-1 mb-8"}>
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
-              <div>
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div className="min-w-0">
                 <h2 className="text-2xl font-bold text-white">{isLibrarian ? "Borrow Requests" : "My Book Requests"}</h2>
                 <p className="text-sm text-zinc-400 mt-1">
                   {isLibrarian ? "Review and manage borrowing transactions" : "Track and manage your borrowing requests"} · {reqTotal} total
@@ -866,6 +865,7 @@ export default function RequestsPage() {
                   </p>
                 )}
               </div>
+              {!isLibrarian && <HeaderUserActions />}
             </div>
 
             {!isLibrarian && (

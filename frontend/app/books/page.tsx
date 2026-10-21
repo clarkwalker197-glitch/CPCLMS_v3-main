@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import api from "@/lib/api";
@@ -84,6 +85,7 @@ export default function BooksPage() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedBook, setSelectedBook] = useState<any | null>(null);
   const [detailsBook, setDetailsBook] = useState<BookDetailsBook | null>(null);
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
   const [requestedBookIds, setRequestedBookIds] = useState<Set<string>>(new Set());
   const [reservedBookIds, setReservedBookIds] = useState<Set<string>>(new Set());
   const [actionsLoadedForUserId, setActionsLoadedForUserId] = useState<string | null>(null);
@@ -107,6 +109,10 @@ export default function BooksPage() {
   const requestSequence = useRef(0);
   const reservationRequestInFlight = useRef(false);
   const activeCart = user && cartUserId === user.id ? cart : [];
+
+  useEffect(() => {
+    setPortalTarget(document.body);
+  }, []);
 
   useEffect(() => {
     setCart([]);
@@ -540,7 +546,7 @@ export default function BooksPage() {
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex">
       <Sidebar />
       <div className="flex-1 min-w-0">
-        <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-[calc(7rem+min(env(safe-area-inset-bottom),2rem))] lg:pb-8 ${!isLibrarian && activeCart.length > 0 ? "lg:pb-44" : ""}`}>
+        <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 ${!isLibrarian && activeCart.length > 0 ? "pb-[calc(14rem+min(env(safe-area-inset-bottom),2rem))] lg:pb-44" : "pb-[calc(7rem+min(env(safe-area-inset-bottom),2rem))] lg:pb-8"}`}>
           {successMsg && (
             <div role="status" className="cpc-feedback-success mb-4 flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-400">
               <svg className="cpc-success-icon h-4 w-4 shrink-0" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor">
@@ -977,8 +983,8 @@ export default function BooksPage() {
           )}
 
           {/* Borrow Cart Bar */}
-          {!isLibrarian && activeCart.length > 0 && (
-            <div className="fixed bottom-4 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-3xl z-50">
+          {portalTarget && !isLibrarian && activeCart.length > 0 && createPortal(
+            <div className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] left-1/2 z-50 w-[calc(100%-2rem)] max-w-3xl -translate-x-1/2 lg:bottom-4">
               <div className="rounded-2xl border border-zinc-700 bg-zinc-900/95 backdrop-blur shadow-2xl shadow-black/50 p-4">
                 <div className="flex items-center gap-3 mb-3">
                   <div className="w-9 h-9 rounded-xl bg-blue-600/20 text-blue-400 flex items-center justify-center shrink-0">
@@ -1026,7 +1032,8 @@ export default function BooksPage() {
                   </button>
                 </div>
               </div>
-            </div>
+            </div>,
+            portalTarget
           )}
 
           {!isLibrarian && activeCart.length > 0 && (

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useAuth } from "@/lib/auth-context";
 import { ModalLayer } from "@/components/ModalLayer";
 import api from "@/lib/api";
@@ -64,6 +65,7 @@ export default function Sidebar({ showCopyright = true }: { showCopyright?: bool
   const [refreshing, setRefreshing] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>(() => {
     // Auto-open parent if a child route is active on first render
     const booksActive =
@@ -77,6 +79,10 @@ export default function Sidebar({ showCopyright = true }: { showCopyright?: bool
   const toggleMenu = (label: string) => {
     setOpenMenus((prev) => ({ ...prev, [label]: !prev[label] }));
   };
+
+  useEffect(() => {
+    setPortalTarget(document.body);
+  }, []);
 
   useEffect(() => {
     const updateOnline = () => setIsOnline(navigator.onLine);
@@ -314,7 +320,7 @@ export default function Sidebar({ showCopyright = true }: { showCopyright?: bool
       )}
       </aside>
 
-      <nav className="fixed inset-x-3 bottom-[calc(0.75rem+min(env(safe-area-inset-bottom),2rem))] z-40 flex items-stretch justify-evenly gap-1 rounded-2xl border border-zinc-800 bg-zinc-900/95 p-2 shadow-2xl shadow-black/50 backdrop-blur lg:hidden" aria-label="Mobile navigation">
+      {portalTarget && createPortal(<nav className="fixed inset-x-3 bottom-[calc(0.75rem+min(env(safe-area-inset-bottom),2rem))] z-40 flex items-stretch justify-evenly gap-1 rounded-2xl border border-zinc-800 bg-zinc-900/95 p-2 shadow-2xl shadow-black/50 backdrop-blur lg:hidden" aria-label="Mobile navigation">
         {mobileNavItems.map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.href || pathname.startsWith(item.href + "/") || (["Search", "Books"].includes(item.label) && pathname.startsWith("/ebooks"));
@@ -358,7 +364,7 @@ export default function Sidebar({ showCopyright = true }: { showCopyright?: bool
             <span className="absolute right-2 top-1 h-1.5 w-1.5 rounded-full bg-white" aria-hidden="true" />
           )}
         </button>
-      </nav>
+      </nav>, portalTarget)}
 
       {moreOpen && (
         <ModalLayer>

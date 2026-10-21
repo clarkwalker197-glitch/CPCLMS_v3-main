@@ -139,7 +139,10 @@ Borrow requests and reservation intents created offline are explicitly shown as
 **Pending synchronization** and do not change cached availability, queue position,
 or transaction status. On reconnect, the centralized queue submits them to Express.
 The backend validates current state and role/priority rules, and idempotency keys
-deduplicate retries. Transient network/server failures use exponential backoff;
+deduplicate retries. Queued borrow requests retry when connectivity returns, when
+the app becomes visible, and every 30 seconds while visible, so a browser that
+reports online before the API is reachable does not leave requests stuck indefinitely.
+Transient network/server failures are retried;
 permanent validation/authentication failures and conflicts remain visible as failed
 items and are not silently retried. Faculty reservation priority remains enforced by
 the backend transaction service.

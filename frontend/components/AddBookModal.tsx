@@ -252,7 +252,7 @@ export function AddBookModal(props: {
               className={inputClass}
               value={form.accessionNo}
               onChange={update("accessionNo")}
-              placeholder="e.g., ACC-00231"
+              placeholder="e.g., 00231"
               required
             />
           </div>

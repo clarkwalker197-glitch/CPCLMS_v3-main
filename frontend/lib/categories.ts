@@ -21,13 +21,13 @@ export const DEWEY_MAIN_CATEGORIES = [
   { code: "000", name: "Generalities", range: "000-099" },
   { code: "100", name: "Philosophy", range: "100-199" },
   { code: "200", name: "Religion", range: "200-299" },
-  { code: "300", name: "Social Science", range: "300-399" },
-  { code: "400", name: "Language", range: "400-499" },
-  { code: "500", name: "Natural Science", range: "500-599" },
-  { code: "600", name: "Technology", range: "600-699" },
-  { code: "700", name: "The Arts", range: "700-799" },
+  { code: "300", name: "Social science", range: "300-399" },
+  { code: "400", name: "languages", range: "400-499" },
+  { code: "500", name: "natural Science", range: "500-599" },
+  { code: "600", name: "applied science", range: "600-699" },
+  { code: "700", name: "Art and Recreation", range: "700-799" },
   { code: "800", name: "Literature", range: "800-899" },
-  { code: "900", name: "Geography & History", range: "900-999" },
+  { code: "900", name: "Geography and History", range: "900-999" },
 ] as const;
 
 export const BOOK_MAIN_CATEGORIES = [

@@ -365,15 +365,15 @@ export class AnalyticsService {
     const limit = Math.min(50, Math.max(1, Number.isFinite(requestedLimit) ? Math.floor(requestedLimit) : 10));
     const mainCategories: Record<string, { name: string; slug: string }> = {
       '000': { name: 'Generalities', slug: 'dewey-000' },
-      '100': { name: 'Philosophy & psychology', slug: 'dewey-100' },
+      '100': { name: 'Philosophy', slug: 'dewey-100' },
       '200': { name: 'Religion', slug: 'dewey-200' },
-      '300': { name: 'Social sciences', slug: 'dewey-300' },
-      '400': { name: 'Language', slug: 'dewey-400' },
-      '500': { name: 'Science', slug: 'dewey-500' },
-      '600': { name: 'Technology', slug: 'dewey-600' },
-      '700': { name: 'Arts & recreation', slug: 'dewey-700' },
+      '300': { name: 'Social science', slug: 'dewey-300' },
+      '400': { name: 'Languages', slug: 'dewey-400' },
+      '500': { name: 'Natural Science', slug: 'dewey-500' },
+      '600': { name: 'Applied Science', slug: 'dewey-600' },
+      '700': { name: 'Art and Recreation', slug: 'dewey-700' },
       '800': { name: 'Literature', slug: 'dewey-800' },
-      '900': { name: 'History & geography', slug: 'dewey-900' },
+      '900': { name: 'Geography and History', slug: 'dewey-900' },
     };
     const where: { borrowDate?: { gte: Date } } = {};
 

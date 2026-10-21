@@ -35,15 +35,24 @@ export const BOOK_MAIN_CATEGORIES = [
   { code: "FIL", name: "Filipiniana", range: "" },
 ] as const;
 
+export function normalizeMainCategoryCode(mainCode: string): string {
+  const normalized = mainCode.trim().toLocaleLowerCase();
+  return BOOK_MAIN_CATEGORIES.find((category) =>
+    category.code.toLocaleLowerCase() === normalized ||
+    category.name.toLocaleLowerCase() === normalized
+  )?.code || mainCode;
+}
+
 export function subcategoriesForMain(mainCode: string) {
-  if (mainCode === "FIL") {
+  const normalizedMainCode = normalizeMainCategoryCode(mainCode);
+  if (normalizedMainCode === "FIL") {
     return DEWEY_MAIN_CATEGORIES.flatMap((mainCategory) => {
       const category = LIBRARY_CATEGORIES.find((item) => item.code === mainCategory.code);
       return category ? [{ ...category, name: mainCategory.name }] : [];
     });
   }
 
-  const start = Number(mainCode);
+  const start = Number(normalizedMainCode);
   return LIBRARY_CATEGORIES.filter((category) =>
     Number(category.code) >= start &&
     Number(category.code) < start + 100 &&

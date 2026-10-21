@@ -14,7 +14,7 @@ import { AddEBookModal } from '@/components/AddEBookModal';
 import { EditEBookModal } from '@/components/EditEBookModal';
 import MobileBookTypeSelect from '@/components/MobileBookTypeSelect';
 import MobileSearchInput from '@/components/MobileSearchInput';
-import { BOOK_MAIN_CATEGORIES, categoryIdForDewey, subcategoriesForMain } from '@/lib/categories';
+import { BOOK_MAIN_CATEGORIES, categoryIdForDewey, normalizeMainCategoryCode, subcategoriesForMain } from '@/lib/categories';
 import { offlineDb } from '@/lib/offline-db';
 import { searchCachedBooks } from '@/lib/offline-api';
 import { syncCatalogForOffline } from '@/lib/catalog-cache';
@@ -109,7 +109,7 @@ export default function EBooksPage() {
       const cachedParams: Record<string, string> = { sort, order: sortOrder };
       if (search) cachedParams.search = search;
       if (categoryFilter) cachedParams.categoryId = categoryFilter;
-      if (mainCategoryFilter) cachedParams.categoryMain = mainCategoryFilter;
+      if (mainCategoryFilter) cachedParams.categoryMain = normalizeMainCategoryCode(mainCategoryFilter);
       if (cachedBooks.length) {
         setEbooks(searchCachedBooks(cachedBooks, cachedParams, cachedCategories));
         setLoading(false);
@@ -129,7 +129,7 @@ export default function EBooksPage() {
       params.order = sortOrder;
       if (search) params.search = search;
       if (categoryFilter) params.categoryId = categoryFilter;
-      if (mainCategoryFilter) params.categoryMain = mainCategoryFilter;
+      if (mainCategoryFilter) params.categoryMain = normalizeMainCategoryCode(mainCategoryFilter);
       const [ebooksRes, catsRes] = await Promise.all([
         api.getEBooks(params),
         api.getCategories(),
@@ -411,7 +411,7 @@ export default function EBooksPage() {
                 disabled={!mainCategoryFilter}
                 className="min-h-[44px] w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-sm text-white outline-none transition focus:border-transparent focus:ring-2 focus:ring-blue-500 appearance-none disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:min-w-[180px]"
               >
-                <option value="">{mainCategoryFilter === "FIL" ? "All Main Categories" : "All Subcategories"}</option>
+                <option value="">{normalizeMainCategoryCode(mainCategoryFilter) === "FIL" ? "All Main Categories" : "All Subcategories"}</option>
                 {subcategoriesForMain(mainCategoryFilter).map((category) => {
                   const categoryId = categoryIdForDewey(category, categories);
                   return <option key={category.code} value={categoryId}>{category.name}</option>;

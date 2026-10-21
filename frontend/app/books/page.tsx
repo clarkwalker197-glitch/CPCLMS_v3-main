@@ -514,7 +514,6 @@ export default function BooksPage() {
     setSearch("");
     setCategoryFilter("");
     setMainCategoryFilter("");
-    setClassificationFilter("");
   };
   const typeBadge = (book: any) => book.bookType === "ebook"
     ? "bg-violet-500/15 text-violet-300"

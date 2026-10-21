@@ -14,6 +14,7 @@ import { BookBorrowModal } from "@/components/BookBorrowModal";
 import { BookDetailsPanel, type BookDetailsBook } from "@/components/BookDetailsPanel";
 import { AddBookModal } from "@/components/AddBookModal";
 import { EditBookModal } from "@/components/EditBookModal";
+import { FloatingAddButton } from "@/components/FloatingAddButton";
 import MobileBookTypeSelect from "@/components/MobileBookTypeSelect";
 import MobileSearchInput from "@/components/MobileSearchInput";
 import Sidebar from "@/components/Sidebar";
@@ -23,7 +24,6 @@ import AvailabilitySwitch from "@/components/AvailabilitySwitch";
 import { SortHeader, SortSelect, nextSortOrder, type SortOption } from "@/components/SortControls";
 import { BOOK_MAIN_CATEGORIES, categoryDisplayName, categoryIdForDewey, normalizeMainCategoryCode, subcategoriesForMain } from "@/lib/categories";
 import {
-  Plus,
   Search,
   LayoutGrid,
   List,
@@ -556,8 +556,8 @@ export default function BooksPage() {
           )}
 
           {/* Header */}
-          <div className={`flex flex-wrap items-start justify-between gap-4 ${isLibrarian ? "mb-3" : "mb-6"}`}>
-            <div className="min-w-0 flex-1 basis-48">
+          <div className={`flex items-start justify-between gap-4 ${isLibrarian ? "mb-3" : "mb-6"}`}>
+            <div>
               <h1 className="text-2xl font-bold text-white">Books Collection</h1>
               <p className="mt-1 text-sm text-zinc-400">Manage your library&apos;s book collection</p>
               {showingCachedCatalog && (
@@ -567,19 +567,7 @@ export default function BooksPage() {
                 </p>
               )}
             </div>
-            <div className="ml-auto flex shrink-0 items-center gap-2">
-              {isLibrarian && (
-                <button
-                  type="button"
-                  onClick={() => setShowAddModal(true)}
-                  className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 transition-colors hover:bg-blue-700 active:scale-95"
-                >
-                  <Plus className="h-5 w-5" />
-                  Add Book
-                </button>
-              )}
-              <HeaderUserActions />
-            </div>
+            <HeaderUserActions />
           </div>
           {/* Toolbar */}
           <div className="mobile-search-toolbar mb-6 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3 sm:p-4">
@@ -1050,6 +1038,10 @@ export default function BooksPage() {
               onSuccess={handleBorrowSuccess}
               onError={handleBorrowRequestError}
             />
+          )}
+
+          {isLibrarian && (
+            <FloatingAddButton label="Add Book" onClick={() => setShowAddModal(true)} />
           )}
 
           {detailsBook && (

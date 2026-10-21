@@ -12,6 +12,7 @@ import AvailabilitySwitch from '@/components/AvailabilitySwitch';
 import { SortHeader, SortSelect, nextSortOrder, type SortOption } from '@/components/SortControls';
 import { AddEBookModal } from '@/components/AddEBookModal';
 import { EditEBookModal } from '@/components/EditEBookModal';
+import { FloatingAddButton } from '@/components/FloatingAddButton';
 import MobileBookTypeSelect from '@/components/MobileBookTypeSelect';
 import MobileSearchInput from '@/components/MobileSearchInput';
 import { BOOK_MAIN_CATEGORIES, categoryIdForDewey, normalizeMainCategoryCode, subcategoriesForMain } from '@/lib/categories';
@@ -19,7 +20,6 @@ import { offlineDb } from '@/lib/offline-db';
 import { searchCachedBooks } from '@/lib/offline-api';
 import { syncCatalogForOffline } from '@/lib/catalog-cache';
 import {
-  Plus,
   Search,
   LayoutGrid,
   List,
@@ -316,8 +316,8 @@ export default function EBooksPage() {
           )}
 
           {/* Header */}
-          <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-            <div className="min-w-0 flex-1 basis-48">
+          <div className="mb-6 flex items-start justify-between gap-4">
+            <div>
               <h1 className="text-2xl font-bold text-white">E-Books</h1>
               <p className="mt-1 text-sm text-zinc-400">Browse and access digital books</p>
               {showingCached && (
@@ -326,19 +326,7 @@ export default function EBooksPage() {
                 </p>
               )}
             </div>
-            <div className="ml-auto flex shrink-0 items-center gap-2">
-              {isLibrarian && (
-                <button
-                  type="button"
-                  onClick={() => setShowAddModal(true)}
-                  className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 transition-colors hover:bg-blue-700 active:scale-95"
-                >
-                  <Plus className="h-5 w-5" />
-                  Add E-Book
-                </button>
-              )}
-              <HeaderUserActions />
-            </div>
+            <HeaderUserActions />
           </div>
           {/* Toolbar */}
           <div className="mobile-search-toolbar mb-6 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3 sm:p-4">
@@ -713,6 +701,10 @@ export default function EBooksPage() {
           )}
         </div>
       </div>
+
+      {isLibrarian && (
+        <FloatingAddButton label="Add E-Book" onClick={() => setShowAddModal(true)} />
+      )}
 
       <AddEBookModal
         open={showAddModal}

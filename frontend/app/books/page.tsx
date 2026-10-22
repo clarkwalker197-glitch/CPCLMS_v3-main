@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
@@ -9,7 +9,6 @@ import type { ApiResponse } from "@/lib/api";
 import MediaImage from "@/components/MediaImage";
 import { offlineDb } from "@/lib/offline-db";
 import { searchCachedBooks } from "@/lib/offline-api";
-import { syncCatalogForOffline } from "@/lib/catalog-cache";
 import { useDebounce } from "@/lib/useDebounce";
 import { BookBorrowModal } from "@/components/BookBorrowModal";
 import { BookDetailsPanel, type BookDetailsBook } from "@/components/BookDetailsPanel";
@@ -41,6 +40,7 @@ import {
 } from "lucide-react";
 
 const PAGE_SIZE = 20;
+const CATALOG_PAGE_SIZE = 100;
 const MAX_BOOKS_PER_TRANSACTION = 3;
 const MAX_LIMIT_MESSAGE = "You can only borrow a maximum of 3 books per transaction.";
 
@@ -68,8 +68,8 @@ const isPhysicalBookReservable = (book: any) => {
 export default function BooksPage() {
   const { user } = useAuth();
   const router = useRouter();
-  const [books, setBooks] = useState<any[]>([]);
-  const [totalBooks, setTotalBooks] = useState(0);
+  const [allBooks, setAllBooks] = useState<any[]>([]);
+  const [allCategories, setAllCategories] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -106,7 +106,7 @@ export default function BooksPage() {
   const isLibrarian = user?.role === "LIBRARIAN";
   const view = viewPreference ?? "grid";
 
-  // Debounced search/filter values (300ms) to avoid per-keystroke API spam
+  // Search runs against the in-memory catalog after the user pauses typing.
   const debouncedSearch = useDebounce(search, 300);
   const requestSequence = useRef(0);
   const reservationRequestInFlight = useRef(false);
@@ -131,22 +131,6 @@ export default function BooksPage() {
     updateLayout();
     media.addEventListener("change", updateLayout);
     return () => media.removeEventListener("change", updateLayout);
-  }, []);
-
-  useEffect(() => {
-    const retryLookupsWhenOnline = () => {
-      setActionsLookupRetryKey((current) => current + 1);
-      void syncCatalogForOffline("books").catch((caught: unknown) => {
-        console.error("[Offline] Could not synchronize the physical book catalog:", caught);
-      });
-    };
-    if (navigator.onLine) {
-      void syncCatalogForOffline("books").catch((caught: unknown) => {
-        console.error("[Offline] Could not synchronize the physical book catalog:", caught);
-      });
-    }
-    window.addEventListener("online", retryLookupsWhenOnline);
-    return () => window.removeEventListener("online", retryLookupsWhenOnline);
   }, []);
 
   useEffect(() => {
@@ -180,18 +164,9 @@ export default function BooksPage() {
       const cachedBooks = await offlineDb.books.toArray();
       const cachedCategories = await offlineDb.categories.toArray();
       if (requestId !== requestSequence.current) return;
-      const hasServerFilters = Boolean(debouncedSearch || categoryFilter || mainCategoryFilter);
-      const localParams: Record<string, string> = {
-        sort,
-        order: sortOrder,
-      };
-      if (debouncedSearch) localParams.search = debouncedSearch;
-      if (categoryFilter) localParams.categoryId = categoryFilter;
-      if (mainCategoryFilter) localParams.categoryMain = normalizeMainCategoryCode(mainCategoryFilter);
+      setAllCategories(cachedCategories);
       if (cachedBooks.length) {
-        const cachedResults = searchCachedBooks(cachedBooks, localParams, cachedCategories).map((book) => ({ ...book, bookType: "physical" }));
-        setBooks(cachedResults);
-        setTotalBooks(cachedResults.length);
+        setAllBooks(cachedBooks.map((book) => ({ ...book, bookType: "physical" })));
         setLoading(false);
       }
       const cachedSync = await offlineDb.meta.get("booksLastSyncedAt");
@@ -207,45 +182,68 @@ export default function BooksPage() {
         return;
       }
 
-      const params: Record<string, string> = {};
-      params.page = String(currentPage);
-      params.limit = String(PAGE_SIZE);
-      params.sort = sort;
-      params.order = sortOrder;
-      if (debouncedSearch) params.search = debouncedSearch;
-      if (categoryFilter) params.categoryId = categoryFilter;
-      if (mainCategoryFilter) params.categoryMain = normalizeMainCategoryCode(mainCategoryFilter);
-      const booksRes = await api.getBooks(params);
+      // Fetch every page once so search, filters, sorting, and pagination all
+      // work from the same complete catalog instead of racing server pages.
+      const firstResponse = await api.getBooks({
+        page: "1",
+        limit: String(CATALOG_PAGE_SIZE),
+        sort: "title",
+        order: "asc",
+      });
       if (requestId !== requestSequence.current) return;
-      if (booksRes.success) {
-        setBooks((booksRes.data || []).map((book: any) => ({ ...book, bookType: "physical" })));
-        setTotalBooks(booksRes.meta?.total ?? (booksRes.data || []).length);
-        await offlineDb.books.bulkPut(booksRes.data || []);
-        if (!hasServerFilters) {
-          const syncedAt = Date.now();
-          await offlineDb.meta.put({ key: "booksLastSyncedAt", value: syncedAt, updatedAt: syncedAt });
-          setCatalogUpdatedAt(syncedAt);
+      if (!firstResponse.success || !firstResponse.data) {
+        if (firstResponse.rateLimited) {
+          setError("You're moving too fast. Please wait a moment and try again.");
+        } else if (cachedBooks.length) {
+          setShowingCachedCatalog(true);
+        } else {
+          setError(firstResponse.error || "Unable to load the catalog.");
         }
-        setShowingCachedCatalog(false);
-      } else if (booksRes.rateLimited) {
-        setError("You're moving too fast. Please wait a moment and try again.");
-      } else if (booksRes.networkError && cachedBooks.length) {
-        setBooks(searchCachedBooks(cachedBooks, localParams, cachedCategories).map((book) => ({ ...book, bookType: "physical" })));
-        setTotalBooks(searchCachedBooks(cachedBooks, localParams, cachedCategories).length);
-        setShowingCachedCatalog(true);
-      } else if (!booksRes.success) {
-        setError(booksRes.error || "Unable to load the catalog.");
+        return;
       }
+
+      const totalPages = firstResponse.meta?.totalPages ?? 1;
+      const remainingPages = await Promise.all(
+        Array.from({ length: Math.max(0, totalPages - 1) }, (_, index) =>
+          api.getBooks({
+            page: String(index + 2),
+            limit: String(CATALOG_PAGE_SIZE),
+            sort: "title",
+            order: "asc",
+          })
+        )
+      );
+      if (requestId !== requestSequence.current) return;
+
+      const failedPage = remainingPages.find((response) => !response.success || !response.data);
+      if (failedPage) {
+        if (failedPage.rateLimited) {
+          setError("You're moving too fast. Please wait a moment and try again.");
+        } else if (cachedBooks.length) {
+          setShowingCachedCatalog(true);
+        } else {
+          setError(failedPage.error || "Unable to load the complete catalog.");
+        }
+        return;
+      }
+
+      const catalog = [
+        ...(firstResponse.data || []),
+        ...remainingPages.flatMap((response) => response.data || []),
+      ];
+      setAllBooks(catalog.map((book) => ({ ...book, bookType: "physical" })));
+      setShowingCachedCatalog(false);
+      await offlineDb.books.bulkPut(catalog);
+      if (requestId !== requestSequence.current) return;
+      const syncedAt = Date.now();
+      await offlineDb.meta.put({ key: "booksLastSyncedAt", value: syncedAt, updatedAt: syncedAt });
+      setCatalogUpdatedAt(syncedAt);
     } catch {
       if (requestId === requestSequence.current) {
         const cachedBooks = await offlineDb.books.toArray();
+        if (requestId !== requestSequence.current) return;
         if (cachedBooks.length) {
-          const cachedCategories = await offlineDb.categories.toArray();
-          const params: Record<string, string> = { sort, order: sortOrder };
-          if (debouncedSearch) params.search = debouncedSearch;
-          if (categoryFilter) params.categoryId = categoryFilter;
-          if (mainCategoryFilter) params.categoryMain = normalizeMainCategoryCode(mainCategoryFilter);
-          setBooks(searchCachedBooks(cachedBooks, params, cachedCategories).map((book) => ({ ...book, bookType: "physical" })));
+          setAllBooks(cachedBooks.map((book) => ({ ...book, bookType: "physical" })));
           setShowingCachedCatalog(true);
         } else {
           setError("Unable to load the catalog. Connect once to download the catalog.");
@@ -254,9 +252,46 @@ export default function BooksPage() {
     } finally {
       if (requestId === requestSequence.current) setLoading(false);
     }
-  }, [categoryFilter, currentPage, debouncedSearch, mainCategoryFilter, sort, sortOrder]);
+  }, []);
 
-  const visibleBooks = books;
+  useEffect(() => {
+    const refreshCatalogWhenOnline = () => {
+      setActionsLookupRetryKey((current) => current + 1);
+      void loadData();
+    };
+    window.addEventListener("online", refreshCatalogWhenOnline);
+    return () => window.removeEventListener("online", refreshCatalogWhenOnline);
+  }, [loadData]);
+
+  const filteredBooks = useMemo(() => {
+    const categoryParams: Record<string, string> = {};
+    if (categoryFilter) categoryParams.categoryId = categoryFilter;
+    if (mainCategoryFilter) categoryParams.categoryMain = normalizeMainCategoryCode(mainCategoryFilter);
+
+    // searchCachedBooks returns a new array, so applying search and sort never
+    // mutates the stable all-books state used by future filter changes.
+    const categoryMatches = searchCachedBooks(allBooks, categoryParams, allCategories);
+    const normalizedSearch = debouncedSearch.trim().toLocaleLowerCase();
+    const searchedBooks = normalizedSearch
+      ? categoryMatches.filter((book) =>
+        `${book.title || ""} ${book.author || ""}`.toLocaleLowerCase().includes(normalizedSearch)
+      )
+      : categoryMatches;
+    const direction = sortOrder === "asc" ? 1 : -1;
+
+    return searchedBooks.sort((left, right) => {
+      if (sort === "availability") {
+        return (Number(right.availableCopies || 0) - Number(left.availableCopies || 0)) * direction;
+      }
+      const field = sort === "classification" ? "classificationNumber" : sort;
+      const leftValue = String(left[field] || "");
+      const rightValue = String(right[field] || "");
+      return leftValue.localeCompare(rightValue, undefined, { numeric: true, sensitivity: "base" }) * direction
+        || String(left.id).localeCompare(String(right.id));
+    });
+  }, [allBooks, allCategories, categoryFilter, debouncedSearch, mainCategoryFilter, sort, sortOrder]);
+
+  const totalBooks = filteredBooks.length;
 
   useEffect(() => {
     loadData();
@@ -325,13 +360,10 @@ export default function BooksPage() {
       if (!response.success || !response.data) return;
       const deweyCategories = response.data.filter((category: any) => category.slug?.startsWith("dewey-"));
       setCategories(deweyCategories);
+      setAllCategories(response.data);
       await offlineDb.categories.bulkPut(response.data);
     });
   }, []);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [debouncedSearch, categoryFilter, mainCategoryFilter, sort, sortOrder]);
 
   const inCart = (id: string) => activeCart.some((b) => b.id === id);
 
@@ -455,7 +487,7 @@ export default function BooksPage() {
     const newStatus = available ? "AVAILABLE" : "MAINTENANCE";
     setTogglingStatusId(book.id);
     setError("");
-    setBooks((current) => current.map((item) => item.id === book.id
+    setAllBooks((current) => current.map((item) => item.id === book.id
       ? { ...item, status: newStatus, ...(available ? {} : { availableCopies: 0 }) }
       : item));
     try {
@@ -468,7 +500,7 @@ export default function BooksPage() {
       setSuccessMsg(`Book marked as ${available ? "available" : "not available"}`);
       void loadData();
     } catch (caught) {
-      setBooks((current) => current.map((item) => item.id === book.id
+      setAllBooks((current) => current.map((item) => item.id === book.id
         ? { ...item, status: previousStatus, availableCopies: previousAvailableCopies }
         : item));
       setError(caught instanceof Error ? caught.message : "Failed to update book");
@@ -492,13 +524,12 @@ export default function BooksPage() {
   };
 
   const totalPages = Math.max(1, Math.ceil(totalBooks / PAGE_SIZE));
-  const paginatedBooks = showingCachedCatalog
-    ? visibleBooks.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
-    : visibleBooks;
+  const displayedPage = Math.min(currentPage, totalPages);
+  const paginatedBooks = filteredBooks.slice((displayedPage - 1) * PAGE_SIZE, displayedPage * PAGE_SIZE);
 
   const getPageNumbers = () => {
     const pages: number[] = [];
-    const start = Math.max(1, Math.min(currentPage - 2, totalPages - 4));
+    const start = Math.max(1, Math.min(displayedPage - 2, totalPages - 4));
     for (let i = start; i <= Math.min(totalPages, start + 4); i++) pages.push(i);
     return pages;
   };
@@ -520,6 +551,7 @@ export default function BooksPage() {
     setSearch("");
     setCategoryFilter("");
     setMainCategoryFilter("");
+    setCurrentPage(1);
   };
   const typeBadge = (book: any) => book.bookType === "ebook"
     ? "bg-violet-500/15 text-violet-300"
@@ -539,6 +571,11 @@ export default function BooksPage() {
   const changeSort = (field: string, direction: "asc" | "desc") => {
     setSort(field);
     setSortOrder(direction);
+    setCurrentPage(1);
+  };
+
+  const handleSearchChange = (value: string) => {
+    setSearch(value);
     setCurrentPage(1);
   };
 
@@ -578,16 +615,16 @@ export default function BooksPage() {
                 <input
                   type="text"
                   value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search book titles..."
+                  onChange={(event) => handleSearchChange(event.target.value)}
+                  placeholder="Search book titles or authors..."
                   className="min-h-[44px] w-full rounded-xl border border-zinc-700 bg-zinc-950 pl-10 pr-3 text-sm text-white placeholder:text-zinc-500 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div className="w-full md:hidden">
                 <MobileSearchInput
                   value={search}
-                  onChange={setSearch}
-                  placeholder="Search book titles..."
+                  onChange={handleSearchChange}
+                  placeholder="Search book titles or authors..."
                   storageKey="cpc-recent-book-searches"
                 />
               </div>
@@ -624,6 +661,7 @@ export default function BooksPage() {
                 onChange={(e) => {
                   setMainCategoryFilter(e.target.value);
                   setCategoryFilter("");
+                  setCurrentPage(1);
                 }}
                 className="min-h-[44px] w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-sm text-white outline-none transition focus:border-transparent focus:ring-2 focus:ring-blue-500 appearance-none sm:w-auto sm:min-w-[180px]"
               >
@@ -635,7 +673,10 @@ export default function BooksPage() {
 
               <select
                 value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
+                onChange={(e) => {
+                  setCategoryFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
                 disabled={!mainCategoryFilter}
                 className="min-h-[44px] w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-sm text-white outline-none transition focus:border-transparent focus:ring-2 focus:ring-blue-500 appearance-none disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:min-w-[180px]"
               >
@@ -664,14 +705,14 @@ export default function BooksPage() {
                   <List className="h-4 w-4" />
                 </button>
                 <span className="self-center px-2 text-xs text-zinc-500">
-                  {totalBooks} books
+                  {paginatedBooks.length} books
                 </span>
               </div>
             </div>
             </details>
           </div>
           {/* Loading */}
-          {loading && (
+          {loading && allBooks.length === 0 && (
             <div className={view === "grid" ? "grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" : "space-y-3"}>
               {Array.from({ length: view === "grid" ? 8 : 5 }).map((_, i) => (
                 <div key={i} className={view === "grid" ? "cpc-skeleton h-72 rounded-2xl border border-zinc-800 bg-zinc-900/70" : "cpc-skeleton h-20 rounded-xl border border-zinc-800 bg-zinc-900/70"} />
@@ -680,7 +721,7 @@ export default function BooksPage() {
           )}
 
           {/* Empty state */}
-          {!loading && visibleBooks.length === 0 && (
+          {!loading && filteredBooks.length === 0 && (
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 flex flex-col items-center justify-center py-20 text-center">
               <BookOpen className="w-12 h-12 text-zinc-600 mb-4" />
               <p className="text-zinc-300 font-medium">{hasActiveFilters ? "No books match your filters" : "No books found"}</p>
@@ -692,7 +733,7 @@ export default function BooksPage() {
           )}
 
           {/* GRID VIEW */}
-          {!loading && view === "grid" && visibleBooks.length > 0 && (
+          {!loading && view === "grid" && filteredBooks.length > 0 && (
             <>
               <div className="cpc-stagger-list grid grid-cols-2 items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {paginatedBooks.map((book: any) => (
@@ -816,7 +857,7 @@ export default function BooksPage() {
           )}
 
           {/* LIST VIEW */}
-          {!loading && view === "list" && visibleBooks.length > 0 && (
+          {!loading && view === "list" && filteredBooks.length > 0 && (
             <>
               <div className="hidden overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/70 shadow-xl shadow-black/10 md:block">
                 <div className="overflow-x-auto">
@@ -932,20 +973,20 @@ export default function BooksPage() {
           )}
 
           {/* Pagination */}
-          {!loading && visibleBooks.length > 0 && (
+          {!loading && filteredBooks.length > 0 && (
             <div className="mt-6 flex flex-col items-center justify-between gap-3 sm:flex-row">
               <p className="text-center text-sm text-zinc-500 sm:text-left">
                 Showing{" "}
                 <span className="text-zinc-300">
-                  {(currentPage - 1) * PAGE_SIZE + 1}–
-                  {Math.min((currentPage - 1) * PAGE_SIZE + paginatedBooks.length, totalBooks)}
+                  {(displayedPage - 1) * PAGE_SIZE + 1}–
+                  {Math.min((displayedPage - 1) * PAGE_SIZE + paginatedBooks.length, totalBooks)}
                 </span>{" "}
                 of <span className="text-zinc-300">{totalBooks}</span> books
               </p>
               <div className="flex items-center gap-1">
                 <button
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage((p) => Math.max(1, Math.min(p, totalPages) - 1))}
+                  disabled={displayedPage === 1}
                   className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   aria-label="Previous page"
                 >
@@ -955,7 +996,7 @@ export default function BooksPage() {
                   <button
                     key={page}
                     onClick={() => setCurrentPage(page)}
-                    className={`w-9 h-9 rounded-lg text-sm font-medium transition-colors ${page === currentPage
+                    className={`w-9 h-9 rounded-lg text-sm font-medium transition-colors ${page === displayedPage
                         ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30"
                         : "bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700"
                       }`}
@@ -964,8 +1005,8 @@ export default function BooksPage() {
                   </button>
                 ))}
                 <button
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, Math.min(p, totalPages) + 1))}
+                  disabled={displayedPage === totalPages}
                   className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   aria-label="Next page"
                 >

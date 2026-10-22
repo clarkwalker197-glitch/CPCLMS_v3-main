@@ -11,6 +11,7 @@ import ResponsiveTable from "@/components/ResponsiveTable";
 import UserAvatar from "@/components/UserAvatar";
 import { SortHeader, SortSelect, nextSortOrder, type SortOption } from "@/components/SortControls";
 import BorrowHistoryCard from "@/components/BorrowHistoryCard";
+import { SuccessNotice } from "@/components/SuccessNotice";
 import { QRDisplayModal } from "@/components/QRDisplayModal";
 import { QRScanner } from "@/components/QRScanner";
 import { ModalLayer } from "@/components/ModalLayer";
@@ -19,6 +20,7 @@ import { formatBorrowId, normalizeBorrowId } from "@/lib/borrow-id";
 import { parseApprovalInput } from "@/lib/qr-approval";
 import { offlineDb } from "@/lib/offline-db";
 import { OFFLINE_BORROW_REQUESTS_UPDATED } from "@/lib/offline-borrow-requests";
+import { useTimedMessage } from "@/lib/useTimedMessage";
 import {
   Search,
   BookOpen,
@@ -155,7 +157,7 @@ export default function RequestsPage() {
   const [reqSortOrder, setReqSortOrder] = useState<"asc" | "desc">("desc");
   const [cancellingRequestId, setCancellingRequestId] = useState<string | null>(null);
 
-  const [successMsg, setSuccessMsg] = useState("");
+  const [successMsg, setSuccessMsg] = useTimedMessage();
   const [error, setError] = useState("");
   const [showingCachedRequests, setShowingCachedRequests] = useState(false);
   const [selectedNote, setSelectedNote] = useState<string | null>(null);
@@ -394,7 +396,6 @@ export default function RequestsPage() {
         setApprovalReceipt(null);
         setSuccessMsg(`Borrow ID ${formatBorrowId(transactionId)} verified. Books are now active.`);
         await Promise.all([loadRequests(), loadActiveTransactions()]);
-        setTimeout(() => setSuccessMsg(""), 4000);
         return;
       }
 
@@ -463,7 +464,6 @@ export default function RequestsPage() {
         setSuccessMsg("Book returned successfully");
         if (isLibrarian) loadActiveTransactions();
         else loadTransactions();
-        setTimeout(() => setSuccessMsg(""), 4000);
       } else {
         setReturnError(res.error || "Failed to return book");
       }
@@ -490,7 +490,6 @@ export default function RequestsPage() {
         setMissingTarget(null);
         setSuccessMsg("Book declared missing");
         loadActiveTransactions();
-        setTimeout(() => setSuccessMsg(""), 4000);
       } else {
         setMissingError(res.error || "Failed to declare book missing");
       }
@@ -520,7 +519,6 @@ export default function RequestsPage() {
       setResolveTarget(null);
       setSuccessMsg("Missing book case resolved");
       await loadActiveTransactions();
-      setTimeout(() => setSuccessMsg(""), 4000);
     } catch (err) {
       setResolveError(err instanceof Error ? err.message : "Failed to resolve missing-book case");
     } finally {
@@ -545,7 +543,6 @@ export default function RequestsPage() {
       setApprovalReceipt(response.data);
       setSuccessMsg(`Borrow ID ${formatBorrowId(response.data?.transactionId || "")}: QR generated. Request remains Pending until the borrower verifies it.`);
       loadRequests();
-      setTimeout(() => setSuccessMsg(""), 4000);
     } catch {
       setError("Failed to approve borrow transaction");
     } finally {
@@ -577,7 +574,6 @@ export default function RequestsPage() {
             }
             await loadRequests();
             setSuccessMsg("Borrow request cancelled.");
-            setTimeout(() => setSuccessMsg(""), 6000);
           } finally {
             setCancellingRequestId(null);
           }
@@ -614,7 +610,6 @@ export default function RequestsPage() {
       setSuccessMsg(`Borrow ID ${formatBorrowId(borrowId)} verified. Your request is approved.`);
       if (window.matchMedia("(max-width: 768px)").matches && "vibrate" in navigator) navigator.vibrate(35);
       await Promise.all([loadRequests(), loadTransactions()]);
-      setTimeout(() => setSuccessMsg(""), 5000);
     } catch {
       setTransactionLookupError("Could not verify this Borrow ID. Please try again.");
     } finally {
@@ -641,7 +636,6 @@ export default function RequestsPage() {
       setSuccessMsg(`Borrow ID ${formatBorrowId(approval.approvalCode)} verified. Your request is approved.`);
       if (window.matchMedia("(max-width: 768px)").matches && "vibrate" in navigator) navigator.vibrate(35);
       await Promise.all([loadRequests(), loadTransactions()]);
-      setTimeout(() => setSuccessMsg(""), 5000);
     } catch {
       setTransactionLookupError("Could not verify this QR approval. Please try again.");
     } finally {
@@ -710,7 +704,6 @@ export default function RequestsPage() {
         setRejectReason("");
         setSuccessMsg(rejectTarget.transactionId ? "Borrow transaction rejected" : "Borrow request rejected");
         loadRequests();
-        setTimeout(() => setSuccessMsg(""), 4000);
       } else {
         setRejectError(res.error || "Failed to reject request");
       }
@@ -762,11 +755,7 @@ export default function RequestsPage() {
       <Sidebar />
       <div className="flex-1 min-w-0">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-[calc(7rem+min(env(safe-area-inset-bottom),2rem))] lg:pb-8 flex flex-col">
-          {successMsg && (
-            <div className="p-4 mb-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-sm text-emerald-400">
-              {successMsg}
-            </div>
-          )}
+          <SuccessNotice message={successMsg} />
           {error && (
             <div className="p-4 mb-4 bg-red-500/10 border border-red-500/30 rounded-xl text-sm text-red-400">
               {error}

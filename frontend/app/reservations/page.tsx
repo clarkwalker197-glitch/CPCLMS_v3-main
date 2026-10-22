@@ -6,14 +6,16 @@ import api from "@/lib/api";
 import Sidebar from "@/components/Sidebar";
 import HeaderUserActions from "@/components/HeaderUserActions";
 import { ModalLayer } from "@/components/ModalLayer";
+import { SuccessNotice } from "@/components/SuccessNotice";
 import { offlineDb } from "@/lib/offline-db";
+import { useTimedMessage } from "@/lib/useTimedMessage";
 
 export default function ReservationsPage() {
   const { user } = useAuth();
   const [reservations, setReservations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [successMsg, setSuccessMsg] = useState("");
+  const [successMsg, setSuccessMsg] = useTimedMessage();
   const [selectedReservationIds, setSelectedReservationIds] = useState<Record<string, string>>({});
   const [cancellingReservations, setCancellingReservations] = useState(false);
   const [cancellingReservationId, setCancellingReservationId] = useState<string | null>(null);
@@ -252,11 +254,7 @@ export default function ReservationsPage() {
               {error}
             </div>
           )}
-          {successMsg && (
-            <div role="status" className="mb-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-300">
-              {successMsg}
-            </div>
-          )}
+          <SuccessNotice message={successMsg} />
           {!isLibrarian && (
             <div className="mb-4 flex flex-col gap-3 rounded-xl border border-zinc-800 bg-zinc-900/70 p-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm text-zinc-400">

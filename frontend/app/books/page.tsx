@@ -22,8 +22,10 @@ import Sidebar from "@/components/Sidebar";
 import HeaderUserActions from "@/components/HeaderUserActions";
 import ResponsiveTable from "@/components/ResponsiveTable";
 import AvailabilitySwitch from "@/components/AvailabilitySwitch";
+import { SuccessNotice } from "@/components/SuccessNotice";
 import { SortHeader, SortSelect, nextSortOrder, type SortOption } from "@/components/SortControls";
 import { BOOK_MAIN_CATEGORIES, categoryDisplayName, categoryIdForDewey, normalizeMainCategoryCode, subcategoriesForMain } from "@/lib/categories";
+import { useTimedMessage } from "@/lib/useTimedMessage";
 import {
   Search,
   LayoutGrid,
@@ -95,7 +97,7 @@ export default function BooksPage() {
   const [cardActionError, setCardActionError] = useState<{ bookId: string; message: string } | null>(null);
   const [borrowRequestError, setBorrowRequestError] = useState<{ bookIds: Set<string>; message: string } | null>(null);
   const [detailsError, setDetailsError] = useState("");
-  const [successMsg, setSuccessMsg] = useState("");
+  const [successMsg, setSuccessMsg] = useTimedMessage();
   const [togglingStatusId, setTogglingStatusId] = useState<string | null>(null);
   const [showingCachedCatalog, setShowingCachedCatalog] = useState(false);
   const [catalogUpdatedAt, setCatalogUpdatedAt] = useState<number | null>(null);
@@ -177,6 +179,7 @@ export default function BooksPage() {
     try {
       const cachedBooks = await offlineDb.books.toArray();
       const cachedCategories = await offlineDb.categories.toArray();
+      if (requestId !== requestSequence.current) return;
       const hasServerFilters = Boolean(debouncedSearch || categoryFilter || mainCategoryFilter);
       const localParams: Record<string, string> = {
         sort,
@@ -192,6 +195,7 @@ export default function BooksPage() {
         setLoading(false);
       }
       const cachedSync = await offlineDb.meta.get("booksLastSyncedAt");
+      if (requestId !== requestSequence.current) return;
       setCatalogUpdatedAt(typeof cachedSync?.value === "number" ? cachedSync.value : null);
       if (cachedCategories.length) {
         setCategories(cachedCategories.filter((category) => String(category.slug || "").startsWith("dewey-")));
@@ -394,7 +398,6 @@ export default function BooksPage() {
         setReservedBookIds((previous) => new Set(previous).add(book.id));
         setSuccessMsg(`Reservation placed for "${book.title}".`);
         loadData();
-        setTimeout(() => setSuccessMsg(''), 4000);
         return;
       }
       const message = res.error || 'Unable to reserve this book.';
@@ -438,7 +441,6 @@ export default function BooksPage() {
     setRequestedBookIds((previous) => new Set([...previous, ...activeCart.map((book) => book.id)]));
     setCart([]);
     loadData();
-    setTimeout(() => setSuccessMsg(""), 4000);
   };
 
   const handleEdit = (book: any) => {
@@ -465,7 +467,6 @@ export default function BooksPage() {
       }
       setSuccessMsg(`Book marked as ${available ? "available" : "not available"}`);
       void loadData();
-      setTimeout(() => setSuccessMsg(""), 4000);
     } catch (caught) {
       setBooks((current) => current.map((item) => item.id === book.id
         ? { ...item, status: previousStatus, availableCopies: previousAvailableCopies }
@@ -480,7 +481,6 @@ export default function BooksPage() {
     setSuccessMsg("Book updated successfully");
     setSelectedBook(null);
     loadData();
-    setTimeout(() => setSuccessMsg(""), 4000);
   };
 
   const handleBorrowRequestError = (message: string) => {
@@ -547,14 +547,7 @@ export default function BooksPage() {
       <Sidebar />
       <div className="flex-1 min-w-0">
         <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 ${!isLibrarian && activeCart.length > 0 ? "pb-[calc(14rem+min(env(safe-area-inset-bottom),2rem))] lg:pb-44" : "pb-[calc(7rem+min(env(safe-area-inset-bottom),2rem))] lg:pb-8"}`}>
-          {successMsg && (
-            <div role="status" className="cpc-feedback-success mb-4 flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-400">
-              <svg className="cpc-success-icon h-4 w-4 shrink-0" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path d="m5 12 4 4L19 6" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
-              </svg>
-              {successMsg}
-            </div>
-          )}
+          <SuccessNotice message={successMsg} />
           {error && (
             <div role="alert" className="cpc-feedback-error mb-4 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-400">
               {error}
@@ -791,7 +784,7 @@ export default function BooksPage() {
                                       else if (reservable) void handleReserveBook(book);
                                     }}
                                     disabled={disabled}
-                                    className={`min-h-11 min-w-0 whitespace-normal break-words rounded-lg px-1.5 py-1 text-[11px] font-semibold leading-tight transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                                    className={`cpc-borrow-action min-h-11 min-w-0 whitespace-normal break-words rounded-lg px-1.5 py-1 text-[11px] font-semibold leading-tight transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                                       available
                                         ? "bg-blue-600 text-white hover:bg-blue-700 disabled:bg-zinc-800 disabled:text-zinc-500"
                                         : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"
@@ -1025,7 +1018,7 @@ export default function BooksPage() {
                 <div className="flex gap-2">
                   <button
                     onClick={handleBorrowNow}
-                    className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl transition-colors shadow-lg shadow-blue-600/30"
+                    className="cpc-borrow-action flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl transition-colors shadow-lg shadow-blue-600/30"
                   >
                     <Send className="w-4 h-4" />
                     Send Borrow Request

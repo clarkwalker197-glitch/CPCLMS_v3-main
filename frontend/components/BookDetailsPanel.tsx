@@ -184,7 +184,7 @@ export function BookDetailsPanel({
                   ? onRetryActionsCheck
                   : hasAvailableCopies ? onBorrow : isReservable ? onReserve : undefined}
                 disabled={actionDisabled}
-                className={`min-h-11 w-full rounded-xl px-3 py-2.5 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                className={`cpc-borrow-action min-h-11 w-full rounded-xl px-3 py-2.5 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                   hasAvailableCopies
                     ? "bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-800 disabled:text-zinc-500"
                     : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700"

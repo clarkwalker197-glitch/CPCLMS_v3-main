@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import api from '@/lib/api';
 import { resolveMediaUrl } from '@/lib/api';
@@ -13,12 +13,14 @@ import { SortHeader, SortSelect, nextSortOrder, type SortOption } from '@/compon
 import { AddEBookModal } from '@/components/AddEBookModal';
 import { EditEBookModal } from '@/components/EditEBookModal';
 import { FloatingAddButton } from '@/components/FloatingAddButton';
+import { SuccessNotice } from '@/components/SuccessNotice';
 import MobileBookTypeSelect from '@/components/MobileBookTypeSelect';
 import MobileSearchInput from '@/components/MobileSearchInput';
 import { BOOK_MAIN_CATEGORIES, categoryIdForDewey, normalizeMainCategoryCode, subcategoriesForMain } from '@/lib/categories';
 import { offlineDb } from '@/lib/offline-db';
 import { searchCachedBooks } from '@/lib/offline-api';
 import { syncCatalogForOffline } from '@/lib/catalog-cache';
+import { useTimedMessage } from '@/lib/useTimedMessage';
 import {
   Search,
   LayoutGrid,
@@ -77,7 +79,7 @@ export default function EBooksPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [sort, setSort] = useState('title');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
-  const [successMsg, setSuccessMsg] = useState('');
+  const [successMsg, setSuccessMsg] = useTimedMessage();
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedEBook, setSelectedEBook] = useState<any | null>(null);
@@ -88,6 +90,7 @@ export default function EBooksPage() {
   const [viewLogs, setViewLogs] = useState<EBookViewLogs | null>(null);
   const [loadingViewLogs, setLoadingViewLogs] = useState(false);
   const [viewLogsError, setViewLogsError] = useState('');
+  const requestSequence = useRef(0);
 
   const isLibrarian = user?.role === 'LIBRARIAN';
   const view = viewPreference ?? 'grid';
@@ -101,11 +104,13 @@ export default function EBooksPage() {
   }, []);
 
   const loadData = useCallback(async () => {
+    const requestId = ++requestSequence.current;
     setLoading(true);
     setError('');
     try {
       const cachedBooks = await offlineDb.ebooks.toArray();
       const cachedCategories = await offlineDb.categories.toArray();
+      if (requestId !== requestSequence.current) return;
       const cachedParams: Record<string, string> = { sort, order: sortOrder };
       if (search) cachedParams.search = search;
       if (categoryFilter) cachedParams.categoryId = categoryFilter;
@@ -134,6 +139,7 @@ export default function EBooksPage() {
         api.getEBooks(params),
         api.getCategories(),
       ]);
+      if (requestId !== requestSequence.current) return;
       if (ebooksRes.success) {
         setEbooks(ebooksRes.data || []);
         await offlineDb.ebooks.bulkPut(ebooksRes.data || []);
@@ -149,10 +155,11 @@ export default function EBooksPage() {
         await offlineDb.categories.bulkPut(catsRes.data || []);
       }
     } catch {
+      if (requestId !== requestSequence.current) return;
       setShowingCached(true);
       if (!ebooks.length) setError('Failed to load e-books. Reconnect to synchronize the catalog.');
     } finally {
-      setLoading(false);
+      if (requestId === requestSequence.current) setLoading(false);
     }
   }, [search, mainCategoryFilter, categoryFilter, sort, sortOrder]);
 
@@ -209,7 +216,6 @@ export default function EBooksPage() {
       }
       setSuccessMsg(`E-book marked as ${available ? 'available' : 'not available'}`);
       void loadData();
-      setTimeout(() => setSuccessMsg(''), 4000);
     } catch (caught) {
       setEbooks((current) => current.map((item) => item.id === ebook.id ? { ...item, status: previousStatus } : item));
       setError(caught instanceof Error ? caught.message : 'Failed to update e-book');
@@ -266,7 +272,6 @@ export default function EBooksPage() {
     setSuccessMsg("E-book updated successfully");
     setSelectedEBook(null);
     loadData();
-    setTimeout(() => setSuccessMsg(""), 4000);
   };
 
   const fallbackCover = (
@@ -304,11 +309,7 @@ export default function EBooksPage() {
       <Sidebar />
       <div className="flex-1 min-w-0">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-[calc(7rem+min(env(safe-area-inset-bottom),2rem))] lg:pb-8">
-          {successMsg && (
-            <div className="p-4 mb-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-sm text-emerald-400">
-              {successMsg}
-            </div>
-          )}
+          <SuccessNotice message={successMsg} />
           {error && (
             <div className="p-4 mb-4 bg-red-500/10 border border-red-500/30 rounded-xl text-sm text-red-400">
               {error}
@@ -524,7 +525,7 @@ export default function EBooksPage() {
                           <button
                             onClick={() => void openEBook(ebook)}
                             disabled={!isEBookAvailable(ebook)}
-                            className="flex-1 inline-flex items-center justify-center gap-1 px-2 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors shadow-lg shadow-blue-600/20 disabled:opacity-40 disabled:cursor-not-allowed sm:gap-1.5 sm:px-3 sm:text-sm"
+                            className="cpc-borrow-action flex-1 inline-flex items-center justify-center gap-1 px-2 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors shadow-lg shadow-blue-600/20 disabled:opacity-40 disabled:cursor-not-allowed sm:gap-1.5 sm:px-3 sm:text-sm"
                           >
                             <BookOpen className="w-4 h-4" /> {isEBookAvailable(ebook) ? 'View' : 'Unavailable'}
                           </button>
@@ -624,7 +625,7 @@ export default function EBooksPage() {
                               <button
                                 onClick={() => void openEBook(ebook)}
                                 disabled={!isEBookAvailable(ebook)}
-                                className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                className="cpc-borrow-action inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                               >
                                 <BookOpen className="w-3.5 h-3.5" /> {isEBookAvailable(ebook) ? 'View' : 'Unavailable'}
                               </button>
@@ -643,7 +644,7 @@ export default function EBooksPage() {
                   <div className="flex items-start gap-3 border-b border-zinc-800/80 pb-3"><div className="h-14 w-11 shrink-0 overflow-hidden rounded-lg bg-zinc-800"><MediaImage src={ebook.coverImage} alt={ebook.title || "E-book cover"} className="h-full w-full object-cover" fallback={<ImageIcon className="m-3 h-5 w-5 text-zinc-600" />} /></div><div className="min-w-0"><p className="font-semibold text-zinc-100 break-words">{ebook.title}</p><p className="mt-1 text-sm text-zinc-500 break-words">{ebook.author}</p></div></div>
                   <div className="grid grid-cols-2 gap-3 py-4 text-sm"><div><p className="text-xs text-zinc-500">Category</p><p className="mt-1 text-zinc-300">{ebook.category?.name || "General"}</p></div><div><p className="text-xs text-zinc-500">Format</p><p className="mt-1 text-zinc-300">{ebook.format}</p></div></div>
                   {isLibrarian && <p className="mt-2 text-xs text-zinc-400">{ebook.totalViews ?? 0} total views</p>}
-                  <div className="mt-3 flex items-center justify-between gap-3 border-t border-zinc-800/80 pt-3"><span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${isEBookAvailable(ebook) ? 'bg-emerald-500/15 text-emerald-400 ring-emerald-500/30' : 'bg-orange-500/15 text-orange-400 ring-orange-500/30'}`}>{isEBookAvailable(ebook) ? 'Available' : 'Unavailable'}</span>{isLibrarian ? <div className="flex items-center gap-3"><button onClick={() => handleEdit(ebook)} className="rounded-lg bg-zinc-800 px-3 py-2 text-xs text-zinc-200">Edit</button><AvailabilitySwitch checked={ebook.status === 'AVAILABLE'} disabled={togglingStatusId !== null} label={`Availability for ${ebook.title}`} onChange={(available) => void handleToggleAvailability(ebook, available)} /><button onClick={() => void showViewLogs(ebook)} className="rounded-lg p-2 text-zinc-300 hover:bg-zinc-800" aria-label={`View recent visitors for ${ebook.title}`} title="Recent visitors"><Eye className="h-4 w-4" /></button></div> : <button onClick={() => void openEBook(ebook)} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white" disabled={!isEBookAvailable(ebook)}>{isEBookAvailable(ebook) ? 'View' : 'Unavailable'}</button>}</div>
+                  <div className="mt-3 flex items-center justify-between gap-3 border-t border-zinc-800/80 pt-3"><span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${isEBookAvailable(ebook) ? 'bg-emerald-500/15 text-emerald-400 ring-emerald-500/30' : 'bg-orange-500/15 text-orange-400 ring-orange-500/30'}`}>{isEBookAvailable(ebook) ? 'Available' : 'Unavailable'}</span>{isLibrarian ? <div className="flex items-center gap-3"><button onClick={() => handleEdit(ebook)} className="rounded-lg bg-zinc-800 px-3 py-2 text-xs text-zinc-200">Edit</button><AvailabilitySwitch checked={ebook.status === 'AVAILABLE'} disabled={togglingStatusId !== null} label={`Availability for ${ebook.title}`} onChange={(available) => void handleToggleAvailability(ebook, available)} /><button onClick={() => void showViewLogs(ebook)} className="rounded-lg p-2 text-zinc-300 hover:bg-zinc-800" aria-label={`View recent visitors for ${ebook.title}`} title="Recent visitors"><Eye className="h-4 w-4" /></button></div> : <button onClick={() => void openEBook(ebook)} className="cpc-borrow-action rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white" disabled={!isEBookAvailable(ebook)}>{isEBookAvailable(ebook) ? 'View' : 'Unavailable'}</button>}</div>
                 </article>
               ))
             } />

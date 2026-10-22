@@ -10,7 +10,9 @@ import HeaderUserActions from "@/components/HeaderUserActions";
 import ResponsiveTable from "@/components/ResponsiveTable";
 import UserAvatar from "@/components/UserAvatar";
 import { BookFormSidePanel } from "@/components/BookFormSidePanel";
+import { SuccessNotice } from "@/components/SuccessNotice";
 import { useLocalDrafts } from "@/components/LocalDraftControls";
+import { useTimedMessage } from "@/lib/useTimedMessage";
 import { SortHeader, SortSelect, nextSortOrder, type SortOption } from "@/components/SortControls";
 import { Dialog, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
@@ -85,7 +87,7 @@ export default function MembersPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [sort, setSort] = useState("name");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
-  const [successMsg, setSuccessMsg] = useState("");
+  const [successMsg, setSuccessMsg] = useTimedMessage();
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [memberToDelete, setMemberToDelete] = useState<any>(null);
   const [deleteError, setDeleteError] = useState("");
@@ -224,7 +226,6 @@ export default function MembersPage() {
         setMemberToDelete(null);
         setSuccessMsg("Member deleted successfully");
         loadData();
-        setTimeout(() => setSuccessMsg(""), 4000);
       } else if (res.rateLimited) {
         setDeleteError("You're moving too fast. Please wait a moment and try again.");
       } else {
@@ -257,7 +258,6 @@ export default function MembersPage() {
       } else {
         setSuccessMsg("Student registration rejected and removed");
       }
-      setTimeout(() => setSuccessMsg(""), 4000);
     } catch {
       setPendingRegistrationError(`Failed to ${action} registration. Please try again.`);
     } finally {
@@ -384,7 +384,6 @@ export default function MembersPage() {
         setShowAddMemberModal(false);
         resetAddMemberForm();
         await loadData();
-        setTimeout(() => setSuccessMsg(""), 4000);
       } else if (res.rateLimited) {
         setMemberFormError("You're moving too fast. Please wait a moment and try again.");
       } else {
@@ -431,11 +430,7 @@ export default function MembersPage() {
       <Sidebar />
       <div className="flex-1 min-w-0">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-[calc(7rem+min(env(safe-area-inset-bottom),2rem))] lg:pb-8">
-          {successMsg && (
-            <div className="p-4 mb-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-sm text-emerald-400">
-              {successMsg}
-            </div>
-          )}
+          <SuccessNotice message={successMsg} />
           {error && (
             <div className="p-4 mb-4 bg-red-500/10 border border-red-500/30 rounded-xl text-sm text-red-400">
               {error}

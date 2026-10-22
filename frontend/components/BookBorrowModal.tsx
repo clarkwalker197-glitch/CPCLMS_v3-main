@@ -173,7 +173,7 @@ export function BookBorrowModal(props: {
           </Button>
           <Button
             type="submit"
-            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/30"
+            className="cpc-borrow-action flex-1 bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/30"
             disabled={loading}
           >
             {loading ? "Submitting..." : "Submit Request"}

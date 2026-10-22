@@ -88,6 +88,45 @@
   to { opacity: 1; }
 }
 
+@keyframes cpc-success-progress {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+.cpc-success-progress {
+  animation: cpc-success-progress linear forwards;
+  transform-origin: left;
+}
+
+.cpc-borrow-action {
+  transition: transform 180ms var(--cpc-motion-easing-standard), box-shadow 180ms var(--cpc-motion-easing-standard), filter 180ms var(--cpc-motion-easing-standard);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .cpc-borrow-action:not(:disabled):hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 18px rgb(37 99 235 / 28%);
+    filter: brightness(1.08);
+  }
+}
+
+.cpc-borrow-action:not(:disabled):active {
+  transform: translateY(0) scale(0.98);
+}
+
+.cpc-borrow-action:focus-visible {
+  outline: 2px solid rgb(96 165 250);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cpc-success-progress,
+  .cpc-borrow-action {
+    animation: none;
+    transition: none;
+  }
+}
+
 @keyframes cpc-error-shake {
   0%, 100% { transform: translateX(0); }
   30% { transform: translateX(-3px); }

@@ -4,7 +4,9 @@
 import { useAuth } from "@/lib/auth-context";
 import Sidebar from "@/components/Sidebar";
 import HeaderUserActions from "@/components/HeaderUserActions";
+import { SuccessNotice } from "@/components/SuccessNotice";
 import api from "@/lib/api";
+import { useTimedMessage } from "@/lib/useTimedMessage";
 import {
   MapPin,
   Clock,
@@ -72,7 +74,7 @@ export default function PoliciesPage() {
   const [libraryInfo, setLibraryInfo] = useState<LibraryInfo | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState<LibraryInfo>(DEFAULT_LIBRARY_INFO);
-  const [successMsg, setSuccessMsg] = useState("");
+  const [successMsg, setSuccessMsg] = useTimedMessage();
   const [loadError, setLoadError] = useState("");
   const [saveError, setSaveError] = useState("");
   const [policyUpdatedAt, setPolicyUpdatedAt] = useState<string | null>(null);
@@ -219,7 +221,6 @@ export default function PoliciesPage() {
       setPolicyUpdatedAt(response.data?.updatedAt ?? null);
       setIsEditing(false);
       setSuccessMsg("Library information updated successfully. Users will see the update shortly.");
-      window.setTimeout(() => setSuccessMsg(""), 4000);
     } catch {
       setSaveError("Unable to save the policy right now. Please check your connection and try again.");
     } finally {
@@ -259,12 +260,7 @@ export default function PoliciesPage() {
       <div className="flex-1 overflow-auto">
         <div className="max-w-6xl mx-auto p-6 pb-[calc(7rem+min(env(safe-area-inset-bottom),2rem))] lg:p-8 lg:pb-8">
           {/* Success Message */}
-          {successMsg && (
-            <div className="mb-6 p-4 bg-emerald-500/15 border border-emerald-500/30 rounded-lg text-emerald-400 flex items-center gap-2">
-              <Check className="w-5 h-5" />
-              {successMsg}
-            </div>
-          )}
+          <SuccessNotice message={successMsg} />
           {loadError && libraryInfo && (
             <div role="alert" className="mb-6 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-300">
               {loadError}

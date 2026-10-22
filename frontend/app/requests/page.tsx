@@ -28,6 +28,7 @@ import {
   XCircle,
   AlertTriangle,
   QrCode,
+  X,
 } from "lucide-react";
 
 const PAGE_SIZE = 10;
@@ -37,6 +38,30 @@ type MissingResolutionOutcome = "PAID" | "REPLACED";
 type MissingResolutionTarget = {
   id: string;
   book?: { title?: string | null } | null;
+};
+type BorrowRequestBook = {
+  id?: string;
+  requestId?: string;
+  title?: string | null;
+  author?: string | null;
+  accessionNo?: string | null;
+  status?: string;
+};
+type BorrowRequestRecord = {
+  id: string;
+  requestDate?: string | null;
+  status: string;
+  syncStatus?: string;
+  syncError?: string;
+  notes?: string | null;
+  transactionId?: string | null;
+  requestBatchId?: string | null;
+  user?: {
+    firstName?: string | null;
+    lastName?: string | null;
+    libraryId?: string | null;
+  } | null;
+  books?: BorrowRequestBook[];
 };
 
 const txnStatusBadge: Record<string, string> = {
@@ -134,6 +159,7 @@ export default function RequestsPage() {
   const [error, setError] = useState("");
   const [showingCachedRequests, setShowingCachedRequests] = useState(false);
   const [selectedNote, setSelectedNote] = useState<string | null>(null);
+  const [selectedRequest, setSelectedRequest] = useState<BorrowRequestRecord | null>(null);
 
   // Debounced search/filter values (300ms) to avoid per-keystroke API spam
   const debouncedReqSearch = useDebounce(reqSearch, 300);
@@ -695,7 +721,7 @@ export default function RequestsPage() {
     }
   };
 
-  const formatDate = (d?: string) =>
+  const formatDate = (d?: string | null) =>
     d ? new Date(d).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" }) : "—";
 
   const reqTotalPages = Math.max(1, Math.ceil(reqTotal / REQUEST_PAGE_SIZE));
@@ -1039,54 +1065,57 @@ export default function RequestsPage() {
                 </div>
               </div>
               <ResponsiveTable mobile={
-                records.map((req: any) => (
-                  <article key={req.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-lg shadow-black/10">
-                    <div className="border-b border-zinc-800/80 pb-3">
-                      {(req.books || []).map((book: any) => (
-                        <div key={book.requestId || book.id} className="mb-3 flex items-start gap-2 last:mb-0">
-                          <div>
-                            <p className="font-semibold break-words text-zinc-100">{book.title || "Unknown"}</p>
-                            <p className="mt-1 text-sm text-zinc-400">{book.author || "Author unavailable"}</p>
-                            <p className="mt-1 text-xs text-zinc-500">{book.accessionNo || ""}</p>
-                            <p className="mt-1 text-xs text-zinc-500">{formatDate(req.requestDate)} · {requestStatusText({ status: book.status || req.status })}</p>
+                records.map((req: BorrowRequestRecord) => (
+                  isLibrarian ? (
+                    <article key={req.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-lg shadow-black/10">
+                      <div className="border-b border-zinc-800/80 pb-3">
+                        {(req.books || []).map((book: BorrowRequestBook) => (
+                          <div key={book.requestId || book.id} className="mb-3 flex items-start gap-2 last:mb-0">
+                            <div>
+                              <p className="font-semibold break-words text-zinc-100">{book.title || "Unknown"}</p>
+                              <p className="mt-1 text-sm text-zinc-400">{book.author || "Author unavailable"}</p>
+                              <p className="mt-1 text-xs text-zinc-500">{book.accessionNo || ""}</p>
+                              <p className="mt-1 text-xs text-zinc-500">{formatDate(req.requestDate)} · {requestStatusText({ status: book.status || req.status })}</p>
+                            </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="grid grid-cols-2 gap-3 py-4 text-sm"><div><p className="text-xs text-zinc-500">Member</p><p className="mt-1 break-words text-zinc-300">{req.user?.firstName} {req.user?.lastName}</p><p className="text-xs text-zinc-500">{req.user?.libraryId || ""}</p></div><div><p className="text-xs text-zinc-500">Request Date</p><p className="mt-1 text-zinc-300">{formatDate(req.requestDate)}</p></div><div className="col-span-2"><p className="text-xs text-zinc-500">Notes</p><p className="mt-1 whitespace-pre-wrap break-words text-zinc-300">{req.notes || "—"}</p></div></div>
-                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-800/80 pt-3">
-                      <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${reqStatusBadge[req.syncStatus === "SYNC_FAILED" ? "SYNC_FAILED" : req.status] || "bg-zinc-500/15 text-zinc-400 ring-1 ring-zinc-500/30"}`}>
-                        {requestStatusText(req)}
-                      </span>
-                      {req.syncStatus === "QUEUED" && <p className="mt-1 text-xs text-amber-300">Saved on this device; the librarian has not received it yet.</p>}
-                      {req.syncStatus === "SYNC_FAILED" && <p className="mt-1 text-xs text-red-300">{req.syncError || "Reconnect and submit a new request."}</p>}
-                      <div className="flex flex-wrap gap-2">
-                        {!isLibrarian && (req.books || []).map((book: any) =>
-                          !req.syncStatus &&
-                          (book.status || req.status) === "PENDING" && book.requestId ? (
-                            <button
-                              key={book.requestId}
-                              type="button"
-                              onClick={() => void cancelBorrowRequest(book)}
-                              disabled={showingCachedRequests || cancellingRequestId !== null}
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-300 transition-colors hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              {cancellingRequestId === book.requestId && <span className="h-3 w-3 animate-spin rounded-full border-2 border-red-300/40 border-t-red-300" aria-hidden="true" />}
-                              {cancellingRequestId === book.requestId ? "Cancelling..." : "Cancel"}
-                            </button>
-                          ) : null
-                        )}
-                        {isLibrarian && req.status === "PENDING" && (
-                          <>
-                            <button disabled={actionLoadingId === req.id} onClick={() => approveListedBatch(req)} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-50">
-                              {actionLoadingId === req.id ? "Generating QR..." : req.transactionId ? "View QR / Borrow ID" : "Approve via QR"}
-                            </button>
-                            <button onClick={() => openRejectModal(req)} className="rounded-lg bg-red-500/15 px-3 py-2 text-xs font-medium text-red-400">Reject</button>
-                          </>
-                        )}
+                        ))}
                       </div>
-                    </div>
-                  </article>
+                      <div className="grid grid-cols-2 gap-3 py-4 text-sm"><div><p className="text-xs text-zinc-500">Member</p><p className="mt-1 break-words text-zinc-300">{req.user?.firstName} {req.user?.lastName}</p><p className="text-xs text-zinc-500">{req.user?.libraryId || ""}</p></div><div><p className="text-xs text-zinc-500">Request Date</p><p className="mt-1 text-zinc-300">{formatDate(req.requestDate)}</p></div><div className="col-span-2"><p className="text-xs text-zinc-500">Notes</p><p className="mt-1 whitespace-pre-wrap break-words text-zinc-300">{req.notes || "—"}</p></div></div>
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-800/80 pt-3">
+                        <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${reqStatusBadge[req.syncStatus === "SYNC_FAILED" ? "SYNC_FAILED" : req.status] || "bg-zinc-500/15 text-zinc-400 ring-1 ring-zinc-500/30"}`}>
+                          {requestStatusText(req)}
+                        </span>
+                        {req.syncStatus === "QUEUED" && <p className="mt-1 text-xs text-amber-300">Saved on this device; the librarian has not received it yet.</p>}
+                        {req.syncStatus === "SYNC_FAILED" && <p className="mt-1 text-xs text-red-300">{req.syncError || "Reconnect and submit a new request."}</p>}
+                        <div className="flex flex-wrap gap-2">
+                          {req.status === "PENDING" && (
+                            <>
+                              <button disabled={actionLoadingId === req.id} onClick={() => approveListedBatch(req)} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-medium text-white disabled:opacity-50">
+                                {actionLoadingId === req.id ? "Generating QR..." : req.transactionId ? "View QR / Borrow ID" : "Approve via QR"}
+                              </button>
+                              <button onClick={() => openRejectModal(req)} className="rounded-lg bg-red-500/15 px-3 py-2 text-xs font-medium text-red-400">Reject</button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </article>
+                  ) : (
+                    <button
+                      key={req.id}
+                      type="button"
+                      onClick={() => setSelectedRequest(req)}
+                      aria-label={`View request details for ${(req.books || []).map((book: BorrowRequestBook) => book.title || "Unknown").join(", ")}`}
+                      className="block w-full rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 text-left shadow-lg shadow-black/10 transition-colors hover:border-zinc-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                    >
+                      <p className="break-words font-semibold text-zinc-100">
+                        {(req.books || []).map((book: BorrowRequestBook) => book.title || "Unknown").join(" · ") || "Unknown"}
+                      </p>
+                      <p className="mt-2 break-words text-sm text-zinc-400">
+                        {[req.user?.firstName, req.user?.lastName].filter(Boolean).join(" ") || "Unknown member"}
+                      </p>
+                      <p className="mt-1 text-xs text-zinc-500">{formatDate(req.requestDate)}</p>
+                    </button>
+                  )
                 ))
               } />
               </>
@@ -1300,6 +1329,122 @@ export default function RequestsPage() {
           )}
         </div>
       </div>
+
+      {selectedRequest && (
+        <ModalLayer>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+            <button
+              type="button"
+              aria-label="Close request details"
+              className="fixed inset-0 bg-black/70 backdrop-blur-sm"
+              onClick={() => setSelectedRequest(null)}
+            />
+            <section
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="request-details-title"
+              className="relative z-50 max-h-[90dvh] w-full max-w-xl overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-900 p-5 shadow-2xl shadow-black/50 sm:p-6"
+            >
+              <div className="mb-5 flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <h2 id="request-details-title" className="break-words text-lg font-semibold text-white">
+                    {(selectedRequest.books || []).map((book: any) => book.title || "Unknown").join(" · ") || "Book request"}
+                  </h2>
+                  <p className="mt-1 text-sm text-zinc-400">Request details</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedRequest(null)}
+                  aria-label="Close request details"
+                  className="shrink-0 rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <dl className="mb-5 grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-zinc-500">Member</dt>
+                  <dd className="mt-1 break-words text-zinc-200">
+                    {[selectedRequest.user?.firstName, selectedRequest.user?.lastName].filter(Boolean).join(" ") || "Unknown member"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-zinc-500">Library ID</dt>
+                  <dd className="mt-1 break-words text-zinc-200">{selectedRequest.user?.libraryId || "—"}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-zinc-500">Request date</dt>
+                  <dd className="mt-1 text-zinc-200">{formatDate(selectedRequest.requestDate)}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-zinc-500">Status</dt>
+                  <dd className="mt-1">
+                    <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${reqStatusBadge[selectedRequest.syncStatus === "SYNC_FAILED" ? "SYNC_FAILED" : selectedRequest.status] || "bg-zinc-500/15 text-zinc-400 ring-1 ring-zinc-500/30"}`}>
+                      {requestStatusText(selectedRequest)}
+                    </span>
+                  </dd>
+                </div>
+              </dl>
+
+              <div className="space-y-3">
+                {(selectedRequest.books || []).map((book) => (
+                  <div key={book.requestId || book.id} className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+                    <h3 className="break-words font-semibold text-zinc-100">{book.title || "Unknown"}</h3>
+                    <p className="mt-1 break-words text-sm text-zinc-400">{book.author || "Author unavailable"}</p>
+                    <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
+                      <div>
+                        <p className="text-zinc-500">Accession number</p>
+                        <p className="mt-1 break-words text-zinc-300">{book.accessionNo || "—"}</p>
+                      </div>
+                      <div>
+                        <p className="text-zinc-500">Book status</p>
+                        <p className="mt-1 text-zinc-300">{requestStatusText({ status: book.status || selectedRequest.status })}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4 rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+                <h3 className="text-xs font-medium uppercase tracking-wide text-zinc-500">Notes</h3>
+                <p className="mt-2 whitespace-pre-wrap break-words text-sm text-zinc-300">{selectedRequest.notes || "—"}</p>
+              </div>
+
+              {selectedRequest.syncStatus === "QUEUED" && <p className="mt-4 text-xs text-amber-300">Saved on this device; the librarian has not received it yet.</p>}
+              {selectedRequest.syncStatus === "SYNC_FAILED" && <p className="mt-4 text-xs text-red-300">{selectedRequest.syncError || "Reconnect and submit a new request."}</p>}
+
+              {(selectedRequest.books || []).some((book) =>
+                !selectedRequest.syncStatus &&
+                (book.status || selectedRequest.status) === "PENDING" &&
+                book.requestId
+              ) && (
+                <div className="mt-5 flex flex-wrap gap-2 border-t border-zinc-800 pt-4">
+                  {(selectedRequest.books || []).map((book) =>
+                    !selectedRequest.syncStatus &&
+                    (book.status || selectedRequest.status) === "PENDING" &&
+                    book.requestId ? (
+                      <button
+                        key={book.requestId}
+                        type="button"
+                        onClick={() => {
+                          setSelectedRequest(null);
+                          void cancelBorrowRequest(book);
+                        }}
+                        disabled={showingCachedRequests || cancellingRequestId !== null}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-300 transition-colors hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {cancellingRequestId === book.requestId && <span className="h-3 w-3 animate-spin rounded-full border-2 border-red-300/40 border-t-red-300" aria-hidden="true" />}
+                        {cancellingRequestId === book.requestId ? "Cancelling..." : `Cancel ${book.title || "request"}`}
+                      </button>
+                    ) : null
+                  )}
+                </div>
+              )}
+            </section>
+          </div>
+        </ModalLayer>
+      )}
 
       {returnTarget && (
         <ModalLayer>

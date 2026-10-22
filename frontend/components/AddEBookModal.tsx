@@ -5,6 +5,8 @@ import { DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/di
 import { Button } from "@/components/ui/button";
 import { BookFormSidePanel } from "@/components/BookFormSidePanel";
 import api from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
+import { LocalDraftControls, useLocalDrafts } from "@/components/LocalDraftControls";
 import { BOOK_MAIN_CATEGORIES, categoryDisplayName, categoryForClassification, categoryIdForDewey, isCategoryInMain, LIBRARY_CATEGORIES, mainCategoryForClassification, normalizeClassificationNumber, sanitizeClassificationInput, subcategoriesForMain } from "@/lib/categories";
 import { BookOpen, Upload, Link2, FileText, X } from "lucide-react";
 
@@ -62,9 +64,10 @@ export function AddEBookModal(props: {
     language: "English",
     fileUrl: "",
     format: "PDF" as "PDF" | "EPUB" | "MOBI",
+    entryMode: "upload" as "upload" | "link",
   };
-  const [mode, setMode] = useState<"upload" | "link">("upload");
   const [form, setForm] = useState(emptyForm);
+  const mode = form.entryMode;
   const [mainCategoryCode, setMainCategoryCode] = useState("");
   const [ebookFile, setEbookFile] = useState<File | null>(null);
   const [coverFile, setCoverFile] = useState<File | null>(null);
@@ -72,6 +75,26 @@ export function AddEBookModal(props: {
   const [error, setError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
+  const { user } = useAuth();
+  const drafts = useLocalDrafts(
+    `cpc.drafts.add-ebook.${user?.id || "session"}`,
+    emptyForm,
+    form,
+    setForm,
+    {
+      isEmpty: (value) => !Object.entries(value).some(([key, field]) =>
+        !["language", "format", "entryMode"].includes(key) &&
+        typeof field === "string" &&
+        field.trim()
+      ),
+      getLabel: (value, createdAt) =>
+        value.title.trim() || value.isbn.trim() ||
+        `New e-book · ${new Date(createdAt).toLocaleString()}`,
+      serialize: (value) => value,
+      deserialize: (data, initialValue) => ({ ...initialValue, ...data }),
+      onRestore: (value) => setMainCategoryCode(value.mainCategory),
+    },
+  );
 
   const update = (field: keyof typeof form) => (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -105,17 +128,9 @@ export function AddEBookModal(props: {
     classificationNumber: normalizeClassificationNumber(current.classificationNumber) || current.classificationNumber,
   }));
 
-  const reset = () => {
-    setForm(emptyForm);
-    setMainCategoryCode("");
-    setEbookFile(null);
-    setCoverFile(null);
-    setError("");
-  };
-
   const handleClose = () => {
     if (loading) return;
-    reset();
+    setError("");
     props.onOpenChange(false);
   };
 
@@ -223,6 +238,10 @@ export function AddEBookModal(props: {
       }
 
       if (res.success) {
+        drafts.clearActiveDraft();
+        setMainCategoryCode("");
+        setEbookFile(null);
+        setCoverFile(null);
         props.onSuccess();
         handleClose();
       } else if (res.rateLimited) {
@@ -251,13 +270,40 @@ export function AddEBookModal(props: {
         </DialogDescription>
       </DialogHeader>
 
+      <LocalDraftControls
+        drafts={drafts.drafts}
+        activeDraftId={drafts.activeDraftId}
+        error={drafts.error}
+        note="Drafts auto-save in this browser. Uploaded e-book and cover files must be reselected after refreshing."
+        onSelect={(id) => {
+          drafts.selectDraft(id);
+          const selected = drafts.drafts.find((draft) => draft.id === id);
+          if (selected) setMainCategoryCode(selected.data.mainCategory);
+          setEbookFile(null);
+          setCoverFile(null);
+        }}
+        onNew={() => {
+          drafts.startNewDraft();
+          setMainCategoryCode("");
+          setEbookFile(null);
+          setCoverFile(null);
+        }}
+        onDiscard={() => {
+          drafts.discardDraft();
+          const next = drafts.drafts.find((draft) => draft.id !== drafts.activeDraftId);
+          setMainCategoryCode(next?.data.mainCategory || "");
+          setEbookFile(null);
+          setCoverFile(null);
+        }}
+      />
+
       <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pr-1">
       <div className="flex gap-2 p-1 bg-zinc-950 border border-zinc-800 rounded-xl">
         <button
           type="button"
           onClick={() => {
-            setMode("upload");
+            setForm((current) => ({ ...current, entryMode: "upload" }));
             setError("");
           }}
           className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -270,7 +316,7 @@ export function AddEBookModal(props: {
         <button
           type="button"
           onClick={() => {
-            setMode("link");
+            setForm((current) => ({ ...current, entryMode: "link" }));
             setError("");
           }}
           className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium transition-colors ${

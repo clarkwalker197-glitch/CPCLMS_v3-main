@@ -955,7 +955,36 @@ html:not(.light) .auth-brand-panel {
   }
 
   .mobile-stats-grid {
-    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0.625rem !important;
+  }
+
+  .mobile-stats-grid > .mobile-stat-card {
+    padding: 0.75rem;
+    border-radius: 1rem;
+  }
+
+  .mobile-stats-grid > .mobile-stat-card > div:first-child > div {
+    width: 2rem;
+    height: 2rem;
+    border-radius: 0.625rem;
+  }
+
+  .mobile-stats-grid > .mobile-stat-card > div:first-child > div > svg {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  .mobile-stats-grid > .mobile-stat-card > p {
+    margin-top: 0.5rem;
+    font-size: 1.25rem;
+    line-height: 1.75rem;
+  }
+
+  .mobile-stats-grid > .mobile-stat-card > div:nth-child(3) {
+    margin-top: 0.125rem;
+    font-size: 0.6875rem;
+    line-height: 1rem;
   }
 
   .mobile-stat-card-link {

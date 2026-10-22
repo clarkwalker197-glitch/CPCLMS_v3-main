@@ -42,6 +42,7 @@ export interface DashboardStats {
     overdueBooks: number;
     pendingRequests: number;
     activeReservations: number;
+    availablePhysicalCopies: number;
   };
   bookStatus: {
     available: number;
@@ -88,6 +89,7 @@ export class AnalyticsService {
     const [
       totalBooks,
       totalEBooks,
+      availablePhysicalCopies,
       totalUsers,
       totalTransactions,
       activeBorrows,
@@ -109,6 +111,10 @@ export class AnalyticsService {
     ] = await Promise.all([
       prisma.book.count({ where: activeBookWhere }),
       prisma.eBook.count({ where: activeBookWhere }),
+      prisma.book.aggregate({
+        where: activeBookWhere,
+        _sum: { availableCopies: true },
+      }),
       prisma.user.count({ where: activeUserWhere }),
       prisma.borrowTransaction.count({
         where: {
@@ -230,6 +236,7 @@ export class AnalyticsService {
       overview: {
         totalBooks,
         totalEBooks,
+        availablePhysicalCopies: availablePhysicalCopies._sum.availableCopies ?? 0,
         totalUsers,
         totalTransactions,
         activeBorrows,

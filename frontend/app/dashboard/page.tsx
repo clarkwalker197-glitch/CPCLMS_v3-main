@@ -114,10 +114,17 @@ export default function DashboardPage() {
   const ov = stats?.overview || {};
   const statsCards = [
     {
-      title: "Total Books",
+      title: "Total Book Titles",
       value: ov.totalBooks ?? "—",
       icon: Library,
       accent: "bg-blue-500/15 text-blue-400",
+      href: "/books",
+    },
+    {
+      title: "Total Physical Book Copies Available",
+      value: ov.availablePhysicalCopies ?? "—",
+      icon: Library,
+      accent: "bg-cyan-500/15 text-cyan-400",
       href: "/books",
     },
     {
@@ -155,10 +162,10 @@ export default function DashboardPage() {
             </div>
 
             {/* Stats */}
-            <div className="mobile-stats-grid mb-8 grid grid-cols-2 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="mobile-stats-grid mb-8 grid grid-cols-2 gap-4 sm:grid-cols-2 xl:grid-cols-5">
               {loading
-                ? Array.from({ length: 4 }).map((_, i) => (
-                  <div key={i} className="h-32 rounded-2xl bg-zinc-900 animate-pulse" />
+                ? Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="h-24 rounded-2xl bg-zinc-900 animate-pulse sm:h-32" />
                 ))
                 : statsCards.map((card, index) => (
                   <StatCard key={index} {...card} />

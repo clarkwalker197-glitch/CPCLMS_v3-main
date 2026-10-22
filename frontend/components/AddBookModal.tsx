@@ -5,6 +5,8 @@ import { DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/di
 import { Button } from "@/components/ui/button";
 import { BookFormSidePanel } from "@/components/BookFormSidePanel";
 import api from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
+import { LocalDraftControls, useLocalDrafts } from "@/components/LocalDraftControls";
 import { BOOK_MAIN_CATEGORIES, categoryDisplayName, categoryForClassification, categoryIdForDewey, isCategoryInMain, LIBRARY_CATEGORIES, mainCategoryForClassification, normalizeClassificationNumber, sanitizeClassificationInput, subcategoriesForMain } from "@/lib/categories";
 import { BookOpen, Upload, FileText, X } from "lucide-react";
 
@@ -56,6 +58,24 @@ export function AddBookModal(props: {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const coverInputRef = useRef<HTMLInputElement>(null);
+  const { user } = useAuth();
+  const drafts = useLocalDrafts(
+    `cpc.drafts.add-book.${user?.id || "session"}`,
+    emptyForm,
+    form,
+    setForm,
+    {
+      isEmpty: (value) => !Object.entries(value).some(([key, field]) =>
+        key !== "language" && key !== "copies" && typeof field === "string" && field.trim()
+      ),
+      getLabel: (value, createdAt) =>
+        value.title.trim() || value.accessionNo.trim() || value.isbn.trim() ||
+        `New book · ${new Date(createdAt).toLocaleString()}`,
+      serialize: (value) => value,
+      deserialize: (data, initialValue) => ({ ...initialValue, ...data }),
+      onRestore: (value) => setMainCategoryCode(value.mainCategory),
+    },
+  );
 
   const update = (field: keyof typeof form) => (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
@@ -106,16 +126,9 @@ export function AddBookModal(props: {
     setCoverFile(file);
   };
 
-  const reset = () => {
-    setForm(emptyForm);
-    setMainCategoryCode("");
-    setCoverFile(null);
-    setError("");
-  };
-
   const handleClose = () => {
     if (loading) return;
-    reset();
+    setError("");
     props.onOpenChange(false);
   };
 
@@ -177,6 +190,9 @@ export function AddBookModal(props: {
           });
 
       if (res.success) {
+        drafts.clearActiveDraft();
+        setMainCategoryCode("");
+        setCoverFile(null);
         props.onSuccess();
         handleClose();
       } else if (res.rateLimited) {
@@ -209,6 +225,30 @@ export function AddBookModal(props: {
           {error}
         </div>
       )}
+
+      <LocalDraftControls
+        drafts={drafts.drafts}
+        activeDraftId={drafts.activeDraftId}
+        error={drafts.error}
+        note="Drafts auto-save in this browser. Selected cover files must be reselected after refreshing."
+        onSelect={(id) => {
+          drafts.selectDraft(id);
+          const selected = drafts.drafts.find((draft) => draft.id === id);
+          setMainCategoryCode(selected?.data.mainCategory || "");
+          setCoverFile(null);
+        }}
+        onNew={() => {
+          drafts.startNewDraft();
+          setMainCategoryCode("");
+          setCoverFile(null);
+        }}
+        onDiscard={() => {
+          drafts.discardDraft();
+          const next = drafts.drafts.find((draft) => draft.id !== drafts.activeDraftId);
+          setMainCategoryCode(next?.data.mainCategory || "");
+          setCoverFile(null);
+        }}
+      />
 
       <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pr-1">

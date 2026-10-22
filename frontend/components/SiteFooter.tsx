@@ -30,7 +30,7 @@ export default function SiteFooter() {
 
   return (
     <footer
-      className={`w-full shrink-0 border-t border-zinc-800 bg-zinc-950 text-zinc-400 ${
+      className={`hidden w-full shrink-0 border-t border-zinc-800 bg-zinc-950 text-zinc-400 lg:block ${
         hasDesktopSidebar ? "lg:hidden" : ""
       }`}
     >

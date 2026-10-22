@@ -10,6 +10,7 @@ import HeaderUserActions from "@/components/HeaderUserActions";
 import ResponsiveTable from "@/components/ResponsiveTable";
 import UserAvatar from "@/components/UserAvatar";
 import { BookFormSidePanel } from "@/components/BookFormSidePanel";
+import { LocalDraftControls, useLocalDrafts } from "@/components/LocalDraftControls";
 import { SortHeader, SortSelect, nextSortOrder, type SortOption } from "@/components/SortControls";
 import { Dialog, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
@@ -101,6 +102,45 @@ export default function MembersPage() {
   const debouncedStatus = useDebounce(statusFilter, 300);
 
   const isLibrarian = user?.role === "LIBRARIAN";
+  const memberDrafts = useLocalDrafts<
+    AddMemberFormState,
+    Omit<AddMemberFormState, "password" | "confirmPassword">
+  >(
+    `cpc.drafts.add-member.${user?.id || "session"}`,
+    emptyAddMemberForm,
+    memberForm,
+    setMemberForm,
+    {
+      isEmpty: (value) => value.role === "STUDENT" &&
+        !Object.entries(value).some(([key, field]) =>
+          !["role", "password", "confirmPassword"].includes(key) &&
+          typeof field === "string" &&
+          field.trim()
+        ),
+      getLabel: (value, createdAt) =>
+        [value.firstName, value.lastName].filter(Boolean).join(" ") ||
+        value.libraryId ||
+        `New member · ${new Date(createdAt).toLocaleString()}`,
+      serialize: (value) => ({
+        firstName: value.firstName,
+        lastName: value.lastName,
+        suffix: value.suffix,
+        email: value.email,
+        libraryId: value.libraryId,
+        role: value.role,
+        department: value.department,
+        year: value.year,
+        section: value.section,
+        phone: value.phone,
+      }),
+      deserialize: (data, initialValue) => ({
+        ...initialValue,
+        ...data,
+        password: "",
+        confirmPassword: "",
+      }),
+    },
+  );
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -277,7 +317,7 @@ export default function MembersPage() {
   };
 
   const resetAddMemberForm = () => {
-    setMemberForm(emptyAddMemberForm);
+    memberDrafts.clearActiveDraft();
     setMemberFormError("");
   };
 
@@ -735,7 +775,7 @@ export default function MembersPage() {
             open={showAddMemberModal}
             onClose={() => {
               setShowAddMemberModal(false);
-              resetAddMemberForm();
+              setMemberFormError("");
             }}
             ariaLabel="Add member"
           >
@@ -754,6 +794,16 @@ export default function MembersPage() {
                 {memberFormError}
               </div>
             )}
+
+            <LocalDraftControls
+              drafts={memberDrafts.drafts}
+              activeDraftId={memberDrafts.activeDraftId}
+              error={memberDrafts.error}
+              note="Drafts auto-save in this browser. Passwords are not saved and must be re-entered before creating the member."
+              onSelect={memberDrafts.selectDraft}
+              onNew={memberDrafts.startNewDraft}
+              onDiscard={memberDrafts.discardDraft}
+            />
 
             <form onSubmit={handleAddMember} className="flex min-h-0 flex-1 flex-col">
               <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pr-1">
@@ -962,7 +1012,6 @@ export default function MembersPage() {
                   type="button"
                   onClick={() => {
                     setShowAddMemberModal(false);
-                    resetAddMemberForm();
                   }}
                   className="flex-1 rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2 text-zinc-200 hover:bg-zinc-700 transition-colors"
                 >

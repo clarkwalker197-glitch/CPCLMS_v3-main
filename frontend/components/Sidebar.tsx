@@ -445,6 +445,10 @@ export default function Sidebar({ showCopyright = true }: { showCopyright?: bool
               </span>
             </div>
           )}
+        </>
+      )}
+      {portalTarget && isCompactMobile && createPortal(
+        <>
           {showScrollTop && (
             <button type="button" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })} aria-label="Scroll to top" className="fixed bottom-[calc(5.75rem+env(safe-area-inset-bottom))] right-4 z-30 flex h-11 w-11 items-center justify-center rounded-full border border-zinc-700 bg-zinc-900 text-zinc-200 shadow-xl">
               <ArrowUp className="h-5 w-5" />
@@ -465,7 +469,8 @@ export default function Sidebar({ showCopyright = true }: { showCopyright?: bool
           >
             {user?.role === "STUDENT" || user?.role === "FACULTY" ? <QrCode className="h-6 w-6" /> : <ClipboardList className="h-6 w-6" />}
           </button>
-        </>
+        </>,
+        portalTarget
       )}
     </>
   );

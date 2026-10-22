@@ -10,7 +10,7 @@ import HeaderUserActions from "@/components/HeaderUserActions";
 import ResponsiveTable from "@/components/ResponsiveTable";
 import UserAvatar from "@/components/UserAvatar";
 import { BookFormSidePanel } from "@/components/BookFormSidePanel";
-import { LocalDraftControls, useLocalDrafts } from "@/components/LocalDraftControls";
+import { useLocalDrafts } from "@/components/LocalDraftControls";
 import { SortHeader, SortSelect, nextSortOrder, type SortOption } from "@/components/SortControls";
 import { Dialog, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
@@ -794,16 +794,6 @@ export default function MembersPage() {
                 {memberFormError}
               </div>
             )}
-
-            <LocalDraftControls
-              drafts={memberDrafts.drafts}
-              activeDraftId={memberDrafts.activeDraftId}
-              error={memberDrafts.error}
-              note="Drafts auto-save in this browser. Passwords are not saved and must be re-entered before creating the member."
-              onSelect={memberDrafts.selectDraft}
-              onNew={memberDrafts.startNewDraft}
-              onDiscard={memberDrafts.discardDraft}
-            />
 
             <form onSubmit={handleAddMember} className="flex min-h-0 flex-1 flex-col">
               <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pr-1">

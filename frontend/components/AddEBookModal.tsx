@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { BookFormSidePanel } from "@/components/BookFormSidePanel";
 import api from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { LocalDraftControls, useLocalDrafts } from "@/components/LocalDraftControls";
+import { useLocalDrafts } from "@/components/LocalDraftControls";
 import { sanitizeIsbnInput } from "@/lib/isbn";
 import { BOOK_MAIN_CATEGORIES, categoryDisplayName, categoryForClassification, categoryIdForDewey, isCategoryInMain, LIBRARY_CATEGORIES, mainCategoryForClassification, normalizeClassificationNumber, sanitizeClassificationInput, subcategoriesForMain } from "@/lib/categories";
 import { BookOpen, Upload, Link2, FileText, X } from "lucide-react";
@@ -273,33 +273,6 @@ export function AddEBookModal(props: {
             : "Paste a direct link to an already-hosted file (e.g. Google Drive, S3, Cloudinary)."}
         </DialogDescription>
       </DialogHeader>
-
-      <LocalDraftControls
-        drafts={drafts.drafts}
-        activeDraftId={drafts.activeDraftId}
-        error={drafts.error}
-        note="Drafts auto-save in this browser. Uploaded e-book and cover files must be reselected after refreshing."
-        onSelect={(id) => {
-          drafts.selectDraft(id);
-          const selected = drafts.drafts.find((draft) => draft.id === id);
-          if (selected) setMainCategoryCode(selected.data.mainCategory);
-          setEbookFile(null);
-          setCoverFile(null);
-        }}
-        onNew={() => {
-          drafts.startNewDraft();
-          setMainCategoryCode("");
-          setEbookFile(null);
-          setCoverFile(null);
-        }}
-        onDiscard={() => {
-          drafts.discardDraft();
-          const next = drafts.drafts.find((draft) => draft.id !== drafts.activeDraftId);
-          setMainCategoryCode(next?.data.mainCategory || "");
-          setEbookFile(null);
-          setCoverFile(null);
-        }}
-      />
 
       <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pr-1">

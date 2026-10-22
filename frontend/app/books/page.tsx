@@ -586,7 +586,7 @@ export default function BooksPage() {
                   type="text"
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search by title, author, or Dewey number..."
+                  placeholder="Search book titles..."
                   className="min-h-[44px] w-full rounded-xl border border-zinc-700 bg-zinc-950 pl-10 pr-3 text-sm text-white placeholder:text-zinc-500 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -594,7 +594,7 @@ export default function BooksPage() {
                 <MobileSearchInput
                   value={search}
                   onChange={setSearch}
-                  placeholder="Search by title, author, or Dewey number..."
+                  placeholder="Search book titles..."
                   storageKey="cpc-recent-book-searches"
                 />
               </div>

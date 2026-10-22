@@ -24,19 +24,8 @@ export function searchCachedBooks(
     }
   }
   const filtered = books.filter((book) => {
-    const category = book.category as Record<string, unknown> | undefined;
-    const searchable = [
-      book.title,
-      book.author,
-      book.isbn,
-      book.classificationNumber,
-      category?.name,
-      category?.slug,
-    ].map((value) => String(value || '').toLocaleLowerCase());
     const title = String(book.title || '').toLocaleLowerCase();
-    const matchesSearch = title.startsWith(search) ||
-      searchable.slice(1).some((value) => value.includes(search));
-    if (search && !matchesSearch) return false;
+    if (search && !title.startsWith(search)) return false;
     if (classification && !String(book.classificationNumber || '').toLocaleLowerCase().includes(classification)) return false;
     if (categoryId && !categoryIds.has(String(book.categoryId || ''))) return false;
     if (categoryMain) {

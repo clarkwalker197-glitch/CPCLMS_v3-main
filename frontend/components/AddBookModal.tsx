@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { BookFormSidePanel } from "@/components/BookFormSidePanel";
 import api from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { LocalDraftControls, useLocalDrafts } from "@/components/LocalDraftControls";
+import { useLocalDrafts } from "@/components/LocalDraftControls";
 import { sanitizeIsbnInput } from "@/lib/isbn";
 import { BOOK_MAIN_CATEGORIES, categoryDisplayName, categoryForClassification, categoryIdForDewey, isCategoryInMain, LIBRARY_CATEGORIES, mainCategoryForClassification, normalizeClassificationNumber, sanitizeClassificationInput, subcategoriesForMain } from "@/lib/categories";
 import { BookOpen, Upload, FileText, X } from "lucide-react";
@@ -229,30 +229,6 @@ export function AddBookModal(props: {
           {error}
         </div>
       )}
-
-      <LocalDraftControls
-        drafts={drafts.drafts}
-        activeDraftId={drafts.activeDraftId}
-        error={drafts.error}
-        note="Drafts auto-save in this browser. Selected cover files must be reselected after refreshing."
-        onSelect={(id) => {
-          drafts.selectDraft(id);
-          const selected = drafts.drafts.find((draft) => draft.id === id);
-          setMainCategoryCode(selected?.data.mainCategory || "");
-          setCoverFile(null);
-        }}
-        onNew={() => {
-          drafts.startNewDraft();
-          setMainCategoryCode("");
-          setCoverFile(null);
-        }}
-        onDiscard={() => {
-          drafts.discardDraft();
-          const next = drafts.drafts.find((draft) => draft.id !== drafts.activeDraftId);
-          setMainCategoryCode(next?.data.mainCategory || "");
-          setCoverFile(null);
-        }}
-      />
 
       <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pr-1">

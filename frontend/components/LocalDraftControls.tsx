@@ -1,7 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
-import { X } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 
 export type LocalDraft<T> = {
   id: string;
@@ -29,8 +28,19 @@ export function useLocalDrafts<T extends Record<string, unknown>, Stored = T>(
   const optionsRef = useRef(options);
   const [drafts, setDrafts] = useState<LocalDraft<Stored>[]>([]);
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
-  const [ready, setReady] = useState(false);
-  const [error, setError] = useState("");
+  const [readyStorageKey, setReadyStorageKey] = useState<string | null>(null);
+  const ready = readyStorageKey === storageKey;
+  const valueRef = useRef(value);
+  const draftsRef = useRef(drafts);
+  const activeDraftIdRef = useRef(activeDraftId);
+  const readyRef = useRef(ready);
+
+  useLayoutEffect(() => {
+    valueRef.current = value;
+    draftsRef.current = drafts;
+    activeDraftIdRef.current = activeDraftId;
+    readyRef.current = ready;
+  }, [activeDraftId, drafts, ready, value]);
 
   useEffect(() => {
     optionsRef.current = options;
@@ -39,9 +49,8 @@ export function useLocalDrafts<T extends Record<string, unknown>, Stored = T>(
   const persist = useCallback((nextDrafts: LocalDraft<Stored>[]) => {
     try {
       localStorage.setItem(storageKey, JSON.stringify(nextDrafts));
-      setError("");
-    } catch {
-      setError("Drafts could not be saved in this browser.");
+    } catch (error) {
+      console.error("[Drafts] Could not save drafts in this browser.", error);
     }
   }, [storageKey]);
 
@@ -71,10 +80,10 @@ export function useLocalDrafts<T extends Record<string, unknown>, Stored = T>(
             }
           }
         }
-      } catch {
-        setError("Saved drafts could not be read from this browser.");
+      } catch (error) {
+        console.error("[Drafts] Could not read saved drafts from this browser.", error);
       } finally {
-        setReady(true);
+        setReadyStorageKey(storageKey);
       }
     }, 0);
     return () => window.clearTimeout(timer);
@@ -102,6 +111,37 @@ export function useLocalDrafts<T extends Record<string, unknown>, Stored = T>(
 
     return () => window.clearTimeout(timer);
   }, [activeDraftId, persist, ready, value]);
+
+  useEffect(() => {
+    const saveLatestDraft = () => {
+      const currentValue = valueRef.current;
+      const currentOptions = optionsRef.current;
+      if (!readyRef.current || currentOptions.isEmpty(currentValue)) return;
+
+      const now = Date.now();
+      const id = activeDraftIdRef.current || crypto.randomUUID();
+      const draft: LocalDraft<Stored> = {
+        id,
+        label: currentOptions.getLabel(currentValue, now),
+        updatedAt: now,
+        data: currentOptions.serialize(currentValue),
+      };
+      const next = [draft, ...draftsRef.current.filter((item) => item.id !== id)];
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(next));
+        draftsRef.current = next;
+        activeDraftIdRef.current = id;
+      } catch (error) {
+        console.error("[Drafts] Could not save drafts in this browser.", error);
+      }
+    };
+
+    window.addEventListener("pagehide", saveLatestDraft);
+    return () => {
+      window.removeEventListener("pagehide", saveLatestDraft);
+      saveLatestDraft();
+    };
+  }, [storageKey]);
 
   const commitCurrent = useCallback((current: LocalDraft<Stored>[]) => {
     if (!ready || optionsRef.current.isEmpty(value)) return current;
@@ -174,61 +214,9 @@ export function useLocalDrafts<T extends Record<string, unknown>, Stored = T>(
   return {
     drafts,
     activeDraftId,
-    error,
     selectDraft,
     startNewDraft,
     discardDraft,
     clearActiveDraft,
   };
-}
-
-export function LocalDraftControls<T>({
-  drafts,
-  activeDraftId,
-  error,
-  note,
-  onSelect,
-  onNew,
-  onDiscard,
-}: {
-  drafts: LocalDraft<T>[];
-  activeDraftId: string | null;
-  error: string;
-  note: string;
-  onSelect: (id: string) => void;
-  onNew: () => void;
-  onDiscard: () => void;
-}) {
-  return (
-    <section aria-label="Drafts" className="mb-4 rounded-xl border border-zinc-800 bg-zinc-900/60 p-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <label htmlFor="form-draft-select" className="sr-only">Saved drafts</label>
-        <select
-          id="form-draft-select"
-          value={activeDraftId || ""}
-          onChange={(event) => onSelect(event.target.value)}
-          className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-xs text-zinc-200"
-        >
-          <option value="" disabled>{drafts.length ? "Select a saved draft" : "No saved drafts yet"}</option>
-          {drafts.map((draft) => (
-            <option key={draft.id} value={draft.id}>{draft.label}</option>
-          ))}
-        </select>
-        <button type="button" onClick={onNew} className="rounded-lg border border-zinc-700 px-3 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800">
-          New draft
-        </button>
-        <button
-          type="button"
-          onClick={onDiscard}
-          disabled={!activeDraftId}
-          aria-label="Discard selected draft"
-          className="rounded-lg p-2 text-zinc-400 hover:bg-red-500/10 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <X className="h-4 w-4" />
-        </button>
-      </div>
-      <p className="mt-2 text-[11px] leading-4 text-zinc-500">{note}</p>
-      {error && <p role="alert" className="mt-2 text-xs text-amber-300">{error}</p>}
-    </section>
-  );
 }

@@ -19,6 +19,35 @@ import {
   AlertTriangle,
 } from "lucide-react";
 
+async function loadAvailablePhysicalCopies(): Promise<number> {
+  const firstResponse = await api.getBooks({ page: "1", limit: "100" });
+  if (!firstResponse.success) {
+    throw new Error(firstResponse.error || "Could not load the physical book inventory.");
+  }
+
+  const totalPages = firstResponse.meta?.totalPages ?? 1;
+  const additionalResponses = await Promise.all(
+    Array.from({ length: Math.max(0, totalPages - 1) }, (_, index) =>
+      api.getBooks({ page: String(index + 2), limit: "100" }),
+    ),
+  );
+  const responses = [firstResponse, ...additionalResponses];
+  const failedResponse = responses.find((response) => !response.success);
+  if (failedResponse) {
+    throw new Error(failedResponse.error || "Could not load the complete physical book inventory.");
+  }
+
+  return responses
+    .flatMap((response) => response.data || [])
+    .reduce((total, book) => {
+      const copies = Number(book.availableCopies ?? 0);
+      if (!Number.isFinite(copies) || copies < 0) {
+        throw new Error("The physical book inventory contains an invalid available-copy count.");
+      }
+      return total + copies;
+    }, 0);
+}
+
 const statusBadge: Record<string, string> = {
   ACTIVE: "bg-blue-500/15 text-blue-400 ring-blue-500/30",
   RETURNED: "bg-emerald-500/15 text-emerald-400 ring-emerald-500/30",
@@ -40,6 +69,7 @@ export default function DashboardPage() {
   const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showingCached, setShowingCached] = useState(false);
+  const [inventoryMetricError, setInventoryMetricError] = useState("");
 
   useEffect(() => {
     if (user && user.role !== "LIBRARIAN") {
@@ -80,13 +110,35 @@ export default function DashboardPage() {
           api.getTransactions({ limit: "5", sort: "borrowDate", order: "desc" }),
         ]);
         if (statsRes.success) {
-          setStats(statsRes.data);
+          let dashboardStats = statsRes.data;
+          if (typeof dashboardStats?.overview?.availablePhysicalCopies !== "number") {
+            try {
+              const availablePhysicalCopies = await loadAvailablePhysicalCopies();
+              dashboardStats = {
+                ...dashboardStats,
+                overview: {
+                  ...dashboardStats?.overview,
+                  availablePhysicalCopies,
+                },
+              };
+              setInventoryMetricError("");
+            } catch (error) {
+              setInventoryMetricError(
+                error instanceof Error
+                  ? `Physical copy count could not be loaded: ${error.message}`
+                  : "Physical copy count could not be loaded.",
+              );
+            }
+          } else {
+            setInventoryMetricError("");
+          }
+          setStats(dashboardStats);
           setShowingCached(false);
           if (user?.id) {
             await offlineDb.dashboard.put({
               id: user.id,
               userId: user.id,
-              snapshot: statsRes.data,
+              snapshot: dashboardStats,
               updatedAt: new Date().toISOString(),
               syncedAt: Date.now(),
             });
@@ -154,6 +206,9 @@ export default function DashboardPage() {
               <div>
                 <h1 className="text-2xl font-bold text-white">Library Dashboard</h1>
                 <p className="text-sm text-zinc-400 mt-1">Welcome back! Here&apos;s your library overview.</p>
+                {inventoryMetricError && (
+                  <p role="status" className="mt-2 text-xs text-amber-300">{inventoryMetricError}</p>
+                )}
                 {showingCached && (
                   <p className="mt-2 text-xs text-amber-300">Showing last synchronized dashboard data — not live analytics.</p>
                 )}

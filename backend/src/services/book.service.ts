@@ -25,16 +25,10 @@ export class BookService {
 
     const where: Prisma.BookWhereInput = { deletedAt: null };
 
-    // Match title prefixes while retaining partial matches for other identifiers.
+    // Catalog search matches book titles from the beginning.
     if (query.search) {
       const search = query.search as string;
-      where.OR = [
-        { title: { startsWith: search, mode: 'insensitive' } },
-        { author: { contains: search, mode: 'insensitive' } },
-        { isbn: { contains: search } },
-        { accessionNo: { contains: search } },
-        { classificationNumber: { contains: search } },
-      ];
+      where.title = { startsWith: search, mode: 'insensitive' };
     }
 
     // Filter by status

@@ -14,7 +14,7 @@ export function SuccessNotice({ message }: SuccessNoticeProps) {
     <div
       role="status"
       aria-live="polite"
-      className="cpc-feedback-success relative mb-4 flex w-full items-center gap-2 overflow-hidden rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-400"
+      className="cpc-feedback-success relative mb-4 flex w-full max-w-2xl items-center gap-2 overflow-hidden rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-400"
     >
       <Check className="h-4 w-4 shrink-0" aria-hidden="true" />
       <span>{message}</span>

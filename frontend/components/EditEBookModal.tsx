@@ -5,6 +5,7 @@ import { DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/di
 import { BookFormSidePanel } from "@/components/BookFormSidePanel";
 import api from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/api";
+import { sanitizeIsbnInput } from "@/lib/isbn";
 import MediaImage from "@/components/MediaImage";
 import { BOOK_MAIN_CATEGORIES, categoryCodeForId, categoryDisplayName, categoryForClassification, categoryIdForDewey, isCategoryInMain, LIBRARY_CATEGORIES, mainCategoryForClassification, normalizeClassificationNumber, sanitizeClassificationInput, subcategoriesForMain } from "@/lib/categories";
 import { BookOpen, FileText, Link2, Upload, X } from "lucide-react";
@@ -151,7 +152,10 @@ export function EditEBookModal(props: {
 
   const update = (field: keyof typeof form) => (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
-  ) => setForm((f) => ({ ...f, [field]: e.target.value }));
+  ) => setForm((f) => ({
+    ...f,
+    [field]: field === "isbn" ? sanitizeIsbnInput(e.target.value) : e.target.value,
+  }));
 
   const updateClassificationNumber = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = sanitizeClassificationInput(e.target.value);
@@ -344,6 +348,8 @@ export function EditEBookModal(props: {
             <label className={labelClass}>ISBN</label>
             <input
               className={inputClass}
+              inputMode="text"
+              pattern="[0-9-]*"
               value={form.isbn}
               onChange={update("isbn")}
               placeholder="e.g., 978-0132350884"

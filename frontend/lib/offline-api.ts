@@ -33,7 +33,10 @@ export function searchCachedBooks(
       category?.name,
       category?.slug,
     ].map((value) => String(value || '').toLocaleLowerCase());
-    if (search && !searchable.some((value) => value.includes(search))) return false;
+    const title = String(book.title || '').toLocaleLowerCase();
+    const matchesSearch = title.startsWith(search) ||
+      searchable.slice(1).some((value) => value.includes(search));
+    if (search && !matchesSearch) return false;
     if (classification && !String(book.classificationNumber || '').toLocaleLowerCase().includes(classification)) return false;
     if (categoryId && !categoryIds.has(String(book.categoryId || ''))) return false;
     if (categoryMain) {

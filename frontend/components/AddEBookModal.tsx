@@ -7,6 +7,7 @@ import { BookFormSidePanel } from "@/components/BookFormSidePanel";
 import api from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { LocalDraftControls, useLocalDrafts } from "@/components/LocalDraftControls";
+import { sanitizeIsbnInput } from "@/lib/isbn";
 import { BOOK_MAIN_CATEGORIES, categoryDisplayName, categoryForClassification, categoryIdForDewey, isCategoryInMain, LIBRARY_CATEGORIES, mainCategoryForClassification, normalizeClassificationNumber, sanitizeClassificationInput, subcategoriesForMain } from "@/lib/categories";
 import { BookOpen, Upload, Link2, FileText, X } from "lucide-react";
 
@@ -98,7 +99,10 @@ export function AddEBookModal(props: {
 
   const update = (field: keyof typeof form) => (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
-  ) => setForm((f) => ({ ...f, [field]: e.target.value }));
+  ) => setForm((f) => ({
+    ...f,
+    [field]: field === "isbn" ? sanitizeIsbnInput(e.target.value) : e.target.value,
+  }));
 
   const updateClassificationNumber = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = sanitizeClassificationInput(e.target.value);
@@ -362,6 +366,8 @@ export function AddEBookModal(props: {
             <label className={labelClass}>ISBN *</label>
             <input
               className={inputClass}
+              inputMode="text"
+              pattern="[0-9-]*"
               value={form.isbn}
               onChange={update("isbn")}
               placeholder="e.g., 978-0132350884"

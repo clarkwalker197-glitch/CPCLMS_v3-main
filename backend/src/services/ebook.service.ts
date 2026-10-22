@@ -18,11 +18,11 @@ export class EBookService {
 
     const where: Record<string, unknown> = { deletedAt: null };
 
-    // Search by title, author, ISBN, or Dewey classification
+    // Match title prefixes while retaining partial matches for other identifiers.
     if (query.search) {
       const search = query.search as string;
       where.OR = [
-        { title: { contains: search, mode: 'insensitive' } },
+        { title: { startsWith: search, mode: 'insensitive' } },
         { author: { contains: search, mode: 'insensitive' } },
         { isbn: { contains: search } },
         { classificationNumber: { contains: search } },

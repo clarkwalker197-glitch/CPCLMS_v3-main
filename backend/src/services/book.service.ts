@@ -25,11 +25,11 @@ export class BookService {
 
     const where: Prisma.BookWhereInput = { deletedAt: null };
 
-    // Search by title, author, ISBN, accession number, or Dewey classification
+    // Match title prefixes while retaining partial matches for other identifiers.
     if (query.search) {
       const search = query.search as string;
       where.OR = [
-        { title: { contains: search, mode: 'insensitive' } },
+        { title: { startsWith: search, mode: 'insensitive' } },
         { author: { contains: search, mode: 'insensitive' } },
         { isbn: { contains: search } },
         { accessionNo: { contains: search } },

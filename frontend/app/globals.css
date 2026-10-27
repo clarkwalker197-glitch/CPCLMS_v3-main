@@ -50,12 +50,30 @@
   to { transform: translateX(0); }
 }
 
+@keyframes cpc-side-panel-exit {
+  from { transform: translateX(0); }
+  to { transform: translateX(100%); }
+}
+
+.cpc-side-panel-exit {
+  animation: cpc-side-panel-exit var(--cpc-motion-duration-enter) var(--cpc-motion-easing-exit) both;
+}
+
 .cpc-side-panel-enter {
   animation: cpc-side-panel-enter var(--cpc-motion-duration-enter) var(--cpc-motion-easing-standard) both;
 }
 
 .cpc-side-panel-backdrop-enter {
   animation: cpc-modal-backdrop-enter var(--cpc-motion-duration-standard) var(--cpc-motion-easing-standard) both;
+}
+
+@keyframes cpc-side-panel-backdrop-exit {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+.cpc-side-panel-backdrop-exit {
+  animation: cpc-side-panel-backdrop-exit var(--cpc-motion-duration-standard) var(--cpc-motion-easing-exit) both;
 }
 
 @keyframes cpc-dialog-backdrop-enter {
@@ -136,7 +154,9 @@
   .cpc-success-progress,
   .cpc-borrow-action,
   .cpc-side-panel-enter,
-  .cpc-side-panel-backdrop-enter {
+  .cpc-side-panel-exit,
+  .cpc-side-panel-backdrop-enter,
+  .cpc-side-panel-backdrop-exit {
     animation: none;
     transition: none;
   }

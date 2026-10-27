@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { BookOpen, X } from "lucide-react";
 import MediaImage from "@/components/MediaImage";
 import { ModalLayer } from "@/components/ModalLayer";
+import { getSidePanelAnimationDurationMs } from "@/components/BookFormSidePanel";
 
 export type BookDetailsBook = {
   id: string;
@@ -59,6 +60,8 @@ export function BookDetailsPanel({
   onReserve,
   onRetryActionsCheck,
 }: BookDetailsPanelProps) {
+  const [isClosing, setIsClosing] = useState(false);
+  const closeTimer = useRef<number | null>(null);
   const availableCopies = Number(book.availableCopies ?? 0);
   const copies = Number(book.copies ?? 0);
   const isCirculating = ["AVAILABLE", "BORROWED"].includes(book.status || "");
@@ -87,13 +90,23 @@ export function BookDetailsPanel({
     ? false
     : loadingExistingActions || alreadyRequested || (hasAvailableCopies ? borrowDisabled : reserveDisabled);
 
+  const handleClose = useCallback(() => {
+    if (isClosing) return;
+    setIsClosing(true);
+    closeTimer.current = window.setTimeout(onClose, getSidePanelAnimationDurationMs());
+  }, [isClosing, onClose]);
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") handleClose();
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
+  }, [handleClose]);
+
+  useEffect(() => () => {
+    if (closeTimer.current !== null) window.clearTimeout(closeTimer.current);
+  }, []);
 
   return (
     <ModalLayer>
@@ -101,20 +114,22 @@ export function BookDetailsPanel({
         <button
           type="button"
           aria-label="Close book details"
-          onClick={onClose}
-          className="cpc-side-panel-backdrop-enter absolute inset-0 bg-black/65"
+          onClick={handleClose}
+          className={`absolute inset-0 bg-black/65 ${
+            isClosing ? "cpc-side-panel-backdrop-exit" : "cpc-side-panel-backdrop-enter"
+          }`}
         />
         <aside
           role="dialog"
           aria-modal="true"
           aria-labelledby="book-details-title"
-          className="cpc-side-panel-enter absolute inset-y-0 right-0 flex h-full w-full flex-col border-l border-zinc-800 bg-zinc-950 text-zinc-100 shadow-2xl sm:max-w-[400px]"
+          className={`${isClosing ? "cpc-side-panel-exit" : "cpc-side-panel-enter"} absolute inset-y-0 right-0 flex h-full w-full flex-col border-l border-zinc-800 bg-zinc-950 text-zinc-100 shadow-2xl sm:max-w-[400px]`}
         >
           <header className="flex shrink-0 items-center justify-between border-b border-zinc-800 px-5 py-4">
             <h2 className="text-sm font-semibold text-zinc-300">Book details</h2>
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               aria-label="Close book details"
               className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-white"
             >

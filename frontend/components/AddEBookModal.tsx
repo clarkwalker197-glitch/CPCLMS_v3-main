@@ -138,6 +138,15 @@ export function AddEBookModal(props: {
     props.onOpenChange(false);
   };
 
+  const handleCancel = () => {
+    if (loading) return;
+    drafts.clearActiveDraft();
+    setMainCategoryCode("");
+    setEbookFile(null);
+    setCoverFile(null);
+    handleClose();
+  };
+
   const onPickEbookFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -555,7 +564,7 @@ export function AddEBookModal(props: {
         <div className="flex shrink-0 gap-3 border-t border-zinc-800 pt-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <Button
             type="button"
-            onClick={handleClose}
+            onClick={handleCancel}
             className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700"
             disabled={loading}
           >

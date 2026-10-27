@@ -136,6 +136,14 @@ export function AddBookModal(props: {
     props.onOpenChange(false);
   };
 
+  const handleCancel = () => {
+    if (loading) return;
+    drafts.clearActiveDraft();
+    setMainCategoryCode("");
+    setCoverFile(null);
+    handleClose();
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -453,7 +461,7 @@ export function AddBookModal(props: {
         <div className="flex shrink-0 gap-3 border-t border-zinc-800 pt-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <Button
             type="button"
-            onClick={handleClose}
+            onClick={handleCancel}
             className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700"
             disabled={loading}
           >

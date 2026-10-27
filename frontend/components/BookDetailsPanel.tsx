@@ -102,13 +102,13 @@ export function BookDetailsPanel({
           type="button"
           aria-label="Close book details"
           onClick={onClose}
-          className="absolute inset-0 bg-black/65"
+          className="cpc-side-panel-backdrop-enter absolute inset-0 bg-black/65"
         />
         <aside
           role="dialog"
           aria-modal="true"
           aria-labelledby="book-details-title"
-          className="absolute inset-y-0 right-0 flex h-full w-full flex-col border-l border-zinc-800 bg-zinc-950 text-zinc-100 shadow-2xl sm:max-w-[400px]"
+          className="cpc-side-panel-enter absolute inset-y-0 right-0 flex h-full w-full flex-col border-l border-zinc-800 bg-zinc-950 text-zinc-100 shadow-2xl sm:max-w-[400px]"
         >
           <header className="flex shrink-0 items-center justify-between border-b border-zinc-800 px-5 py-4">
             <h2 className="text-sm font-semibold text-zinc-300">Book details</h2>

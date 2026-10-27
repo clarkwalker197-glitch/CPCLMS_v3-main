@@ -36,13 +36,13 @@ export function BookFormSidePanel({
           type="button"
           aria-label="Close form"
           onClick={onClose}
-          className="absolute inset-0 bg-black/65"
+          className="cpc-side-panel-backdrop-enter absolute inset-0 bg-black/65"
         />
         <aside
           role="dialog"
           aria-modal="true"
           aria-label={ariaLabel}
-          className="absolute inset-y-0 right-0 flex h-full w-full flex-col overflow-hidden border-l border-zinc-800 bg-zinc-950 px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-6 text-zinc-100 shadow-2xl sm:max-w-[400px] sm:px-5"
+          className="cpc-side-panel-enter absolute inset-y-0 right-0 flex h-full w-full flex-col overflow-hidden border-l border-zinc-800 bg-zinc-950 px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-6 text-zinc-100 shadow-2xl sm:max-w-[400px] sm:px-5"
         >
           <button
             type="button"

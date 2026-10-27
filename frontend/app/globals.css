@@ -45,6 +45,19 @@
   to { opacity: 1; }
 }
 
+@keyframes cpc-side-panel-enter {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.cpc-side-panel-enter {
+  animation: cpc-side-panel-enter var(--cpc-motion-duration-enter) var(--cpc-motion-easing-standard) both;
+}
+
+.cpc-side-panel-backdrop-enter {
+  animation: cpc-modal-backdrop-enter var(--cpc-motion-duration-standard) var(--cpc-motion-easing-standard) both;
+}
+
 @keyframes cpc-dialog-backdrop-enter {
   from {
     opacity: 0;
@@ -121,7 +134,9 @@
 
 @media (prefers-reduced-motion: reduce) {
   .cpc-success-progress,
-  .cpc-borrow-action {
+  .cpc-borrow-action,
+  .cpc-side-panel-enter,
+  .cpc-side-panel-backdrop-enter {
     animation: none;
     transition: none;
   }

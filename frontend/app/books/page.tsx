@@ -584,7 +584,10 @@ export default function BooksPage() {
       <Sidebar />
       <div className="flex-1 min-w-0">
         <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 ${!isLibrarian && activeCart.length > 0 ? "pb-[calc(14rem+min(env(safe-area-inset-bottom),2rem))] lg:pb-44" : "pb-[calc(7rem+min(env(safe-area-inset-bottom),2rem))] lg:pb-8"}`}>
-          <SuccessNotice message={successMsg} />
+          <SuccessNotice
+            message={successMsg}
+            tone={successMsg === "Book marked as not available" ? "warning" : "success"}
+          />
           {error && (
             <div role="alert" className="cpc-feedback-error mb-4 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-400">
               {error}

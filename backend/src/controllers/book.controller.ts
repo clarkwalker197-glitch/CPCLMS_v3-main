@@ -30,6 +30,14 @@ export const getBook = asyncHandler(async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/books/:id/added-by
+ */
+export const getBookAddedBy = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+  const creator = await bookService.getBookAddedBy(req.params.id);
+  sendSuccess(res, creator);
+});
+
+/**
  * POST /api/books
  */
 export const createBook = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {

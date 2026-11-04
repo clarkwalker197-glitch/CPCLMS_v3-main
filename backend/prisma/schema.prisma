@@ -184,6 +184,7 @@ model Book {
   copies               Int        @default(1) /// Total copies of this title
   availableCopies      Int        @map("available_copies") /// Copies currently available for borrowing
   status               BookStatus @default(AVAILABLE)
+  addedByName          String?    @map("added_by_name") @db.VarChar(255)
   deletedAt            DateTime?  @map("deleted_at")
   archivedAt           DateTime?  @map("archived_at")
   createdAt            DateTime   @default(now()) @map("created_at")

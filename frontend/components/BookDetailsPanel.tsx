@@ -5,6 +5,7 @@ import { BookOpen, X } from "lucide-react";
 import MediaImage from "@/components/MediaImage";
 import { ModalLayer } from "@/components/ModalLayer";
 import { getSidePanelAnimationDurationMs } from "@/components/BookFormSidePanel";
+import api from "@/lib/api";
 
 export type BookDetailsBook = {
   id: string;
@@ -61,7 +62,16 @@ export function BookDetailsPanel({
   onRetryActionsCheck,
 }: BookDetailsPanelProps) {
   const [isClosing, setIsClosing] = useState(false);
+  const [creatorLookup, setCreatorLookup] = useState<{
+    bookId: string;
+    addedByName: string | null;
+    error: string;
+  } | null>(null);
   const closeTimer = useRef<number | null>(null);
+  const creatorLookupIsCurrent = creatorLookup?.bookId === book.id;
+  const addedByName = creatorLookupIsCurrent ? creatorLookup.addedByName : null;
+  const addedByError = creatorLookupIsCurrent ? creatorLookup.error : "";
+  const addedByLoading = !creatorLookupIsCurrent;
   const availableCopies = Number(book.availableCopies ?? 0);
   const copies = Number(book.copies ?? 0);
   const isCirculating = ["AVAILABLE", "BORROWED"].includes(book.status || "");
@@ -107,6 +117,42 @@ export function BookDetailsPanel({
   useEffect(() => () => {
     if (closeTimer.current !== null) window.clearTimeout(closeTimer.current);
   }, []);
+
+  useEffect(() => {
+    if (!isLibrarian) return;
+
+    let active = true;
+    api.getBookAddedBy(book.id)
+      .then((response) => {
+        if (!active) return;
+        if (!response.success) {
+          setCreatorLookup({
+            bookId: book.id,
+            addedByName: null,
+            error: response.error || "Unable to load book creator.",
+          });
+          return;
+        }
+        setCreatorLookup({
+          bookId: book.id,
+          addedByName: response.data?.addedByName ?? null,
+          error: "",
+        });
+      })
+      .catch((caught: unknown) => {
+        if (active) {
+          setCreatorLookup({
+            bookId: book.id,
+            addedByName: null,
+            error: caught instanceof Error ? caught.message : "Unable to load book creator.",
+          });
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [book.id, isLibrarian]);
 
   return (
     <ModalLayer>
@@ -177,12 +223,22 @@ export function BookDetailsPanel({
               {book.accessionNo && <Detail label="Accession number" value={book.accessionNo} />}
               {book.classificationNumber && <Detail label="Dewey number" value={book.classificationNumber} />}
               <Detail label="Category" value={book.category?.name || "General"} />
+              {isLibrarian && (
+                <Detail
+                  label="Added by"
+                  value={addedByLoading ? "Loading…" : addedByError ? "Unable to load" : addedByName || "Not recorded"}
+                />
+              )}
               {(book.shelf || book.row) && (
                 <Detail label="Shelf location" value={[book.shelf, book.row].filter(Boolean).join(" · ")} />
               )}
               <Detail label="Copies" value={`${availableCopies} of ${copies} available`} />
               {book._count && <Detail label="Times Borrowed" value={String(book._count.borrowTransactions)} />}
             </dl>
+
+            {isLibrarian && addedByError && (
+              <p role="alert" className="mt-3 text-sm text-red-300">{addedByError}</p>
+            )}
 
             {error && (
               <p role="alert" className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">

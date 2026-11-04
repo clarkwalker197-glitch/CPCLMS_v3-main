@@ -14,6 +14,7 @@ const router = Router();
 // Physical Books
 router.get('/', bookController.listBooks);
 router.get('/:id', bookController.getBook);
+router.get('/:id/added-by', authenticate, authorize('LIBRARIAN'), bookController.getBookAddedBy);
 
 // Librarian-only
 // JSON requests preserve the pasted-URL flow; multipart requests are reserved

@@ -116,6 +116,16 @@ export class BookService {
     return book;
   }
 
+  async getBookAddedBy(id: string) {
+    const book = await prisma.book.findUnique({
+      where: { id },
+      select: { addedByName: true },
+    });
+
+    if (!book) throw new NotFoundError('Book');
+    return { addedByName: book.addedByName };
+  }
+
   /**
    * Create a new book
    */
@@ -137,6 +147,13 @@ export class BookService {
     }
 
     const book = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.findUnique({
+        where: { id: actor.userId },
+        select: { firstName: true, lastName: true },
+      });
+      const performedByName = user
+        ? `${user.firstName} ${user.lastName}`.trim()
+        : undefined;
       const createdBook = await tx.book.create({
         data: {
           isbn: data.isbn,
@@ -158,18 +175,12 @@ export class BookService {
           row: data.row || null,
           copies,
           availableCopies,
+          addedByName: performedByName || null,
         },
         include: {
           category: { select: { id: true, name: true, slug: true } },
         },
       });
-      const user = await tx.user.findUnique({
-        where: { id: actor.userId },
-        select: { firstName: true, lastName: true },
-      });
-      const performedByName = user
-        ? `${user.firstName} ${user.lastName}`.trim()
-        : undefined;
 
       await recordActivity({
         userId: actor.userId,

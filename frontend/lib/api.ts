@@ -589,6 +589,10 @@ async put<T>(endpoint: string, body?: unknown): Promise<ApiResponse<T>> {
     return this.get(`/books/${id}`);
   }
 
+  async getBookAddedBy(id: string): Promise<ApiResponse<{ addedByName: string | null }>> {
+    return this.get(`/books/${encodeURIComponent(id)}/added-by`);
+  }
+
   async getArchive(): Promise<ApiResponse<{ books: any[]; ebooks: any[]; users: any[] }>> {
     return this.get('/archive');
   }

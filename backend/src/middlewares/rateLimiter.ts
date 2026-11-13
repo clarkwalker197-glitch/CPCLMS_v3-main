@@ -22,6 +22,7 @@ export const apiLimiter = rateLimit({
   max: env.RATE_LIMIT_ENABLED
     ? env.RATE_LIMIT_MAX
     : DISABLED_MAX,
+  skip: (req) => req.method === 'OPTIONS',
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -40,6 +41,7 @@ export const authLimiter = rateLimit({
   max: env.RATE_LIMIT_ENABLED
     ? env.AUTH_RATE_LIMIT_MAX
     : DISABLED_MAX,
+  skip: (req) => req.method === 'OPTIONS',
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -51,6 +53,7 @@ export const authLimiter = rateLimit({
 export const qrApprovalLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
   max: 10,
+  skip: (req) => req.method === 'OPTIONS',
   standardHeaders: true,
   legacyHeaders: false,
   message: {

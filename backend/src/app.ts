@@ -23,7 +23,10 @@ import { PROFILES_DIR, UPLOADS_ROOT } from './middlewares/upload';
 const app = express();
 const configuredOrigins = (Array.isArray(env.FRONTEND_URL)
   ? env.FRONTEND_URL
-  : [env.FRONTEND_URL]).map((origin) => origin.replace(/\/+$/, ''));
+  : [env.FRONTEND_URL])
+  .flatMap((origin) => origin.split(','))
+  .map((origin) => origin.trim().replace(/\/+$/, ''))
+  .filter(Boolean);
 const allowedOrigins = new Set([
   ...configuredOrigins,
   'https://cpc-library.online',
@@ -38,45 +41,28 @@ const allowedOrigins = new Set([
   'https://127.0.0.1:4000',
 ]);
 
-const isAllowedOrigin = (origin: string | undefined): boolean => {
-  if (!origin) return true;
-
-  const normalizedOrigin = origin.replace(/\/+$/, '');
-  if (allowedOrigins.has(normalizedOrigin)) return true;
-
-  try {
-    const { hostname, protocol } = new URL(normalizedOrigin);
-    const trustedHostSuffixes = ['.vercel.app', '.netlify.app', '.railway.app', '.fly.dev'];
-    const isKnownPreviewHost = trustedHostSuffixes.some((suffix) => hostname.endsWith(suffix));
-    const isLocalHost = ['localhost', '127.0.0.1', '0.0.0.0'].includes(hostname);
-
-    if (isKnownPreviewHost || (isLocalHost && ['http:', 'https:'].includes(protocol))) {
-      return true;
-    }
-  } catch {
-    // Ignore malformed origins and reject them below.
-  }
-
-  return false;
-};
-
-// ============================================================
-// Security Middleware
-// ============================================================
-app.use(helmet());
-app.use(cors({
+const corsMiddleware = cors({
   origin: (origin, callback) => {
-    if (isAllowedOrigin(origin)) {
-      callback(null, true);
-      return;
-    }
-
-    callback(null, false);
+    callback(null, !origin || allowedOrigins.has(origin));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key'],
   optionsSuccessStatus: 204,
+});
+
+// ============================================================
+// CORS must run before all other middleware so preflight and error
+// responses receive the appropriate CORS headers.
+// ============================================================
+app.options('*', corsMiddleware);
+app.use(corsMiddleware);
+
+// ============================================================
+// Security Middleware
+// ============================================================
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
 
 // ============================================================
@@ -89,9 +75,6 @@ app.use(cookieParser(env.COOKIE_SECRET));
 // ============================================================
 // Uploaded Files (e-book files, cover images)
 // ============================================================
-// helmet()'s default Cross-Origin-Resource-Policy is 'same-origin', which
-// would block the frontend (a different origin/port) from loading these
-// files via <img>/fetch/PDF.js. Explicitly relax it for this route only.
 const missingProfileImage = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"><rect width="96" height="96" rx="48" fill="#27272a"/><circle cx="48" cy="36" r="17" fill="#71717a"/><path d="M17 84c3-17 15-26 31-26s28 9 31 26" fill="#71717a"/></svg>`;
 app.get('/uploads/profiles/:filename', async (req, res, next) => {
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
@@ -158,7 +141,7 @@ app.use(errorHandler);
 // Start Server (with graceful port fallback on EADDRINUSE)
 // ============================================================
 function startServer(port: number, maxRetries = 3): void {
-  const server = app.listen(port);
+  const server = app.listen(port, '0.0.0.0');
 
   server.on('listening', () => {
     const actualPort = (server.address() as any).port;
@@ -226,7 +209,7 @@ function startServer(port: number, maxRetries = 3): void {
   });
 }
 
-startServer(env.PORT);
+startServer(Number(process.env.PORT) || 4000);
 
 const ARCHIVE_RETENTION_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const ACTIVITY_LOG_RETENTION_INTERVAL_MS = 24 * 60 * 60 * 1000;

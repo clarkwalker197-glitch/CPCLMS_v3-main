@@ -24,6 +24,7 @@ import AvailabilitySwitch from "@/components/AvailabilitySwitch";
 import { SuccessNotice } from "@/components/SuccessNotice";
 import { SortHeader, SortSelect, nextSortOrder, type SortOption } from "@/components/SortControls";
 import { BOOK_MAIN_CATEGORIES, categoryDisplayName, categoryIdForDewey, normalizeMainCategoryCode, subcategoriesForMain } from "@/lib/categories";
+import { getPageWindow } from "@/lib/pagination";
 import { useTimedMessage } from "@/lib/useTimedMessage";
 import {
   Search,
@@ -102,6 +103,7 @@ export default function BooksPage() {
   const [showingCachedCatalog, setShowingCachedCatalog] = useState(false);
   const [catalogUpdatedAt, setCatalogUpdatedAt] = useState<number | null>(null);
   const [isDesktop, setIsDesktop] = useState(false);
+  const bookListRef = useRef<HTMLDivElement>(null);
 
   const isLibrarian = user?.role === "LIBRARIAN";
   const view = viewPreference ?? "grid";
@@ -527,12 +529,18 @@ export default function BooksPage() {
   const displayedPage = Math.min(currentPage, totalPages);
   const paginatedBooks = filteredBooks.slice((displayedPage - 1) * PAGE_SIZE, displayedPage * PAGE_SIZE);
 
-  const getPageNumbers = () => {
-    const pages: number[] = [];
-    const start = Math.max(1, Math.min(displayedPage - 2, totalPages - 4));
-    for (let i = start; i <= Math.min(totalPages, start + 4); i++) pages.push(i);
-    return pages;
-  };
+  useEffect(() => {
+    const list = bookListRef.current;
+    if (!list) return;
+
+    const isMobile = window.matchMedia("(max-width: 768px)").matches;
+    const stickyToolbarHeight = isMobile
+      ? document.querySelector(".mobile-search-toolbar")?.getBoundingClientRect().height ?? 0
+      : 0;
+    const top = list.getBoundingClientRect().top + window.scrollY - stickyToolbarHeight - 16;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.scrollTo({ top, behavior: reducedMotion ? "auto" : "smooth" });
+  }, [displayedPage]);
 
   const fallbackCover = (
     <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-600/30 to-indigo-600/30">
@@ -583,7 +591,7 @@ export default function BooksPage() {
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex">
       <Sidebar />
       <div className="flex-1 min-w-0">
-        <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 ${!isLibrarian && activeCart.length > 0 ? "pb-[calc(14rem+min(env(safe-area-inset-bottom),2rem))] lg:pb-44" : "pb-[calc(7rem+min(env(safe-area-inset-bottom),2rem))] lg:pb-8"}`}>
+        <div className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 ${!isLibrarian && activeCart.length > 0 ? "pb-[calc(14rem+min(env(safe-area-inset-bottom),2rem))] lg:pb-44" : "pb-[calc(96px+env(safe-area-inset-bottom))] lg:pb-8"}`}>
           <SuccessNotice
             message={successMsg}
             tone={successMsg === "Book marked as not available" ? "warning" : "success"}
@@ -619,7 +627,7 @@ export default function BooksPage() {
                   type="text"
                   value={search}
                   onChange={(event) => handleSearchChange(event.target.value)}
-                  placeholder="Search book titles or authors..."
+                  placeholder="Search books or authors"
                   className="min-h-[44px] w-full rounded-xl border border-zinc-700 bg-zinc-950 pl-10 pr-3 text-sm text-white placeholder:text-zinc-500 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -627,7 +635,14 @@ export default function BooksPage() {
                 <MobileSearchInput
                   value={search}
                   onChange={handleSearchChange}
-                  placeholder="Search book titles or authors..."
+                  onScanClick={() => {
+                    if (user?.role === "STUDENT" || user?.role === "FACULTY") {
+                      router.push("/requests?mobileScan=1");
+                    } else {
+                      router.push("/requests");
+                    }
+                  }}
+                  placeholder="Search books or authors"
                   storageKey="cpc-recent-book-searches"
                 />
               </div>
@@ -738,7 +753,7 @@ export default function BooksPage() {
           {/* GRID VIEW */}
           {!loading && view === "grid" && filteredBooks.length > 0 && (
             <>
-              <div className="cpc-stagger-list grid grid-cols-2 items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <div ref={bookListRef} className="cpc-stagger-list grid grid-cols-2 items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {paginatedBooks.map((book: any) => (
                   <div
                     key={book.id}
@@ -861,7 +876,7 @@ export default function BooksPage() {
 
           {/* LIST VIEW */}
           {!loading && view === "list" && filteredBooks.length > 0 && (
-            <>
+            <div ref={bookListRef}>
               <div className="hidden overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/70 shadow-xl shadow-black/10 md:block">
                 <div className="overflow-x-auto">
                 <table className="w-full min-w-[800px] table-fixed text-sm">
@@ -972,48 +987,88 @@ export default function BooksPage() {
                   </article>
                 ))
               } />
-            </>
+            </div>
           )}
 
           {/* Pagination */}
           {!loading && filteredBooks.length > 0 && (
-            <div className="mt-6 flex flex-col items-center justify-between gap-3 sm:flex-row">
-              <p className="text-center text-sm text-zinc-500 sm:text-left">
+            <div className="mt-4 flex flex-col items-center gap-3">
+              <p className="text-center text-sm text-zinc-300">
                 Showing{" "}
-                <span className="text-zinc-300">
+                <span className="font-medium text-zinc-100">
                   {(displayedPage - 1) * PAGE_SIZE + 1}–
                   {Math.min((displayedPage - 1) * PAGE_SIZE + paginatedBooks.length, totalBooks)}
                 </span>{" "}
-                of <span className="text-zinc-300">{totalBooks}</span> books
+                of <span className="font-medium text-zinc-100">{totalBooks}</span> books
               </p>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center justify-between gap-2 min-[480px]:hidden">
                 <button
-                  onClick={() => setCurrentPage((p) => Math.max(1, Math.min(p, totalPages) - 1))}
+                  type="button"
+                  onClick={() => setCurrentPage(displayedPage - 1)}
                   disabled={displayedPage === 1}
-                  className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  aria-disabled={displayedPage === 1}
                   aria-label="Previous page"
+                  className="inline-flex h-11 min-w-11 items-center justify-center gap-1 rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm font-medium text-zinc-300 transition-colors hover:border-zinc-700 hover:bg-zinc-800 hover:text-white disabled:pointer-events-none disabled:opacity-40"
                 >
-                  <ChevronLeft className="w-4 h-4" />
+                  <ChevronLeft className="h-4 w-4" />
+                  Prev
                 </button>
-                {getPageNumbers().map((page) => (
-                  <button
-                    key={page}
-                    onClick={() => setCurrentPage(page)}
-                    className={`w-9 h-9 rounded-lg text-sm font-medium transition-colors ${page === displayedPage
-                        ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30"
-                        : "bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700"
+                <span className="whitespace-nowrap px-2 text-sm font-medium text-zinc-200">
+                  Page {displayedPage} of {totalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage(displayedPage + 1)}
+                  disabled={displayedPage === totalPages}
+                  aria-disabled={displayedPage === totalPages}
+                  aria-label="Next page"
+                  className="inline-flex h-11 min-w-11 items-center justify-center gap-1 rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-sm font-medium text-zinc-300 transition-colors hover:border-zinc-700 hover:bg-zinc-800 hover:text-white disabled:pointer-events-none disabled:opacity-40"
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="hidden items-center justify-center gap-2 min-[480px]:flex">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage(displayedPage - 1)}
+                  disabled={displayedPage === 1}
+                  aria-disabled={displayedPage === 1}
+                  aria-label="Previous page"
+                  className="inline-flex h-11 min-w-11 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-300 transition-colors hover:border-zinc-700 hover:bg-zinc-800 hover:text-white disabled:pointer-events-none disabled:opacity-40"
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </button>
+                {getPageWindow(totalPages, displayedPage).map((page, index) => (
+                  typeof page === "number" ? (
+                    <button
+                      key={page}
+                      type="button"
+                      onClick={() => setCurrentPage(page)}
+                      aria-label={`Page ${page}`}
+                      aria-current={page === displayedPage ? "page" : undefined}
+                      className={`inline-flex h-11 min-w-11 items-center justify-center rounded-lg border text-sm font-medium transition-colors ${page === displayedPage
+                        ? "border-blue-500 bg-blue-600 text-white shadow-lg shadow-blue-600/30"
+                        : "border-zinc-800 bg-zinc-900 text-zinc-300 hover:border-zinc-700 hover:bg-zinc-800 hover:text-white"
                       }`}
-                  >
-                    {page}
-                  </button>
+                    >
+                      {page}
+                    </button>
+                  ) : (
+                    <span key={`${page}-${index}`} aria-label="More pages" className="inline-flex h-11 min-w-4 items-center justify-center text-zinc-400">
+                      …
+                    </span>
+                  )
                 ))}
                 <button
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, Math.min(p, totalPages) + 1))}
+                  type="button"
+                  onClick={() => setCurrentPage(displayedPage + 1)}
                   disabled={displayedPage === totalPages}
-                  className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  aria-disabled={displayedPage === totalPages}
                   aria-label="Next page"
+                  className="inline-flex h-11 min-w-11 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-300 transition-colors hover:border-zinc-700 hover:bg-zinc-800 hover:text-white disabled:pointer-events-none disabled:opacity-40"
                 >
-                  <ChevronRight className="w-4 h-4" />
+                  <ChevronRight className="h-5 w-5" />
                 </button>
               </div>
             </div>

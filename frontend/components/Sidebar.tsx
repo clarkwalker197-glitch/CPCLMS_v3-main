@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useAuth } from "@/lib/auth-context";
@@ -27,7 +27,6 @@ import {
   LibraryBig,
   Search,
   ArrowUp,
-  QrCode,
   RefreshCw,
 } from "lucide-react";
 
@@ -55,7 +54,6 @@ const navItems = [
 
 export default function Sidebar({ showCopyright = true }: { showCopyright?: boolean }) {
   const pathname = usePathname();
-  const router = useRouter();
   const { user } = useAuth();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -134,7 +132,7 @@ export default function Sidebar({ showCopyright = true }: { showCopyright?: bool
   useEffect(() => {
     let startY = 0;
     let active = false;
-    const handleScroll = () => setShowScrollTop(window.scrollY > 320);
+    const handleScroll = () => setShowScrollTop(window.scrollY > 400);
     const handleTouchStart = (event: TouchEvent) => {
       const target = event.target;
       if (window.scrollY > 0 || !(target instanceof Element) || target.closest("input, textarea, select, [role='dialog']")) {
@@ -449,25 +447,18 @@ export default function Sidebar({ showCopyright = true }: { showCopyright?: bool
       )}
       {portalTarget && isCompactMobile && createPortal(
         <>
-          {showScrollTop && (
-            <button type="button" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })} aria-label="Scroll to top" className="fixed bottom-[calc(5.75rem+env(safe-area-inset-bottom))] right-4 z-30 flex h-11 w-11 items-center justify-center rounded-full border border-zinc-700 bg-zinc-900 text-zinc-200 shadow-xl">
-              <ArrowUp className="h-5 w-5" />
-            </button>
-          )}
           <button
             type="button"
             onClick={() => {
-              if (user?.role === "STUDENT" || user?.role === "FACULTY") {
-                if (pathname === "/requests") window.dispatchEvent(new Event("cpc:open-qr"));
-                else router.push("/requests?mobileScan=1");
-                return;
-              }
-              router.push("/requests");
+              const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+              window.scrollTo({ top: 0, behavior: reducedMotion ? "auto" : "smooth" });
             }}
-            aria-label={user?.role === "STUDENT" || user?.role === "FACULTY" ? "Scan QR code" : "Open approvals"}
-            className="fixed bottom-[calc(5.75rem+env(safe-area-inset-bottom))] left-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-blue-600 text-white shadow-xl shadow-blue-600/30 transition-transform active:scale-95"
+            aria-label="Scroll to top"
+            aria-hidden={!showScrollTop}
+            tabIndex={showScrollTop ? 0 : -1}
+            className={`fixed bottom-[calc(var(--bottom-nav-height)+16px+env(safe-area-inset-bottom))] right-4 z-30 flex h-11 w-11 items-center justify-center rounded-full border border-zinc-700 bg-zinc-900 text-zinc-200 shadow-xl transition-opacity duration-200 motion-reduce:transition-none ${showScrollTop ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"}`}
           >
-            {user?.role === "STUDENT" || user?.role === "FACULTY" ? <QrCode className="h-6 w-6" /> : <ClipboardList className="h-6 w-6" />}
+            <ArrowUp className="h-5 w-5" />
           </button>
         </>,
         portalTarget

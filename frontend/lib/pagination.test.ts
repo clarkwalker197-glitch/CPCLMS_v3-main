@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-const { getPageRange } = await import(new URL("./pagination.ts", import.meta.url).href);
+const { getPageRange, getPageWindow } = await import(new URL("./pagination.ts", import.meta.url).href);
 
 test("shows the first five pages and final page at the beginning", () => {
   assert.deepEqual(getPageRange(41, 1), [1, 2, 3, 4, 5, "end-ellipsis", 41]);
@@ -38,4 +38,21 @@ test("uses a smaller range in compact mode", () => {
 
 test("shows every page when the total is small", () => {
   assert.deepEqual(getPageRange(5, 3), [1, 2, 3, 4, 5]);
+});
+
+test("shows the current page and siblings between the first and last pages", () => {
+  assert.deepEqual(getPageWindow(21, 5), [
+    1,
+    "start-ellipsis",
+    4,
+    5,
+    6,
+    "end-ellipsis",
+    21,
+  ]);
+});
+
+test("uses a compact window near either end", () => {
+  assert.deepEqual(getPageWindow(21, 1), [1, 2, "end-ellipsis", 21]);
+  assert.deepEqual(getPageWindow(21, 21), [1, "start-ellipsis", 20, 21]);
 });

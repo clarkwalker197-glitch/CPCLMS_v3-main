@@ -38,3 +38,28 @@ export function getPageRange(
     pageCount,
   ];
 }
+
+export function getPageWindow(
+  totalPages: number,
+  currentPage: number,
+  siblingCount = 1
+): PageRangeItem[] {
+  const pageCount = Math.max(1, Math.floor(totalPages));
+  const page = Math.min(pageCount, Math.max(1, Math.floor(currentPage)));
+  const siblings = Math.max(0, Math.floor(siblingCount));
+  const pages = new Set<number>([1, pageCount]);
+
+  for (let sibling = Math.max(2, page - siblings); sibling <= Math.min(pageCount - 1, page + siblings); sibling++) {
+    pages.add(sibling);
+  }
+
+  const orderedPages = Array.from(pages).sort((a, b) => a - b);
+  return orderedPages.reduce<PageRangeItem[]>((items, current, index) => {
+    const previous = orderedPages[index - 1];
+    if (previous !== undefined && current - previous > 1) {
+      items.push(previous < page ? "start-ellipsis" : "end-ellipsis");
+    }
+    items.push(current);
+    return items;
+  }, []);
+}

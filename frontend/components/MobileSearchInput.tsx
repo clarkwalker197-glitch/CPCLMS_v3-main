@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Mic, Search, X } from "lucide-react";
+import { Mic, QrCode, Search, X } from "lucide-react";
 
 interface SpeechRecognitionResultEvent extends Event {
   results: ArrayLike<ArrayLike<{ transcript: string }>>;
@@ -19,6 +19,7 @@ interface SpeechRecognitionLike {
 interface MobileSearchInputProps {
   value: string;
   onChange: (value: string) => void;
+  onScanClick?: () => void;
   placeholder: string;
   storageKey: string;
   quickFilters?: string[];
@@ -32,6 +33,7 @@ type SpeechWindow = Window & {
 export default function MobileSearchInput({
   value,
   onChange,
+  onScanClick,
   placeholder,
   storageKey,
   quickFilters = [],
@@ -112,7 +114,7 @@ export default function MobileSearchInput({
           if (event.key === "Enter") rememberSearch(value);
         }}
         placeholder={placeholder}
-        className="min-h-11 w-full rounded-xl border border-zinc-700 bg-zinc-950 py-2.5 pl-10 pr-24 text-sm text-white placeholder:text-zinc-500 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className={`min-h-11 w-full rounded-xl border border-zinc-700 bg-zinc-950 py-2.5 pl-10 text-sm text-white placeholder:text-zinc-500 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 ${onScanClick && value ? "pr-32" : "pr-24"}`}
       />
       <div className="absolute inset-y-0 right-1 flex items-center">
         {value && (
@@ -123,6 +125,11 @@ export default function MobileSearchInput({
         <button type="button" onClick={startVoiceSearch} disabled={listening || !voiceSupported} aria-label={listening ? "Listening" : "Search by voice"} className="mobile-voice-search flex h-10 w-10 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-white disabled:opacity-40">
           <Mic className={`h-4 w-4 ${listening ? "text-blue-400" : ""}`} />
         </button>
+        {onScanClick && (
+          <button type="button" onClick={onScanClick} aria-label="Scan QR code" className="flex h-10 w-10 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-white">
+            <QrCode className="h-4 w-4" />
+          </button>
+        )}
       </div>
       {quickFilters.length > 0 && (
         <div className="mobile-quick-filters mt-2 flex gap-2 overflow-x-auto pb-1">

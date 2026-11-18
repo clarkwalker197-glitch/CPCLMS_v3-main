@@ -8,6 +8,12 @@ import { getPaginationParams, buildPaginationMeta } from '../utils/pagination';
 import { normalizeClassificationNumber } from '../constants/categories';
 import { getSortParams } from '../utils/sorting';
 
+const validateTextLength = (field: string, value: string | undefined, max: number) => {
+  if (value !== undefined && Array.from(value).length > max) {
+    throw new BadRequestError(`E-book ${field} must be ${max} characters or fewer`);
+  }
+};
+
 export class EBookService {
   /**
    * List e-books with search, filter, and pagination
@@ -174,6 +180,18 @@ export class EBookService {
     fileSize?: number;
     format?: string;
   }) {
+    validateTextLength('ISBN', data.isbn, 20);
+    validateTextLength('title', data.title, 255);
+    validateTextLength('author', data.author, 255);
+    validateTextLength('publisher', data.publisher, 255);
+    validateTextLength('edition', data.edition, 100);
+    validateTextLength('main category', data.mainCategory, 20);
+    validateTextLength('classification number', data.classificationNumber, 50);
+    validateTextLength('description', data.description, 50_000);
+    validateTextLength('cover image URL', data.coverImage, 10_000);
+    validateTextLength('language', data.language, 50);
+    validateTextLength('file URL', data.fileUrl, 10_000);
+
     // Check for duplicate ISBN
     const existing = await prisma.eBook.findFirst({
       where: { isbn: data.isbn },

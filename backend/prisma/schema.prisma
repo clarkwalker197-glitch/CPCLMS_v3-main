@@ -218,10 +218,10 @@ model EBook {
   category             Category?   @relation(fields: [categoryId], references: [id])
   mainCategory         String?     @map("main_category") @db.VarChar(20)
   classificationNumber String?     @map("classification_number") @db.VarChar(50)
-  description          String?     @db.VarChar(2000)
-  coverImage           String?     @map("cover_image") @db.VarChar(500)
+  description          String?     @db.Text
+  coverImage           String?     @map("cover_image") @db.Text
   language             String      @default("English") @db.VarChar(50)
-  fileUrl              String      @map("file_url") @db.VarChar(1000)
+  fileUrl              String      @map("file_url") @db.Text
   fileSize             Int?        @map("file_size") /// Size in bytes
   format               EBookFormat @default(PDF)
   status               BookStatus  @default(AVAILABLE)

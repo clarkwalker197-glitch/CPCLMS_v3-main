@@ -8,7 +8,7 @@ const isbnSchema = z
   .string()
   .trim()
   .min(1, 'ISBN is required')
-  .max(32, 'ISBN must be 32 characters or fewer');
+  .max(20, 'ISBN must be 20 characters or fewer');
 
 const accessionNumberSchema = z
   .string()

@@ -34,7 +34,7 @@ import {
   Eye,
 } from 'lucide-react';
 
-const PAGE_SIZE = 8;
+const PAGE_SIZE = 20;
 
 type EBookRecord = {
   id: string;

@@ -213,7 +213,7 @@ export function AddEBookModal(props: {
     setLoading(true);
     try {
       let res;
-      if (mode === "upload") {
+      if (mode === "upload" || coverFile) {
         const fd = new FormData();
         fd.append("isbn", form.isbn.trim());
         fd.append("title", form.title.trim());
@@ -228,7 +228,8 @@ export function AddEBookModal(props: {
         fd.append("language", form.language.trim() || "English");
         fd.append("format", form.format);
         if (form.coverImage.trim() && !coverFile) fd.append("coverImage", form.coverImage.trim());
-        fd.append("ebookFile", ebookFile as File);
+        if (mode === "link") fd.append("fileUrl", form.fileUrl.trim());
+        if (ebookFile) fd.append("ebookFile", ebookFile);
         if (coverFile) fd.append("coverImage", coverFile);
         res = await api.uploadEBook(fd);
       } else {
@@ -474,47 +475,6 @@ export function AddEBookModal(props: {
               />
             </div>
 
-            <div>
-              <label className={labelClass}>
-                Cover image <span className="text-zinc-500">(optional, JPG/PNG/WEBP, max {MAX_COVER_MB}MB)</span>
-              </label>
-              {!coverFile ? (
-                <button
-                  type="button"
-                  onClick={() => coverInputRef.current?.click()}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 border border-dashed border-zinc-700 rounded-xl text-zinc-400 hover:border-blue-500 hover:text-blue-400 transition-colors text-sm"
-                >
-                  <Upload className="w-3.5 h-3.5" />
-                  Choose cover image
-                </button>
-              ) : (
-                <div className="flex items-center justify-between gap-3 px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <FileText className="w-4 h-4 text-blue-400 shrink-0" />
-                    <span className="text-sm text-zinc-200 truncate">{coverFile.name}</span>
-                    <span className="text-xs text-zinc-500 shrink-0">{formatBytes(coverFile.size)}</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCoverFile(null);
-                      if (coverInputRef.current) coverInputRef.current.value = "";
-                    }}
-                    className="text-zinc-500 hover:text-red-400 shrink-0"
-                    aria-label="Remove cover"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              )}
-              <input
-                ref={coverInputRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                onChange={onPickCoverFile}
-                className="hidden"
-              />
-            </div>
           </>
         ) : (
           <>
@@ -530,17 +490,59 @@ export function AddEBookModal(props: {
               />
             </div>
 
-            <div>
-              <label className={labelClass}>Cover Image URL</label>
-              <input
-                className={inputClass}
-                value={form.coverImage}
-                onChange={update("coverImage")}
-                placeholder="https://.../cover.jpg"
-              />
-            </div>
           </>
         )}
+
+        <div>
+          <label className={labelClass}>
+            Cover image <span className="text-zinc-500">(optional, JPG/PNG/WEBP, max {MAX_COVER_MB}MB)</span>
+          </label>
+          <input
+            className={inputClass}
+            value={form.coverImage}
+            onChange={update("coverImage")}
+            placeholder="Cover image URL (optional)"
+            type="url"
+          />
+          <div className="mt-2">
+            {!coverFile ? (
+              <button
+                type="button"
+                onClick={() => coverInputRef.current?.click()}
+                className="w-full flex items-center justify-center gap-2 py-2.5 border border-dashed border-zinc-700 rounded-xl text-zinc-400 hover:border-blue-500 hover:text-blue-400 transition-colors text-sm"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                Upload cover image
+              </button>
+            ) : (
+              <div className="flex items-center justify-between gap-3 px-3 py-2.5 bg-zinc-950 border border-zinc-700 rounded-xl">
+                <div className="flex items-center gap-2 min-w-0">
+                  <FileText className="w-4 h-4 text-blue-400 shrink-0" />
+                  <span className="text-sm text-zinc-200 truncate">{coverFile.name}</span>
+                  <span className="text-xs text-zinc-500 shrink-0">{formatBytes(coverFile.size)}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCoverFile(null);
+                    if (coverInputRef.current) coverInputRef.current.value = "";
+                  }}
+                  className="text-zinc-500 hover:text-red-400 shrink-0"
+                  aria-label="Remove cover"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+          </div>
+          <input
+            ref={coverInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            onChange={onPickCoverFile}
+            className="hidden"
+          />
+        </div>
 
         <div>
           <label className={labelClass}>Language</label>

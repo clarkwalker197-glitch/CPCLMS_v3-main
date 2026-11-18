@@ -504,16 +504,17 @@ const response = await this.request<any>('/auth/register', {
     return this.uploadMultipart('/ebooks', formData);
   }
 
-  async updateEBookWithFile(
+  async updateEBookWithFiles(
     id: string,
     fields: Record<string, string>,
-    file: File
+    files: { ebookFile?: File; coverImage?: File }
   ): Promise<ApiResponse<any>> {
     const formData = new FormData();
     Object.entries(fields).forEach(([key, value]) => {
       if (value !== '') formData.append(key, value);
     });
-    formData.append('ebookFile', file);
+    if (files.ebookFile) formData.append('ebookFile', files.ebookFile);
+    if (files.coverImage) formData.append('coverImage', files.coverImage);
     return this.uploadMultipart(`/ebooks/${encodeURIComponent(id)}`, formData, 'PUT');
   }
 

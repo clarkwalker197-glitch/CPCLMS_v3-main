@@ -44,7 +44,9 @@ const ACCEPTED_EBOOK_MIME: Record<string, string[]> = {
   ".epub": ["application/epub+zip", "application/zip"],
   ".mobi": ["application/x-mobipocket-ebook"],
 };
+const ACCEPTED_COVER_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_EBOOK_MB = 50;
+const MAX_COVER_MB = 5;
 
 function formatBytes(bytes?: number): string {
   if (!bytes) return '';
@@ -105,7 +107,9 @@ export function EditEBookModal(props: {
   const [error, setError] = useState("");
   const [fileMode, setFileMode] = useState<"upload" | "link">("link");
   const [ebookFile, setEbookFile] = useState<File | null>(null);
+  const [coverFile, setCoverFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const coverInputRef = useRef<HTMLInputElement>(null);
 
   // Initialize only when the editor opens or the selected e-book changes.
   useEffect(() => {
@@ -144,6 +148,9 @@ export function EditEBookModal(props: {
       setMainCategoryCode(isFilipiniana ? "FIL" : detectedMainCategory?.code || props.ebook.mainCategory || "");
       setError("");
       setEbookFile(null);
+      setCoverFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      if (coverInputRef.current) coverInputRef.current.value = "";
       setFileMode("link");
     }
     // A category refresh must not discard changes already made in the editor.
@@ -190,7 +197,9 @@ export function EditEBookModal(props: {
     setMainCategoryCode("");
     setError("");
     setEbookFile(null);
+    setCoverFile(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
+    if (coverInputRef.current) coverInputRef.current.value = "";
   };
 
   const handleClose = () => {
@@ -226,6 +235,23 @@ export function EditEBookModal(props: {
     }));
   };
 
+  const onPickCoverFile = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!ACCEPTED_COVER_TYPES.includes(file.type)) {
+      setError("Cover image must be a JPG, PNG, or WEBP file.");
+      event.target.value = "";
+      return;
+    }
+    if (file.size > MAX_COVER_MB * 1024 * 1024) {
+      setError(`Cover image must be no larger than ${MAX_COVER_MB} MB.`);
+      event.target.value = "";
+      return;
+    }
+    setError("");
+    setCoverFile(file);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -240,7 +266,7 @@ export function EditEBookModal(props: {
       setError("Title, author, main category, subcategory, and a valid Dewey classification number are required.");
       return;
     }
-    if (form.coverImage.trim() && !isValidFileUrl(form.coverImage.trim())) {
+    if (!coverFile && form.coverImage.trim() && !isValidFileUrl(form.coverImage.trim())) {
       setError("Enter a valid HTTP or HTTPS cover image URL.");
       return;
     }
@@ -274,15 +300,18 @@ export function EditEBookModal(props: {
         format: form.format,
       };
 
-      const res = fileMode === "upload" && ebookFile
-        ? await api.updateEBookWithFile(
+      const res = (fileMode === "upload" && ebookFile) || coverFile
+        ? await api.updateEBookWithFiles(
             props.ebook.id,
             Object.fromEntries(
               Object.entries(updateData)
-                .filter(([key, value]) => key !== "fileUrl" && value !== undefined)
+                .filter(([, value]) => value !== undefined)
                 .map(([key, value]) => [key, String(value)])
             ),
-            ebookFile
+            {
+              ...(fileMode === "upload" && ebookFile ? { ebookFile } : {}),
+              ...(coverFile ? { coverImage: coverFile } : {}),
+            }
           )
         : await api.updateEBook(props.ebook.id, updateData);
 
@@ -523,13 +552,50 @@ export function EditEBookModal(props: {
         </div>
 
         <div>
-          <label className={labelClass}>Cover Image URL <span className="text-zinc-500">(optional)</span></label>
+          <label className={labelClass}>Cover image <span className="text-zinc-500">(optional, JPG/PNG/WEBP, max {MAX_COVER_MB}MB)</span></label>
           <input
             className={inputClass}
             value={form.coverImage}
             onChange={update("coverImage")}
-            placeholder="https://example.com/cover.jpg"
+            placeholder="Cover image URL (optional)"
             type="url"
+          />
+          <div className="mt-2">
+            {coverFile ? (
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-blue-500/30 bg-blue-500/5 px-3 py-2.5">
+                <div className="flex min-w-0 items-center gap-2">
+                  <FileText className="h-4 w-4 shrink-0 text-blue-400" />
+                  <span className="truncate text-sm text-zinc-200">{coverFile.name}</span>
+                  <span className="shrink-0 text-xs text-zinc-500">{formatBytes(coverFile.size)}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCoverFile(null);
+                    if (coverInputRef.current) coverInputRef.current.value = "";
+                  }}
+                  className="shrink-0 text-zinc-500 hover:text-red-400"
+                  aria-label="Remove selected cover image"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => coverInputRef.current?.click()}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-zinc-700 py-2.5 text-sm text-zinc-400 transition-colors hover:border-blue-500 hover:text-blue-400"
+              >
+                <Upload className="h-4 w-4" /> Upload cover image
+              </button>
+            )}
+          </div>
+          <input
+            ref={coverInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            onChange={onPickCoverFile}
+            className="hidden"
           />
           <div className="mt-2 h-32 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900">
             <MediaImage src={form.coverImage} alt="E-book cover preview" className="h-full w-full object-contain" fallback={<div className="flex h-full items-center justify-center text-xs text-zinc-500">No cover preview</div>} />

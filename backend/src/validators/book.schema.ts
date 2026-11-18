@@ -131,7 +131,9 @@ export const createEBookSchema = z.object({
 });
 
 export const uploadEBookSchema = createEBookSchema.omit({ body: true }).extend({
-  body: createEBookSchema.shape.body.omit({ fileUrl: true }),
+  body: createEBookSchema.shape.body
+    .omit({ fileUrl: true })
+    .extend({ fileUrl: z.string().url('File URL must be a valid URL').optional() }),
 });
 
 export const updateEBookSchema = z.object({

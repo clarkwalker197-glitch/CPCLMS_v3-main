@@ -7,7 +7,11 @@ import { ebookService } from '../services';
 import { asyncHandler } from '../utils/asyncHandler';
 import { sendSuccess } from '../utils/helpers';
 import { BadRequestError } from '../utils/errors';
-import { storeCoverImage, tryDeleteNewCoverImage } from '../services/cover-image-storage.service';
+import {
+  storeCoverImage,
+  tryDeleteNewCoverImage,
+  tryDeleteUnreferencedCoverImage,
+} from '../services/cover-image-storage.service';
 import { storeEBookFile, tryDeleteNewEBookFile, tryDeleteUnreferencedEBookFile } from '../services/ebook-file-storage.service';
 import { AuthenticatedRequest } from '../types';
 
@@ -77,12 +81,19 @@ export const createEBook = asyncHandler(async (req: Request, res: Response) => {
  * PUT /api/ebooks/:id
  */
 export const updateEBook = asyncHandler(async (req: Request, res: Response) => {
-  const files = req.files as { ebookFile?: Express.Multer.File[]; file?: Express.Multer.File[] } | undefined;
+  const files = req.files as {
+    ebookFile?: Express.Multer.File[];
+    file?: Express.Multer.File[];
+    coverImage?: Express.Multer.File[];
+  } | undefined;
   const uploadedFile = files?.ebookFile?.[0] || files?.file?.[0];
-  const existingEBook = uploadedFile ? await ebookService.getEBookById(req.params.id) : null;
+  const uploadedCover = files?.coverImage?.[0];
+  const existingEBook = uploadedFile || uploadedCover ? await ebookService.getEBookById(req.params.id) : null;
   const storedFile = uploadedFile ? await storeEBookFile(uploadedFile) : null;
+  let uploadedCoverUrl: string | undefined;
 
   try {
+    uploadedCoverUrl = uploadedCover ? await storeCoverImage(uploadedCover) : undefined;
     const ebook = await ebookService.updateEBook(req.params.id, {
       ...req.body,
       ...(storedFile
@@ -92,13 +103,18 @@ export const updateEBook = asyncHandler(async (req: Request, res: Response) => {
             format: req.body.format || storedFile.format,
           }
         : {}),
+      ...(uploadedCoverUrl ? { coverImage: uploadedCoverUrl } : {}),
     });
     if (storedFile && existingEBook?.fileUrl !== storedFile.fileUrl) {
       await tryDeleteUnreferencedEBookFile(existingEBook?.fileUrl);
     }
+    if (uploadedCoverUrl && existingEBook?.coverImage !== uploadedCoverUrl) {
+      await tryDeleteUnreferencedCoverImage(existingEBook?.coverImage);
+    }
     sendSuccess(res, ebook, 'E-Book updated successfully');
   } catch (error) {
     if (storedFile) await tryDeleteNewEBookFile(storedFile.fileUrl);
+    if (uploadedCoverUrl) await tryDeleteNewCoverImage(uploadedCoverUrl);
     throw error;
   }
 });
